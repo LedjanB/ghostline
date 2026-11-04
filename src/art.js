@@ -2,20 +2,31 @@
 // Each sprite is a list of text rows; each letter is a color from its palette.
 // '.' means transparent.
 
-function px(scene, key, rows, pal) {
+// Every actor sprite gets a 1px dark outline (art direction: actors outlined,
+// backgrounds not), so silhouettes read against any zone.
+const OUTLINE = '#0b0918';
+function px(scene, key, rows, pal, outline = true) {
   const h = rows.length;
   const w = rows[0].length;
+  const pad = outline ? 1 : 0;
   if (scene.textures.exists(key)) scene.textures.remove(key);
-  const tex = scene.textures.createCanvas(key, w, h);
+  const tex = scene.textures.createCanvas(key, w + pad * 2, h + pad * 2);
   const ctx = tex.context;
+  const solid = (x, y) => y >= 0 && y < h && x >= 0 && x < w && rows[y][x] !== '.' && pal[rows[y][x]];
+  if (outline) {
+    ctx.fillStyle = OUTLINE;
+    for (let y = -1; y <= h; y++) {
+      for (let x = -1; x <= w; x++) {
+        if (solid(x, y)) continue;
+        if (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1)) ctx.fillRect(x + pad, y + pad, 1, 1);
+      }
+    }
+  }
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      const c = rows[y][x];
-      if (c === '.' || c === undefined) continue;
-      const col = pal[c];
-      if (!col) continue;
-      ctx.fillStyle = col;
-      ctx.fillRect(x, y, 1, 1);
+      if (!solid(x, y)) continue;
+      ctx.fillStyle = pal[rows[y][x]];
+      ctx.fillRect(x + pad, y + pad, 1, 1);
     }
   }
   tex.refresh();
@@ -438,7 +449,12 @@ function darkness(ctx, w, h) {
   ctx.fillRect(0, 0, w, h);
 }
 
+const FLAME_ICON = ['..Y..', '.YYY.', '.YOY.', 'YOOOY', 'YOROY', '.YOY.', '..K..'];
+const SHIELD_ICON = ['.BBBBB.', 'BLLLLLB', 'BLWLLLB', 'BLLLLLB', 'BLLLLLB', '.BLLLB.', '..BLB..', '...B...'];
+
 export function makeArt(scene) {
+  px(scene, 'flame_icon', FLAME_ICON, { Y: '#ffd75e', O: '#ff8a2a', R: '#ff5a2a', K: '#2a1a10' });
+  px(scene, 'shield_icon', SHIELD_ICON, { B: '#1d3a7a', L: '#4fa8ff', W: '#dff0ff' });
   makeCharacters(scene);
   px(scene, 'ghost0', GHOST0, GHOST_PAL);
   px(scene, 'ghost1', GHOST1, GHOST_PAL);

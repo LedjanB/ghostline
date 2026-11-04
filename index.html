@@ -18,7 +18,11 @@
       touch-action: none; -webkit-user-select: none; user-select: none;
       -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
     }
-    #game { width: 100%; height: 100%; }
+    /* keep the canvas clear of notches and rounded corners (safe area) */
+    #game {
+      box-sizing: border-box; width: 100%; height: 100%;
+      padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+    }
     canvas { display: block; image-rendering: pixelated; }
     #rotate {
       display: none; position: fixed; inset: 0; z-index: 10;

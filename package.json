@@ -1,0 +1,12 @@
+{
+  "name": "ghostline",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Spooky pixel runner in the style of Jetpack Joyride, built with Phaser 4.",
+  "scripts": {
+    "start": "python -m http.server 8000"
+  },
+  "dependencies": {
+    "phaser": "4.2.1"
+  }
+}

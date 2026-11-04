@@ -1,16 +1,25 @@
-// The run itself: flying, spawning, collisions, zones, death.
+// The run: flying, spawning, collisions, zones, death.
+// physics-tuning: the simulation runs on a fixed 120 Hz step (step()); drawing happens once
+// per frame (render()), offset by the leftover time so motion stays smooth at any refresh rate.
 import {
   W, H, CEIL, FLOOR, PLAYER_X, PX_PER_METER, ZONE_LENGTH_M, CHARACTERS, ZONES,
 } from '../data.js';
 import { Save } from '../save.js';
 import { Audio } from '../audio.js';
-import { text, button } from '../ui.js';
+import { text } from '../ui.js';
+import { createInput, prompt, Device } from '../input.js';
+import {
+  UNLOCK, difficulty, spawnTable, gapAfter, bansheeDelay, createIntroTracker,
+} from '../pacing.js';
 
+const STEP = 1 / 120;
+const MAX_STEPS = 12;
 const GRAVITY = 1500;
 const PULL = 3100;
 const TOP = CEIL + 16;
 const BOTTOM = FLOOR - 16;
 const PLAYER_R = 10;
+const CLOSE_MARGIN = 14; // px of clearance that counts as a near miss
 
 const SWING_INFO = {
   lamp: { off: 9, r: 14, glow: 0xfff2b0 },
@@ -18,14 +27,12 @@ const SWING_INFO = {
   hook: { off: 18, r: 10, glow: null },
 };
 
-// One seeded random source per run (procedural-gen skill: own your randomness).
+// One seeded random source per run (procedural-gen skill).
 function makeRng(seed) {
   let s = seed >>> 0;
-  const next = () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
+  const next = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
   return {
+    seed,
     next,
     range: (a, b) => a + (b - a) * next(),
     int: (a, b) => Math.floor(a + (b - a + 1) * next()),
@@ -45,36 +52,49 @@ function distToSegment(px, py, ax, ay, bx, by) {
   const len2 = dx * dx + dy * dy || 1;
   let t = ((px - ax) * dx + (py - ay) * dy) / len2;
   t = Math.max(0, Math.min(1, t));
-  const cx = ax + dx * t, cy = ay + dy * t;
-  return Math.hypot(px - cx, py - cy);
+  return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
 }
-
-function circleRect(cx, cy, r, x1, y1, x2, y2) {
+// distance from a circle centre to a rectangle (0 when inside)
+function distToRect(cx, cy, x1, y1, x2, y2) {
   const nx = Math.max(x1, Math.min(cx, x2));
   const ny = Math.max(y1, Math.min(cy, y2));
-  return (cx - nx) ** 2 + (cy - ny) ** 2 < r * r;
+  return Math.hypot(cx - nx, cy - ny);
+}
+const easeOutBack = (t) => { const c = 1.7; return 1 + (c + 1) * (t - 1) ** 3 + c * (t - 1) ** 2; };
+const easeIn = (t) => t * t;
+
+// Simple object pool (performance-optimization skill: don't create/destroy in hot loops).
+class Pool {
+  constructor(make) { this.make = make; this.free = []; this.created = 0; }
+  get() { const o = this.free.pop(); if (o) return o; this.created++; return this.make(); }
+  put(o) { this.free.push(o); }
 }
 
 export class PlayScene extends Phaser.Scene {
   constructor() { super('play'); }
 
-  // Reset all run state here, not in the constructor (phaser-core skill).
   init() {
     const save = Save.get();
     this.char = CHARACTERS.find((c) => c.id === save.selected) || CHARACTERS[0];
+    this.settings = save.settings;
     this.rand = makeRng(Date.now());
+    this.intro = createIntroTracker();
+    this.acc = 0;
     this.worldX = 0;
+    this.scroll = 0;
     this.speed = 230;
     this.light = 1;
     this.runCandles = 0;
+    this.combo = 0;
+    this.lastCandleAt = -9;
     this.zoneIndex = 0;
     this.dead = false;
     this.ended = false;
-    this.paused = false;
     this.hitStop = 0;
     this.shield = this.char.shield;
     this.invuln = 0;
     this.py = BOTTOM;
+    this.prevPy = BOTTOM;
     this.vy = 0;
     this.grounded = true;
     this.spin = 0;
@@ -83,7 +103,7 @@ export class PlayScene extends Phaser.Scene {
     this.started = false;
     this.clock = 0;
     this.nextSpawn = 520;
-    this.nextBanshee = 14;
+    this.nextBanshee = 4;
     this.transitioning = false;
     this.flickerUntil = 0;
     this.nextFlicker = 5;
@@ -93,6 +113,10 @@ export class PlayScene extends Phaser.Scene {
     this.passedBest = false;
     this.ghostX = PLAYER_X - 18;
     this.ghostY = BOTTOM - 40;
+    this.lastMeters = -1;
+    this.lastLight = -1;
+    this.lastBlink = null;
+    this.nearMisses = 0;
 
     this.beams = [];
     this.hands = [];
@@ -112,7 +136,6 @@ export class PlayScene extends Phaser.Scene {
     this.chainGfx = this.add.graphics().setDepth(6);
     this.beamGfx = this.add.graphics().setDepth(7);
     this.tendril = this.add.graphics().setDepth(8.5);
-    this.fxGfx = this.add.graphics().setDepth(22);
 
     this.player = this.add.sprite(PLAYER_X, this.py, `${this.char.id}_run0`).setScale(2).setDepth(9);
     this.player.play(`${this.char.id}_run`);
@@ -126,85 +149,71 @@ export class PlayScene extends Phaser.Scene {
     this.dark = this.add.image(PLAYER_X + 110, this.py, 'dark').setScale(2).setDepth(20);
     this.fader = this.add.rectangle(0, 0, W, H, 0x000000).setOrigin(0).setDepth(26).setAlpha(0);
 
-    this.makeHud();
-    this.makeInput();
+    // pools for the objects spawned most often
+    this.particlePool = new Pool(() => this.add.rectangle(0, 0, 3, 3, 0xffffff).setDepth(22));
+    this.candlePool = new Pool(() => ({
+      s: this.add.sprite(0, 0, 'candle0').setScale(2).setDepth(21.5),
+      glow: this.add.image(0, 0, 'glow').setScale(0.9).setDepth(21)
+        .setBlendMode(Phaser.BlendModes.ADD).setTint(0xffa040).setAlpha(0.55),
+    }));
 
-    this.tutorial = text(this, W / 2, H / 2 - 30, 'HOLD TO FLOAT', 16, '#e6f0ff').setDepth(31).setStroke('#07060d', 4);
-    this.tutorial2 = text(this, W / 2, H / 2 - 6, 'TAP / SPACE / MOUSE', 8, '#a99fd0').setDepth(31).setStroke('#07060d', 3);
+    this.inputMap = createInput(this);
+
+    this.tutorial = text(this, W / 2, H / 2 - 30, prompt('float'), 16, '#e6f0ff').setDepth(31).setStroke('#07060d', 4);
+    this.tutorial2 = text(this, W / 2, H / 2 - 4, 'TO FLOAT', 16, '#a99fd0').setDepth(31).setStroke('#07060d', 4);
     this.tweens.add({ targets: [this.tutorial, this.tutorial2], alpha: 0.35, duration: 500, yoyo: true, repeat: -1 });
+    this.offDevice = Device.onChange(() => { if (!this.started && this.tutorial.active) this.tutorial.setText(prompt('float')); });
 
     this.banner(zone.name);
     Audio.music(zone.song);
     Audio.duck(false);
+    Audio.danger(false);
+    Audio.intensity(0.2);
 
-    this.onHidden = () => { if (!this.dead) this.setPaused(true); };
+    this.scene.launch('hud');
+
+    this.onHidden = () => this.requestPause();
     this.game.events.on('hidden', this.onHidden);
     this.events.once('shutdown', () => {
       this.game.events.off('hidden', this.onHidden);
-      this.tweens.resumeAll();
-      this.anims.resumeAll();
+      this.offDevice();
+      Audio.danger(false);
     });
+    this.render(0);
   }
 
-  // ---------------- HUD & input ----------------
-  makeHud() {
-    const d = 30;
-    this.distText = text(this, 14, 18, '0M', 16, '#e6f0ff', 0).setDepth(d).setStroke('#07060d', 4);
-    this.add.image(176, 18, 'candle0').setScale(1.5).setDepth(d);
-    this.candleText = text(this, 190, 18, '0', 16, '#ffd75e', 0).setDepth(d).setStroke('#07060d', 4);
-    text(this, 296, 18, 'LIGHT', 8, '#ffb060', 0).setDepth(d).setStroke('#07060d', 3);
-    this.lightBar = this.add.graphics().setDepth(d);
-    this.shieldIcon = this.add.image(500, 18, 'glow').setScale(0.35).setDepth(d).setTint(0x4fa8ff)
-      .setBlendMode(Phaser.BlendModes.ADD).setVisible(this.shield);
-    this.pauseBtn = button(this, W - 24, 18, 'II', () => this.setPaused(!this.paused), { w: 30, h: 26, size: 8 });
-    this.pauseBtn.setDepth(d);
-    this.pauseBtn.bg.on('pointerdown', (p) => { p.__ui = true; });
+  requestPause() {
+    if (this.dead || !this.scene.isActive()) return;
+    this.scene.pause();
+    this.scene.launch('pause');
   }
 
-  makeInput() {
-    this.keys = this.input.keyboard.addKeys('SPACE,UP,W,P,ESC');
-    this.input.on('pointerup', (p) => { p.__ui = false; });
-    this.input.keyboard.on('keydown-P', () => { if (!this.dead) this.setPaused(!this.paused); });
-    this.input.keyboard.on('keydown-ESC', () => { if (!this.dead) this.setPaused(!this.paused); });
-  }
+  shake(ms, amount) { if (this.settings.shake) this.cameras.main.shake(ms, amount); }
+  flash(ms, r, g, b) { if (this.settings.flicker) this.cameras.main.flash(ms, r, g, b); }
 
-  isHolding() {
-    if (this.keys.SPACE.isDown || this.keys.UP.isDown || this.keys.W.isDown) return true;
-    return this.input.manager.pointers.some((p) => p.isDown && !p.__ui);
-  }
-
-  setPaused(on) {
-    if (on === this.paused) return;
-    this.paused = on;
-    if (on) {
-      this.tweens.pauseAll();
-      Audio.duck(true);
-      this.pauseLayer = [
-        this.add.rectangle(0, 0, W, H, 0x07060d).setOrigin(0).setAlpha(0.88).setDepth(50).setInteractive(),
-        text(this, W / 2, 120, 'PAUSED', 24, '#cfe0ff').setDepth(51),
-      ];
-      this.resumeBtn = button(this, W / 2, 190, 'RESUME', () => this.setPaused(false)).setDepth(52);
-      this.menuBtn = button(this, W / 2, 244, 'MENU', () => {
-        this.scene.start('menu');
-      }).setDepth(52);
-    } else {
-      this.tweens.resumeAll();
-      Audio.duck(false);
-      this.pauseLayer.forEach((o) => o.destroy());
-      this.resumeBtn.destroy();
-      this.menuBtn.destroy();
-      this.input.manager.pointers.forEach((p) => { if (p.isDown) p.__ui = true; });
-    }
-  }
-
-  // ---------------- main loop ----------------
+  // ---------------- frame ----------------
   update(time, deltaMs) {
-    const realDt = Math.min(deltaMs / 1000, 0.05);
-    if (this.paused) return;
-    if (this.hitStop > 0) { this.hitStop -= realDt; return; }
-    const dt = realDt;
+    this.inputMap.update();
+    if (!this.dead && this.inputMap.pressed('pause')) { this.requestPause(); return; }
+    const real = Math.min(deltaMs / 1000, 0.1);
+    if (this.hitStop > 0) { this.hitStop -= real; this.render(0); return; }
+    const holding = !this.dead && this.inputMap.held('float');
+    this.acc += real;
+    let n = 0;
+    while (this.acc >= STEP && n < MAX_STEPS) {
+      this.step(STEP, holding);
+      this.acc -= STEP;
+      n++;
+      if (this.hitStop > 0) { this.acc = 0; break; }
+    }
+    if (n === MAX_STEPS) this.acc = 0; // a long hitch: drop time instead of fast-forwarding
+    this.render(this.acc);
+  }
+
+  // ---------------- simulation (fixed step) ----------------
+  step(dt, holding) {
     this.clock += dt;
-    const holding = !this.dead && this.isHolding();
+    this.prevPy = this.py;
 
     if (holding && !this.started) {
       this.started = true;
@@ -212,104 +221,70 @@ export class PlayScene extends Phaser.Scene {
       this.tweens.add({ targets: [this.tutorial, this.tutorial2], alpha: 0, y: '-=20', duration: 400, onComplete: () => { this.tutorial.destroy(); this.tutorial2.destroy(); } });
     }
 
-    // world speed
     const meters = this.worldX / PX_PER_METER;
-    const diff = Math.min(1, meters / 2500);
-    if (!this.dead) this.speed = 230 + 290 * diff;
-    this.worldX += this.speed * dt;
+    const pace = difficulty(meters);
+    if (!this.dead) this.speed = 230 + 290 * Math.min(1, meters / 2600);
     const move = this.speed * dt;
+    this.worldX += move;
+    this.scroll += move;
 
-    this.far.tilePositionX += (move / 2) * 0.2;
-    this.mid.tilePositionX += (move / 2) * 0.55;
-    this.edge.tilePositionX += move / 2;
-
-    if (this.dead) this.updateDeath(dt);
-    else this.updatePlayer(dt, holding);
-
-    this.updateGhost(dt, holding);
-    this.updateZones(meters);
+    if (this.dead) this.stepDeath(dt);
+    else this.stepPlayer(dt, holding);
+    this.stepGhost(dt, holding);
+    this.stepZones(meters);
     if (!this.dead) {
-      this.spawner(meters, diff);
-      this.bansheeTimer(dt, diff);
+      this.spawner(meters, pace);
+      this.bansheeTimer(dt, meters, pace.diff);
     }
-    this.updateBest();
-    this.moveWorld(dt, move);
+    this.stepWorld(dt, move);
     if (!this.dead) this.collide();
-    this.updateLight(dt);
-    this.updateZoneFx(dt);
-    this.updateHud(meters);
+    this.stepLight(dt);
+    this.stepZoneFx(dt);
+    if (this.combo > 0 && this.clock - this.lastCandleAt > 0.6) { this.combo = 0; this.events.emit('combo', 0); }
+    this.emitHud(meters);
+    Audio.intensity(this.dead ? 0 : 0.2 + pace.diff * 0.9);
+    Audio.danger(!this.dead && this.warnings.length > 0);
   }
 
-  updatePlayer(dt, holding) {
+  stepPlayer(dt, holding) {
     if (holding && !this.wasHolding && this.clock - this.lastFloatSfx > 0.25) {
       Audio.sfx('float');
       this.lastFloatSfx = this.clock;
     }
     this.wasHolding = holding;
-
     this.vy += (GRAVITY - (holding ? PULL : 0)) * dt;
     this.vy = Phaser.Math.Clamp(this.vy, -480, 620);
     this.py += this.vy * dt;
     if (this.py < TOP) { this.py = TOP; if (this.vy < 0) this.vy = 0; }
-    const wasGrounded = this.grounded;
     if (this.py >= BOTTOM) {
-      if (!wasGrounded && this.vy > 250) this.land();
+      if (!this.grounded && this.vy > 250) this.land();
       this.py = BOTTOM;
       this.vy = 0;
       this.grounded = true;
     } else {
       this.grounded = false;
     }
-
-    const key = this.grounded ? `${this.char.id}_run` : `${this.char.id}_flyA`;
-    if (this.player.anims.currentAnim?.key !== key) this.player.play(key);
-    this.player.setPosition(PLAYER_X, this.py);
-    this.player.rotation = this.grounded ? 0 : Phaser.Math.Clamp(this.vy / 2200, -0.15, 0.25);
-
-    if (this.invuln > 0) {
-      this.invuln -= dt;
-      this.player.setAlpha(Math.floor(this.invuln * 16) % 2 ? 0.3 : 1);
-      if (this.invuln <= 0) this.player.setAlpha(1);
-    }
-    this.shieldGlow.setPosition(PLAYER_X, this.py).setVisible(this.shield)
-      .setAlpha(0.35 + Math.sin(this.clock * 6) * 0.12);
+    if (this.invuln > 0) this.invuln -= dt;
   }
 
   land() {
-    // small-tier feedback: squash + dust
     this.tweens.add({ targets: this.player, scaleY: 1.6, scaleX: 2.4, duration: 60, yoyo: true, ease: 'Quad.easeOut' });
     this.burst(PLAYER_X, FLOOR - 2, 0x8a8a9a, 6, 30, 300);
   }
 
-  updateGhost(dt, holding) {
+  stepGhost(dt, holding) {
+    if (this.dead) return;
     let tx, ty;
-    if (this.dead) return this.tendril.clear();
     if (holding) { tx = PLAYER_X - 4; ty = this.py - 46 + Math.sin(this.clock * 9) * 2; }
     else { tx = PLAYER_X - 20; ty = this.py - 40 + Math.sin(this.clock * 3) * 4; }
     const k = 1 - Math.exp(-14 * dt);
     this.ghostX += (tx - this.ghostX) * k;
     this.ghostY += (ty - this.ghostY) * k;
-    this.ghost.setPosition(this.ghostX, this.ghostY);
-    this.ghost.setAlpha(this.invuln > 0 ? 0.5 : 0.92);
-    this.ghostGlow.setPosition(this.ghostX, this.ghostY).setAlpha(holding ? 0.5 : 0.28);
-
-    // ectoplasm tendril from ghost to the player's back
-    this.tendril.clear();
-    const ax = this.ghostX, ay = this.ghostY + 12;
-    const bx = PLAYER_X - 3, by = this.py - 8;
-    this.tendril.fillStyle(0xcfe0ff, holding ? 0.85 : 0.35);
-    const steps = 9;
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      const wob = Math.sin(this.clock * 12 + t * 6) * 3 * Math.sin(t * Math.PI);
-      const x = ax + (bx - ax) * t + wob;
-      const y = ay + (by - ay) * t;
-      this.tendril.fillRect(Math.round(x) - 2, Math.round(y) - 2, 4, 4);
-    }
+    this.holding = holding;
   }
 
   // ---------------- spawning ----------------
-  spawner(meters, diff) {
+  spawner(meters, pace) {
     if (this.worldX < this.nextSpawn) return;
     const toBoundary = ZONE_LENGTH_M - (meters % ZONE_LENGTH_M);
     const sinceBoundary = meters % ZONE_LENGTH_M;
@@ -318,54 +293,47 @@ export class PlayScene extends Phaser.Scene {
       return;
     }
     const r = this.rand;
-    const table = [
-      ['candles', 30],
-      ['beam', 26],
-      ['swing', 12],
-      ['beamCandles', 10],
-    ];
-    if (meters > 60) table.push(['hands', 16]);
-    if (diff > 0.15) table.push(['beamPair', 10]);
-    if (diff > 0.3) table.push(['rotor', 9]);
-    const kind = r.weighted(table);
+    const kind = r.weighted(spawnTable(meters, pace.diff, pace.breather));
     const x0 = W + 60;
+    const d = pace.diff;
     let length = 0;
     switch (kind) {
-      case 'candles': length = this.spawnCandles(x0); break;
-      case 'beam': length = this.spawnBeam(x0, diff); break;
+      case 'candles': length = this.spawnCandles(x0, pace.breather); break;
+      case 'beam': length = this.intro.first('beam') ? this.introBeam(x0) : this.spawnBeam(x0, d); break;
       case 'beamPair': {
-        this.spawnBeam(x0, diff, 0);
-        const gap = r.range(170, 230);
-        this.spawnBeam(x0 + gap, diff, Math.PI / 2);
+        const first = this.intro.first('beamPair');
+        this.spawnBeam(x0, d, 0);
+        const gap = first ? 260 : r.range(170, 230);
+        this.spawnBeam(x0 + gap, d, Math.PI / 2);
+        if (first) for (let i = 0; i < 6; i++) this.addCandle(x0 + gap / 2 - 50 + i * 20, H / 2);
         length = gap + 60;
         break;
       }
-      case 'rotor': length = this.spawnBeam(x0, diff, null, true); break;
+      case 'rotor': length = this.spawnBeam(x0, d, null, true, null, this.intro.first('rotor') ? 0.7 : null); break;
       case 'beamCandles': {
-        const y = this.rand.chance(0.5) ? CEIL + 70 : FLOOR - 70;
-        this.spawnBeam(x0 + 90, diff, 0, false, y);
+        const y = r.chance(0.5) ? CEIL + 70 : FLOOR - 70;
+        this.spawnBeam(x0 + 90, d, 0, false, y);
         const cy = y < H / 2 ? y + 60 : y - 60;
         for (let i = 0; i < 9; i++) this.addCandle(x0 + i * 22, cy);
         length = 9 * 22;
         break;
       }
-      case 'hands': length = this.spawnHands(x0, diff); break;
-      case 'swing': length = this.spawnSwing(x0); break;
+      case 'hands': length = this.spawnHands(x0, d, this.intro.first('hands')); break;
+      case 'swing': length = this.spawnSwing(x0, this.intro.first('swing')); break;
     }
-    const gap = Phaser.Math.Linear(330, 170, diff) + r.range(0, 90);
-    this.nextSpawn = this.worldX + length + gap;
+    this.nextSpawn = this.worldX + length + gapAfter(d, r);
   }
 
-  spawnCandles(x0) {
+  spawnCandles(x0, breather) {
     const r = this.rand;
-    const shape = r.pick(['line', 'wave', 'arc', 'grid']);
+    const shape = r.pick(breather ? ['wave', 'arc', 'grid', 'wave'] : ['line', 'wave', 'arc', 'grid']);
     if (shape === 'line') {
       const n = r.int(8, 12), y = r.range(TOP + 10, BOTTOM - 10);
       for (let i = 0; i < n; i++) this.addCandle(x0 + i * 22, y);
       return n * 22;
     }
     if (shape === 'wave') {
-      const n = 14, cy = r.range(TOP + 60, BOTTOM - 60);
+      const n = breather ? 20 : 14, cy = r.range(TOP + 60, BOTTOM - 60);
       for (let i = 0; i < n; i++) this.addCandle(x0 + i * 22, cy + Math.sin(i * 0.55) * 50);
       return n * 22;
     }
@@ -384,184 +352,96 @@ export class PlayScene extends Phaser.Scene {
 
   addCandle(x, y) {
     y = Phaser.Math.Clamp(y, TOP, BOTTOM);
-    const s = this.add.sprite(x, y, 'candle0').setScale(2).setDepth(21.5);
-    s.play({ key: 'candle_flicker', startFrame: Math.floor(Math.random() * 2) });
-    const glow = this.add.image(x, y - 10, 'glow').setScale(0.9).setDepth(21)
-      .setBlendMode(Phaser.BlendModes.ADD).setTint(0xffa040).setAlpha(0.55);
-    this.candles.push({ x, y, s, glow });
+    const c = this.candlePool.get();
+    c.s.setVisible(true).setScale(2).setAlpha(1);
+    c.s.play({ key: 'candle_flicker', startFrame: Math.floor(Math.random() * 2) });
+    c.glow.setVisible(true);
+    c.x = x; c.y = y; c.dead = false;
+    this.candles.push(c);
   }
 
-  spawnBeam(x0, diff, forcedAng = null, rotor = false, forcedY = null) {
+  releaseCandle(c) {
+    c.dead = true;
+    c.s.setVisible(false); c.s.anims.stop();
+    c.glow.setVisible(false);
+    this.candlePool.put(c);
+  }
+
+  // Teach: first beam is short, horizontal, up high, with candles marking the safe line under it.
+  introBeam(x0) {
+    const y = TOP + 60;
+    this.spawnBeam(x0 + 100, 0, 0, false, y, null, 80);
+    for (let i = 0; i < 10; i++) this.addCandle(x0 + i * 22, BOTTOM - 30);
+    return 240;
+  }
+
+  spawnBeam(x0, diff, forcedAng = null, rotor = false, forcedY = null, rotSpeed = null, forcedLen = null) {
     const r = this.rand;
-    const len = rotor ? 120 : r.range(80, 120 + 50 * diff);
-    let ang = forcedAng ?? r.pick([0, Math.PI / 4, Math.PI / 2, (3 * Math.PI) / 4]);
-    // keep both ends inside the play area (validate the layout)
-    const hh = rotor ? len / 2 : Math.abs(Math.sin(ang)) * len / 2;
+    const len = forcedLen ?? (rotor ? 120 : r.range(80, 120 + 50 * diff));
+    const ang = forcedAng ?? r.pick([0, Math.PI / 4, Math.PI / 2, (3 * Math.PI) / 4]);
+    // validate: both ends stay inside the play area so a path always exists
+    const hh = rotor ? len / 2 : (Math.abs(Math.sin(ang)) * len) / 2;
     const y = forcedY ?? r.range(TOP + 4 + hh, BOTTOM - 4 - hh);
     const nodes = [0, 1].map(() => this.add.image(0, 0, 'spirit').setScale(2).setDepth(7.5));
     const glows = [0, 1].map(() => this.add.image(0, 0, 'glow').setScale(1.1).setDepth(21)
       .setBlendMode(Phaser.BlendModes.ADD).setTint(0x4fe38a).setAlpha(0.45));
-    this.beams.push({
-      x: x0 + (Math.abs(Math.cos(ang)) * len) / 2, y, len, ang, nodes, glows,
-      rot: rotor ? (r.chance(0.5) ? 1 : -1) * r.range(1.1, 1.6) : 0,
-    });
+    const rot = rotor ? (r.chance(0.5) ? 1 : -1) * (rotSpeed ?? r.range(1.1, 1.6)) : 0;
+    this.beams.push({ x: x0 + (Math.abs(Math.cos(ang)) * len) / 2, y, len, ang, nodes, glows, rot });
     return Math.abs(Math.cos(ang)) * len + 40;
   }
 
-  spawnHands(x0, diff) {
+  spawnHands(x0, diff, first) {
     const r = this.rand;
-    const n = r.int(1, diff > 0.4 ? 3 : 2);
+    const n = first ? 1 : r.int(1, diff > 0.4 ? 3 : 2);
     let x = x0;
     for (let i = 0; i < n; i++) {
-      const fromFloor = r.chance(0.5);
-      const reach = r.range(115, 140 + 30 * diff);
+      const fromFloor = first ? true : r.chance(0.5);
+      const reach = first ? 110 : r.range(115, 140 + 30 * diff);
       const s = this.add.image(x, 0, 'hand').setScale(2).setDepth(5);
-      if (fromFloor) s.setOrigin(0.5, 0).setY(FLOOR + 6);
-      else s.setOrigin(0.5, 1).setFlipY(true).setY(CEIL - 6);
-      this.hands.push({ x, s, fromFloor, reach, state: 'wait', t: 0 });
+      if (fromFloor) s.setOrigin(0.5, 0); else s.setOrigin(0.5, 1).setFlipY(true);
+      const hidden = fromFloor ? FLOOR + 6 : CEIL - 6;
+      this.hands.push({
+        x, s, fromFloor, reach, state: 'wait', t: 0, y: hidden, hidden, from: hidden,
+        trigger: first ? 320 : 230, riseTime: first ? 0.36 : 0.22,
+      });
+      if (first) for (let k = 0; k < 7; k++) this.addCandle(x - 66 + k * 22, FLOOR - reach - 50);
       x += r.range(150, 190);
     }
     return x - x0;
   }
 
-  spawnSwing(x0) {
+  spawnSwing(x0, first) {
     const r = this.rand;
     const type = ZONES[this.zoneIndex % ZONES.length].swing;
-    const len = r.range(110, 165);
+    const len = first ? 110 : r.range(110, 165);
     const s = this.add.image(x0, CEIL, type).setScale(2).setOrigin(0.5, 0).setDepth(6);
     const info = SWING_INFO[type];
     const glow = info.glow ? this.add.image(x0, CEIL, 'glow').setScale(1.4).setDepth(21)
       .setBlendMode(Phaser.BlendModes.ADD).setTint(info.glow).setAlpha(0.4) : null;
     this.swings.push({
-      x: x0, len, type, s, glow, info,
-      amp: r.range(0.7, 1.0), w: r.range(2.0, 2.8), phase: r.range(0, Math.PI * 2), lastSign: 0,
+      x: x0, len, type, s, glow, info, th: 0,
+      amp: first ? 0.6 : r.range(0.7, 1.0), w: first ? 1.6 : r.range(2.0, 2.8),
+      phase: r.range(0, Math.PI * 2), lastSign: 0,
     });
+    if (first) for (let k = 0; k < 8; k++) this.addCandle(x0 - 70 + k * 22, BOTTOM - 20);
     return 60;
   }
 
-  bansheeTimer(dt, diff) {
-    if (this.transitioning) return;
+  bansheeTimer(dt, meters, diff) {
+    if (this.transitioning || meters < UNLOCK.banshee) return;
     this.nextBanshee -= dt;
     if (this.nextBanshee > 0) return;
-    this.nextBanshee = Phaser.Math.Linear(9, 3.5, diff) + this.rand.range(0, 4);
-    this.addWarning(0);
-    if (diff > 0.35 && this.rand.chance(0.35)) this.addWarning(this.rand.chance(0.5) ? 90 : -90);
+    const first = this.intro.first('banshee');
+    this.nextBanshee = bansheeDelay(diff, this.rand);
+    this.addWarning(0, first ? 1.9 : 1.1);
+    if (!first && diff > 0.35 && this.rand.chance(0.35)) this.addWarning(this.rand.chance(0.5) ? 90 : -90, 1.1);
   }
 
-  addWarning(offset) {
+  addWarning(offset, trackTime) {
     const g = this.add.graphics().setDepth(29);
     const t = text(this, W - 26, 0, '!', 16, '#ffffff').setDepth(30);
-    this.warnings.push({ y: this.py + offset, offset, t: 0, phase: 'track', g, txt: t });
+    this.warnings.push({ y: Phaser.Math.Clamp(this.py + offset, TOP, BOTTOM), offset, t: 0, phase: 'track', trackTime, g, txt: t });
     Audio.sfx('warn');
-  }
-
-  // ---------------- moving everything ----------------
-  moveWorld(dt, move) {
-    // candles
-    for (const c of this.candles) {
-      if (c.dead) continue;
-      c.x -= move;
-      c.s.x = c.x; c.glow.x = c.x;
-      if (c.x < -40) this.killCandle(c);
-    }
-    this.candles = this.candles.filter((c) => !c.dead);
-
-    // beams
-    this.beamGfx.clear();
-    for (const b of this.beams) {
-      b.x -= move;
-      b.ang += b.rot * dt;
-      const dx = Math.cos(b.ang) * b.len / 2, dy = Math.sin(b.ang) * b.len / 2;
-      b.ax = b.x - dx; b.ay = b.y - dy; b.bx = b.x + dx; b.by = b.y + dy;
-      const flick = Math.random() < 0.5 ? 0 : 2;
-      this.beamGfx.lineStyle(14 + flick, 0x4fe38a, 0.25);
-      this.beamGfx.lineBetween(b.ax, b.ay, b.bx, b.by);
-      this.beamGfx.lineStyle(6, 0xb8ffd2, 0.9);
-      this.beamGfx.lineBetween(b.ax, b.ay, b.bx, b.by);
-      b.nodes[0].setPosition(b.ax, b.ay); b.nodes[1].setPosition(b.bx, b.by);
-      b.glows[0].setPosition(b.ax, b.ay); b.glows[1].setPosition(b.bx, b.by);
-      if (b.x < -b.len) { b.dead = true; b.nodes.forEach((n) => n.destroy()); b.glows.forEach((n) => n.destroy()); }
-    }
-    this.beams = this.beams.filter((b) => !b.dead);
-
-    // hands
-    for (const h of this.hands) {
-      h.x -= move;
-      h.s.x = h.x;
-      const near = h.x - PLAYER_X;
-      if (h.state === 'wait') {
-        if (h.x < W - 10) {
-          // telegraph: fingertips peek out and twitch
-          const peek = 10 + Math.sin(this.clock * 20) * 2;
-          h.s.y = h.fromFloor ? FLOOR - peek : CEIL + peek;
-        }
-        if (near < 230) {
-          h.state = 'rise';
-          Audio.sfx('hand');
-          this.cameras.main.shake(60, 0.003);
-          this.burst(h.x, h.fromFloor ? FLOOR : CEIL, 0x6a6a72, 8, 40, 350);
-          const target = h.fromFloor ? FLOOR - h.reach : CEIL + h.reach;
-          this.tweens.add({ targets: h.s, y: target, duration: 220, ease: 'Back.easeOut' });
-        }
-      } else if (h.state === 'rise' && near < -90) {
-        h.state = 'drop';
-        this.tweens.add({ targets: h.s, y: h.fromFloor ? FLOOR + 6 : CEIL - 6, duration: 500, ease: 'Quad.easeIn' });
-      }
-      if (h.x < -40) { h.dead = true; this.tweens.killTweensOf(h.s); h.s.destroy(); }
-    }
-    this.hands = this.hands.filter((h) => !h.dead);
-
-    // swings
-    this.chainGfx.clear();
-    for (const s of this.swings) {
-      s.x -= move;
-      const th = s.amp * Math.sin(this.clock * s.w + s.phase);
-      const ex = s.x + Math.sin(th) * s.len;
-      const ey = CEIL - 4 + Math.cos(th) * s.len;
-      this.chainGfx.fillStyle(0x6a6a78, 1);
-      for (let d = 0; d < s.len; d += 8) {
-        this.chainGfx.fillRect(Math.round(s.x + Math.sin(th) * d) - 1, Math.round(CEIL - 4 + Math.cos(th) * d) - 1, 3, 4);
-      }
-      s.s.setPosition(ex, ey).setRotation(-th);
-      s.hx = ex + Math.sin(th) * s.info.off;
-      s.hy = ey + Math.cos(th) * s.info.off;
-      if (s.glow) s.glow.setPosition(s.hx, s.hy);
-      const sign = Math.sign(th);
-      if (sign !== s.lastSign && s.x < W && s.x > 0) Audio.sfx('swoosh');
-      s.lastSign = sign;
-      if (s.x < -s.len - 30) { s.dead = true; s.s.destroy(); if (s.glow) s.glow.destroy(); }
-    }
-    this.swings = this.swings.filter((s) => !s.dead);
-
-    // warnings -> banshees
-    for (const w of this.warnings) {
-      w.t += dt;
-      if (w.phase === 'track') {
-        const target = Phaser.Math.Clamp(this.py + w.offset, TOP, BOTTOM);
-        w.y += (target - w.y) * (1 - Math.exp(-5 * dt));
-        if (w.t > 1.1) { w.phase = 'lock'; w.t = 0; Audio.sfx('warn'); }
-      } else if (w.phase === 'lock' && w.t > 0.45) {
-        w.dead = true;
-        this.spawnBanshee(w.y);
-      }
-      const blink = w.phase === 'lock' ? Math.floor(w.t * 16) % 2 : Math.floor(w.t * 5) % 2;
-      w.g.clear();
-      w.g.fillStyle(0xff2244, blink ? 1 : 0.55);
-      w.g.fillCircle(W - 26, w.y, 13);
-      w.g.lineStyle(2, 0x07060d, 1);
-      w.g.strokeCircle(W - 26, w.y, 13);
-      w.txt.setY(w.y + 1);
-      if (w.dead || this.dead) { w.dead = true; w.g.destroy(); w.txt.destroy(); }
-    }
-    this.warnings = this.warnings.filter((w) => !w.dead);
-
-    for (const b of this.banshees) {
-      b.x -= (this.dead ? move : this.speed * dt + 650 * dt);
-      b.s.setPosition(b.x, b.y + Math.sin(this.clock * 25) * 2);
-      b.eyes.setPosition(b.x - 14, b.y - 18);
-      if (b.x < -80) { b.dead = true; b.s.destroy(); b.eyes.destroy(); }
-    }
-    this.banshees = this.banshees.filter((b) => !b.dead);
   }
 
   spawnBanshee(y) {
@@ -572,62 +452,156 @@ export class PlayScene extends Phaser.Scene {
     Audio.sfx('scream');
   }
 
-  // ---------------- collisions ----------------
-  collide() {
-    const px = PLAYER_X, py = this.py;
-    // candles
+  // ---------------- world movement (fixed step) ----------------
+  stepWorld(dt, move) {
     for (const c of this.candles) {
       if (c.dead) continue;
-      if (Math.hypot(c.x - px, c.y - py) < 22) this.collect(c);
+      c.x -= move;
+      if (c.x < -40) this.releaseCandle(c);
+    }
+    this.candles = this.candles.filter((c) => !c.dead);
+
+    for (const b of this.beams) {
+      b.x -= move;
+      b.ang += b.rot * dt;
+      const dx = (Math.cos(b.ang) * b.len) / 2, dy = (Math.sin(b.ang) * b.len) / 2;
+      b.ax = b.x - dx; b.ay = b.y - dy; b.bx = b.x + dx; b.by = b.y + dy;
+      if (b.x < -b.len) { b.dead = true; b.nodes.forEach((n) => n.destroy()); b.glows.forEach((n) => n.destroy()); }
+    }
+    this.beams = this.beams.filter((b) => !b.dead);
+
+    for (const h of this.hands) {
+      h.x -= move;
+      const near = h.x - PLAYER_X;
+      if (h.state === 'wait') {
+        if (h.x < W - 10) {
+          // telegraph: fingertips peek out and twitch
+          const peek = 10 + Math.sin(this.clock * 20) * 2;
+          h.y = h.fromFloor ? FLOOR - peek : CEIL + peek;
+        }
+        if (near < h.trigger) {
+          h.state = 'rise'; h.t = 0; h.from = h.y;
+          Audio.sfx('hand');
+          this.shake(60, 0.003);
+          this.burst(h.x, h.fromFloor ? FLOOR : CEIL, 0x6a6a72, 8, 40, 350);
+        }
+      } else if (h.state === 'rise') {
+        h.t = Math.min(1, h.t + dt / h.riseTime);
+        const target = h.fromFloor ? FLOOR - h.reach : CEIL + h.reach;
+        h.y = h.from + (target - h.from) * easeOutBack(h.t);
+        if (near < -90) { h.state = 'drop'; h.t = 0; h.from = h.y; }
+      } else if (h.state === 'drop') {
+        h.t = Math.min(1, h.t + dt / 0.5);
+        h.y = h.from + (h.hidden - h.from) * easeIn(h.t);
+      }
+      if (h.x < -40) { h.dead = true; h.s.destroy(); }
+    }
+    this.hands = this.hands.filter((h) => !h.dead);
+
+    for (const s of this.swings) {
+      s.x -= move;
+      s.th = s.amp * Math.sin(this.clock * s.w + s.phase);
+      s.ex = s.x + Math.sin(s.th) * s.len;
+      s.ey = CEIL - 4 + Math.cos(s.th) * s.len;
+      s.hx = s.ex + Math.sin(s.th) * s.info.off;
+      s.hy = s.ey + Math.cos(s.th) * s.info.off;
+      const sign = Math.sign(s.th);
+      if (sign !== s.lastSign && s.x < W && s.x > 0) Audio.sfx('swoosh');
+      s.lastSign = sign;
+      if (s.x < -s.len - 30) { s.dead = true; s.s.destroy(); if (s.glow) s.glow.destroy(); }
+    }
+    this.swings = this.swings.filter((s) => !s.dead);
+
+    for (const w of this.warnings) {
+      w.t += dt;
+      if (w.phase === 'track') {
+        const target = Phaser.Math.Clamp(this.py + w.offset, TOP, BOTTOM);
+        w.y += (target - w.y) * (1 - Math.exp(-5 * dt));
+        if (w.t > w.trackTime) { w.phase = 'lock'; w.t = 0; Audio.sfx('warn'); }
+      } else if (w.phase === 'lock' && w.t > 0.45) {
+        w.dead = true;
+        this.spawnBanshee(w.y);
+      }
+      if (w.dead || this.dead) { w.dead = true; w.g.destroy(); w.txt.destroy(); }
+    }
+    this.warnings = this.warnings.filter((w) => !w.dead);
+
+    for (const b of this.banshees) {
+      b.x -= this.dead ? move : move + 650 * dt;
+      if (b.x < -80) { b.dead = true; b.s.destroy(); b.eyes.destroy(); }
+    }
+    this.banshees = this.banshees.filter((b) => !b.dead);
+  }
+
+  // ---------------- collisions + near misses ----------------
+  collide() {
+    const px = PLAYER_X, py = this.py;
+    for (const c of this.candles) {
+      if (!c.dead && Math.hypot(c.x - px, c.y - py) < 22) this.collect(c);
     }
     if (this.invuln > 0) return;
+    // each check returns clearance in px (<= 0 means a hit)
+    const test = (obj, clearance) => {
+      if (clearance <= 0) { this.hit(); return true; }
+      if (clearance < CLOSE_MARGIN && !obj.close) { obj.close = true; this.nearMiss(); }
+      return false;
+    };
     for (const b of this.beams) {
-      if (distToSegment(px, py, b.ax, b.ay, b.bx, b.by) < PLAYER_R + 5) return this.hit();
-      if (Math.hypot(px - b.ax, py - b.ay) < PLAYER_R + 11 || Math.hypot(px - b.bx, py - b.by) < PLAYER_R + 11) return this.hit();
+      const c = Math.min(
+        distToSegment(px, py, b.ax, b.ay, b.bx, b.by) - (PLAYER_R + 5),
+        Math.hypot(px - b.ax, py - b.ay) - (PLAYER_R + 11),
+        Math.hypot(px - b.bx, py - b.by) - (PLAYER_R + 11),
+      );
+      if (test(b, c)) return;
     }
     for (const h of this.hands) {
       if (h.state === 'wait') continue;
-      if (h.fromFloor) {
-        if (circleRect(px, py, PLAYER_R, h.x - 12, h.s.y + 6, h.x + 12, FLOOR)) return this.hit();
-      } else if (circleRect(px, py, PLAYER_R, h.x - 12, CEIL, h.x + 12, h.s.y - 6)) return this.hit();
+      const c = h.fromFloor
+        ? distToRect(px, py, h.x - 12, h.y + 6, h.x + 12, FLOOR) - PLAYER_R
+        : distToRect(px, py, h.x - 12, CEIL, h.x + 12, h.y - 6) - PLAYER_R;
+      if (test(h, c)) return;
     }
     for (const s of this.swings) {
-      if (s.hx !== undefined && Math.hypot(px - s.hx, py - s.hy) < PLAYER_R + s.info.r) return this.hit();
+      if (s.hx !== undefined && test(s, Math.hypot(px - s.hx, py - s.hy) - (PLAYER_R + s.info.r))) return;
     }
     for (const b of this.banshees) {
-      if (Math.hypot(px - (b.x - 6), py - b.y) < PLAYER_R + 16) return this.hit();
+      if (test(b, Math.hypot(px - (b.x - 6), py - b.y) - (PLAYER_R + 16))) return;
     }
+  }
+
+  nearMiss() {
+    // small-tier feedback: popup + sound + a sliver of light
+    this.nearMisses++;
+    this.light = Math.min(1, this.light + 0.03);
+    Audio.sfx('close');
+    const t = text(this, PLAYER_X + 30, this.py - 34, 'CLOSE!', 16, '#9ff0ff').setDepth(31).setStroke('#07060d', 4);
+    this.tweens.add({ targets: t, y: '-=26', alpha: 0, duration: 650, ease: 'Quad.easeOut', onComplete: () => t.destroy() });
   }
 
   collect(c) {
-    const gain = this.char.candleMul;
-    this.runCandles += gain;
+    this.combo = this.clock - this.lastCandleAt < 0.45 ? this.combo + 1 : 1;
+    this.lastCandleAt = this.clock;
+    this.runCandles += this.char.candleMul;
     this.light = Math.min(1, this.light + 0.07);
-    Audio.sfx('candle');
+    Audio.sfx('candle', { combo: this.combo });
+    this.events.emit('candles', this.runCandles);
+    this.events.emit('combo', this.combo);
     c.dead = true;
-    c.glow.destroy();
-    // small-tier feedback: pop and fly to the HUD counter
+    c.glow.setVisible(false);
     this.tweens.add({
       targets: c.s, x: 176, y: 18, scaleX: 1, scaleY: 1, duration: 320, ease: 'Cubic.easeIn',
-      onComplete: () => {
-        c.s.destroy();
-        this.tweens.add({ targets: this.candleText, scaleX: 1.3, scaleY: 1.3, duration: 60, yoyo: true });
-      },
+      onComplete: () => { c.s.setVisible(false); c.s.anims.stop(); this.candlePool.put(c); },
     });
   }
 
-  killCandle(c) { c.dead = true; c.s.destroy(); c.glow.destroy(); }
-
   hit() {
     if (this.shield) {
-      // medium-tier feedback
       this.shield = false;
       this.invuln = 1.4;
-      this.shieldIcon.setVisible(false);
-      this.shieldGlow.setVisible(false);
+      this.events.emit('shield', false);
       Audio.sfx('shield');
-      this.cameras.main.shake(160, 0.006);
-      this.cameras.main.flash(120, 80, 160, 255);
+      this.shake(160, 0.006);
+      this.flash(120, 80, 160, 255);
       this.burst(PLAYER_X, this.py, 0x4fa8ff, 14, 60, 450);
       return;
     }
@@ -635,11 +609,10 @@ export class PlayScene extends Phaser.Scene {
   }
 
   die() {
-    // large-tier feedback: hit-stop + shake + flash
     this.dead = true;
     this.hitStop = 0.09;
-    this.cameras.main.shake(280, 0.012);
-    this.cameras.main.flash(140, 255, 60, 90);
+    this.shake(280, 0.012);
+    this.flash(140, 255, 60, 90);
     Audio.sfx('hit');
     Audio.duck(true);
     this.burst(PLAYER_X, this.py, 0xcfe0ff, 16, 70, 600);
@@ -652,7 +625,7 @@ export class PlayScene extends Phaser.Scene {
     this.tendril.clear();
   }
 
-  updateDeath(dt) {
+  stepDeath(dt) {
     this.vy += GRAVITY * dt;
     this.py += this.vy * dt;
     this.player.rotation += this.spin * dt;
@@ -667,14 +640,13 @@ export class PlayScene extends Phaser.Scene {
       } else {
         this.vy = 0;
         this.spin = 0;
-        this.player.rotation = Phaser.Math.Angle.RotateTo(this.player.rotation, -Math.PI / 2, 0.2);
+        this.player.rotation = Phaser.Math.Angle.RotateTo(this.player.rotation, -Math.PI / 2, 0.1);
       }
     }
     if (this.deathFloorHits > 0) {
       this.speed *= Math.exp(-1.7 * dt);
       if (this.speed < 12) this.speed = 0;
     }
-    this.player.setPosition(PLAYER_X, this.py);
     if (this.speed === 0 && this.vy === 0 && !this.ended) {
       this.ended = true;
       this.time.delayedCall(600, () => this.endRun());
@@ -683,83 +655,51 @@ export class PlayScene extends Phaser.Scene {
 
   endRun() {
     const meters = Math.floor(this.worldX / PX_PER_METER);
-    const before = Save.get();
-    const prevBest = before.best;
-    const isBest = meters > prevBest;
+    const prevBest = Save.get().best;
     Save.update((s) => {
       s.candles += this.runCandles;
       s.best = Math.max(s.best, meters);
       s.runs += 1;
     });
-    this.scene.launch('over', { meters, candles: this.runCandles, isBest, best: Math.max(prevBest, meters) });
+    this.scene.launch('over', {
+      meters, candles: this.runCandles, isBest: meters > prevBest, best: Math.max(prevBest, meters), close: this.nearMisses,
+    });
   }
 
-  // ---------------- best-distance marker ----------------
-  updateBest() {
-    if (this.bestPx <= 0 || this.passedBest) return;
-    const x = PLAYER_X + (this.bestPx - this.worldX);
-    if (!this.bestMarker && x < W + 40) {
-      const g = this.add.graphics().setDepth(14);
-      g.fillStyle(0xffd75e, 0.5);
-      for (let y = CEIL; y < FLOOR; y += 12) g.fillRect(-2, y, 4, 6);
-      const t = text(this, 0, CEIL + 14, 'BEST', 8, '#ffd75e').setDepth(14);
-      this.bestMarker = { g, t };
-    }
-    if (this.bestMarker) {
-      this.bestMarker.g.x = x;
-      this.bestMarker.t.x = x;
-      if (x < PLAYER_X && !this.dead) {
-        this.passedBest = true;
-        Audio.sfx('best');
-        const pop = text(this, PLAYER_X + 40, this.py - 40, 'NEW BEST!', 16, '#ffd75e').setDepth(31).setStroke('#07060d', 4);
-        this.tweens.add({ targets: pop, y: '-=40', alpha: 0, duration: 1200, ease: 'Quad.easeOut', onComplete: () => pop.destroy() });
-        const m = this.bestMarker;
-        this.tweens.add({ targets: [m.g, m.t], alpha: 0, duration: 800, onComplete: () => { m.g.destroy(); m.t.destroy(); } });
-      }
-    }
-  }
-
-  // ---------------- light / darkness ----------------
-  updateLight(dt) {
+  stepLight(dt) {
     if (!this.dead && this.started) this.light = Math.max(0, this.light - 0.035 * this.char.drainMul * dt);
-    let flick = 0;
-    if (this.clock < this.flickerUntil) flick = (Math.floor(this.clock * 30) % 2) * 0.3;
-    const alpha = Math.min(0.9, 0.08 + (1 - this.light) * 0.64 + flick);
-    this.dark.setPosition(PLAYER_X + 110, this.py).setAlpha(alpha);
   }
 
-  updateZoneFx(dt) {
+  stepZoneFx(dt) {
     const zone = ZONES[this.zoneIndex % ZONES.length].id;
-    if (zone === 'hospital') {
+    if (zone === 'hospital' && this.settings.flicker) {
       this.nextFlicker -= dt;
-      if (this.nextFlicker <= 0) {
-        this.flickerUntil = this.clock + 0.3;
-        this.nextFlicker = 4 + Math.random() * 6;
-      }
+      if (this.nextFlicker <= 0) { this.flickerUntil = this.clock + 0.3; this.nextFlicker = 4 + Math.random() * 6; }
     }
     if (zone === 'sewer') {
       this.nextDrip -= dt;
       if (this.nextDrip <= 0) {
         this.nextDrip = 0.15 + Math.random() * 0.35;
-        const r = this.add.rectangle(Math.random() * W, CEIL, 2, 4, 0x7ab0a0).setDepth(14);
-        this.drips.push({ r, vy: 0 });
+        const p = this.particlePool.get();
+        p.setPosition(Math.random() * W, CEIL).setSize(2, 4).setFillStyle(0x7ab0a0).setAlpha(1).setVisible(true).setDepth(14);
+        this.drips.push({ p, vy: 0 });
       }
     }
     for (const d of this.drips) {
       d.vy += 900 * dt;
-      d.r.y += d.vy * dt;
-      d.r.x -= this.speed * dt * 0.6;
-      if (d.r.y > FLOOR) {
+      d.p.y += d.vy * dt;
+      d.p.x -= this.speed * dt * 0.6;
+      if (d.p.y > FLOOR) {
         d.dead = true;
-        this.burst(d.r.x, FLOOR - 2, 0x7ab0a0, 3, 15, 200, 2);
-        d.r.destroy();
+        d.p.setVisible(false).setDepth(22);
+        this.particlePool.put(d.p);
+        this.burst(d.p.x, FLOOR - 2, 0x7ab0a0, 3, 15, 200, 2);
       }
     }
     this.drips = this.drips.filter((d) => !d.dead);
   }
 
-  // ---------------- zones ----------------
-  updateZones(meters) {
+  stepZones(meters) {
     const idx = Math.floor(meters / ZONE_LENGTH_M);
     if (idx === this.zoneIndex || this.transitioning || this.dead) return;
     this.transitioning = true;
@@ -779,36 +719,144 @@ export class PlayScene extends Phaser.Scene {
     });
   }
 
+  emitHud(meters) {
+    const m = Math.floor(meters);
+    if (m !== this.lastMeters) { this.lastMeters = m; this.events.emit('meters', m); }
+    const l = Math.round(this.light * 100) / 100;
+    if (l !== this.lastLight) { this.lastLight = l; this.events.emit('light', l); }
+    const blink = this.light < 0.25 && Math.floor(this.clock * 4) % 2 === 1;
+    if (blink !== this.lastBlink) { this.lastBlink = blink; this.events.emit('lightLow', blink); }
+  }
+
   banner(name) {
     const t = text(this, W / 2, H / 2 + 40, name, 16, '#cfe0ff').setDepth(31).setStroke('#07060d', 4).setAlpha(0);
-    this.tweens.add({
-      targets: t, alpha: 1, duration: 300, yoyo: true, hold: 1200,
-      onComplete: () => t.destroy(),
-    });
+    this.tweens.add({ targets: t, alpha: 1, duration: 300, yoyo: true, hold: 1200, onComplete: () => t.destroy() });
   }
 
-  // ---------------- HUD ----------------
-  updateHud(meters) {
-    this.distText.setText(`${Math.floor(meters)}M`);
-    this.candleText.setText(`${this.runCandles}`);
-    const g = this.lightBar;
-    g.clear();
-    g.fillStyle(0x07060d, 1); g.fillRect(340, 11, 124, 14);
-    g.fillStyle(0x3a2a1a, 1); g.fillRect(342, 13, 120, 10);
-    const low = this.light < 0.25 && Math.floor(this.clock * 4) % 2;
-    g.fillStyle(low ? 0xff4040 : 0xffb040, 1); g.fillRect(342, 13, Math.round(120 * this.light), 10);
-    g.fillStyle(0xffe0a0, 1); g.fillRect(342, 13, Math.round(120 * this.light), 2);
+  // ---------------- drawing (once per frame) ----------------
+  render(acc) {
+    const lead = this.speed * acc; // how far the world moved since the last step
+    const a = acc / STEP;
+    const py = this.prevPy + (this.py - this.prevPy) * Math.min(1, a);
+    const s = this.scroll + lead;
+    this.far.tilePositionX = (s / 2) * 0.2;
+    this.mid.tilePositionX = (s / 2) * 0.55;
+    this.edge.tilePositionX = s / 2;
+
+    // player
+    if (!this.dead) {
+      const key = this.grounded ? `${this.char.id}_run` : `${this.char.id}_flyA`;
+      if (this.player.anims.currentAnim?.key !== key) this.player.play(key);
+      this.player.rotation = this.grounded ? 0 : Phaser.Math.Clamp(this.vy / 2200, -0.15, 0.25);
+      this.player.setAlpha(this.invuln > 0 && Math.floor(this.invuln * 16) % 2 ? 0.3 : 1);
+    }
+    this.player.setPosition(PLAYER_X, py);
+    this.shieldGlow.setPosition(PLAYER_X, py).setVisible(this.shield && !this.dead)
+      .setAlpha(0.35 + Math.sin(this.clock * 6) * 0.12);
+
+    // ghost + tendril
+    this.tendril.clear();
+    if (!this.dead) {
+      this.ghost.setPosition(this.ghostX, this.ghostY).setAlpha(this.invuln > 0 ? 0.5 : 0.92);
+      this.ghostGlow.setPosition(this.ghostX, this.ghostY).setAlpha(this.holding ? 0.5 : 0.28);
+      const ax = this.ghostX, ay = this.ghostY + 12, bx = PLAYER_X - 3, by = py - 8;
+      this.tendril.fillStyle(0xcfe0ff, this.holding ? 0.85 : 0.35);
+      for (let i = 0; i <= 9; i++) {
+        const t = i / 9;
+        const wob = Math.sin(this.clock * 12 + t * 6) * 3 * Math.sin(t * Math.PI);
+        this.tendril.fillRect(Math.round(ax + (bx - ax) * t + wob) - 2, Math.round(ay + (by - ay) * t) - 2, 4, 4);
+      }
+    }
+
+    for (const c of this.candles) {
+      if (c.dead) continue;
+      c.s.setPosition(c.x - lead, c.y);
+      c.glow.setPosition(c.x - lead, c.y - 10);
+    }
+
+    this.beamGfx.clear();
+    for (const b of this.beams) {
+      const ax = b.ax - lead, bx = b.bx - lead;
+      const flick = Math.random() < 0.5 ? 0 : 2;
+      this.beamGfx.lineStyle(14 + flick, 0x4fe38a, 0.25);
+      this.beamGfx.lineBetween(ax, b.ay, bx, b.by);
+      this.beamGfx.lineStyle(6, 0xb8ffd2, 0.9);
+      this.beamGfx.lineBetween(ax, b.ay, bx, b.by);
+      b.nodes[0].setPosition(ax, b.ay); b.nodes[1].setPosition(bx, b.by);
+      b.glows[0].setPosition(ax, b.ay); b.glows[1].setPosition(bx, b.by);
+    }
+
+    for (const h of this.hands) h.s.setPosition(h.x - lead, h.y);
+
+    this.chainGfx.clear();
+    this.chainGfx.fillStyle(0x6a6a78, 1);
+    for (const sw of this.swings) {
+      if (sw.ex === undefined) continue;
+      const x = sw.x - lead;
+      for (let d = 0; d < sw.len; d += 8) {
+        this.chainGfx.fillRect(Math.round(x + Math.sin(sw.th) * d) - 1, Math.round(CEIL - 4 + Math.cos(sw.th) * d) - 1, 3, 4);
+      }
+      sw.s.setPosition(sw.ex - lead, sw.ey).setRotation(-sw.th);
+      if (sw.glow) sw.glow.setPosition(sw.hx - lead, sw.hy);
+    }
+
+    for (const w of this.warnings) {
+      const blink = w.phase === 'lock' ? Math.floor(w.t * 16) % 2 : Math.floor(w.t * 5) % 2;
+      w.g.clear();
+      w.g.fillStyle(0xff2244, blink ? 1 : 0.55);
+      w.g.fillCircle(W - 26, w.y, 13);
+      w.g.lineStyle(2, 0x07060d, 1);
+      w.g.strokeCircle(W - 26, w.y, 13);
+      w.txt.setY(w.y + 1);
+    }
+
+    for (const b of this.banshees) {
+      const x = b.x - lead;
+      b.s.setPosition(x, b.y + Math.sin(this.clock * 25) * 2);
+      b.eyes.setPosition(x - 14, b.y - 18);
+    }
+
+    this.renderBest(lead, py);
+
+    let flick = 0;
+    if (this.clock < this.flickerUntil) flick = (Math.floor(this.clock * 30) % 2) * 0.3;
+    const alpha = Math.min(0.9, 0.08 + (1 - this.light) * 0.64 + flick);
+    this.dark.setPosition(PLAYER_X + 110, py).setAlpha(alpha);
   }
 
-  // ---------------- particles ----------------
+  renderBest(lead, py) {
+    if (this.bestPx <= 0 || this.passedBest) return;
+    const x = PLAYER_X + (this.bestPx - this.worldX) - lead;
+    if (!this.bestMarker && x < W + 40) {
+      const g = this.add.graphics().setDepth(14);
+      g.fillStyle(0xffd75e, 0.5);
+      for (let y = CEIL; y < FLOOR; y += 12) g.fillRect(-2, y, 4, 6);
+      const t = text(this, 0, CEIL + 14, 'BEST', 8, '#ffd75e').setDepth(14);
+      this.bestMarker = { g, t };
+    }
+    if (!this.bestMarker) return;
+    this.bestMarker.g.x = x;
+    this.bestMarker.t.x = x;
+    if (x < PLAYER_X && !this.dead) {
+      this.passedBest = true;
+      Audio.sfx('best');
+      const pop = text(this, PLAYER_X + 40, py - 40, 'NEW BEST!', 16, '#ffd75e').setDepth(31).setStroke('#07060d', 4);
+      this.tweens.add({ targets: pop, y: '-=40', alpha: 0, duration: 1200, ease: 'Quad.easeOut', onComplete: () => pop.destroy() });
+      const m = this.bestMarker;
+      this.tweens.add({ targets: [m.g, m.t], alpha: 0, duration: 800, onComplete: () => { m.g.destroy(); m.t.destroy(); } });
+    }
+  }
+
+  // pooled particles
   burst(x, y, color, n, dist, life, size = 3) {
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2;
       const d = dist * (0.4 + Math.random() * 0.6);
-      const p = this.add.rectangle(x, y, size, size, color).setDepth(22);
+      const p = this.particlePool.get();
+      p.setPosition(x, y).setSize(size, size).setFillStyle(color).setAlpha(1).setVisible(true).setDepth(22);
       this.tweens.add({
         targets: p, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d - 10, alpha: 0,
-        duration: life, ease: 'Quad.easeOut', onComplete: () => p.destroy(),
+        duration: life, ease: 'Quad.easeOut', onComplete: () => { p.setVisible(false); this.particlePool.put(p); },
       });
     }
   }

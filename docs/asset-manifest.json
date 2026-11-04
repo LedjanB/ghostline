@@ -1,0 +1,21 @@
+{
+  "game": "Ghostline",
+  "source": "src/art.js (generated in code)",
+  "assets": [
+    { "id": "survivor_run0|run1|fly", "size": "14x18", "role": "player", "pivot": "center", "collision": "circle r10 (code)", "status": "approved" },
+    { "id": "nurse_run0|run1|fly", "size": "14x18", "role": "player", "pivot": "center", "collision": "circle r10 (code)", "status": "approved" },
+    { "id": "hunter_run0|run1|fly", "size": "14x18", "role": "player", "pivot": "center", "collision": "circle r10 (code)", "status": "approved" },
+    { "id": "kid_run0|run1|fly", "size": "14x18", "role": "player", "pivot": "center", "collision": "circle r10 (code)", "status": "approved" },
+    { "id": "ghost0|ghost1", "size": "18x16", "role": "companion", "pivot": "center", "collision": "none", "status": "approved" },
+    { "id": "candle0|candle1", "size": "9x14", "role": "pickup", "pivot": "center", "collision": "circle r22 (code)", "status": "approved" },
+    { "id": "spirit", "size": "16x15", "role": "hazard node", "pivot": "center", "collision": "circle r11 + beam segment", "status": "approved" },
+    { "id": "hand", "size": "16x74", "role": "hazard", "pivot": "top-center (floor) / bottom-center (ceiling)", "collision": "rect 24 wide", "status": "approved" },
+    { "id": "banshee", "size": "26x19", "role": "hazard", "pivot": "center", "collision": "circle r16", "status": "approved" },
+    { "id": "lamp", "size": "20x11", "role": "swing hazard (hospital)", "pivot": "top-center", "collision": "circle r14", "status": "approved" },
+    { "id": "axe", "size": "18x15", "role": "swing hazard (forest)", "pivot": "top-center", "collision": "circle r14", "status": "approved" },
+    { "id": "hook", "size": "12x16", "role": "swing hazard (sewer)", "pivot": "top-center", "collision": "circle r10", "status": "approved" },
+    { "id": "flame_icon", "size": "7x9", "role": "HUD icon", "status": "approved" },
+    { "id": "shield_icon", "size": "9x10", "role": "HUD icon", "status": "approved" },
+    { "id": "<zone>_far|mid|edge", "size": "320x180 (forest_far 640x180)", "role": "background layers", "status": "approved" }
+  ]
+}

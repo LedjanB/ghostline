@@ -3,6 +3,9 @@ import { makeArt, makeAnims } from './art.js';
 import { MenuScene } from './scenes/menu.js';
 import { PlayScene } from './scenes/play.js';
 import { OverScene } from './scenes/over.js';
+import { HudScene } from './scenes/hud.js';
+import { PauseScene } from './scenes/pause.js';
+import { SettingsScene } from './scenes/settings.js';
 
 class BootScene extends Phaser.Scene {
   constructor() { super('boot'); }
@@ -32,8 +35,9 @@ async function start() {
     backgroundColor: '#07060d',
     pixelArt: true,
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-    input: { activePointers: 3 },
-    scene: [BootScene, MenuScene, PlayScene, OverScene],
+    input: { activePointers: 3, gamepad: true },
+    // draw order = list order: run, then HUD, then overlays on top
+    scene: [BootScene, MenuScene, PlayScene, HudScene, OverScene, PauseScene, SettingsScene],
   });
   window.__game = game;
 }
