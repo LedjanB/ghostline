@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#07060d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>Ghostline</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👻</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      background: #07060d; overflow: hidden;
+      touch-action: none; -webkit-user-select: none; user-select: none;
+      -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+    }
+    #game { width: 100%; height: 100%; }
+    canvas { display: block; image-rendering: pixelated; }
+    #rotate {
+      display: none; position: fixed; inset: 0; z-index: 10;
+      background: #07060d; color: #e6f0ff;
+      font-family: "Press Start 2P", monospace; font-size: 14px; line-height: 2;
+      text-align: center; align-items: center; justify-content: center; padding: 24px;
+    }
+    @media (orientation: portrait) and (pointer: coarse) {
+      #rotate { display: flex; }
+    }
+    #loading {
+      position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      color: #8f7fbf; font-family: monospace; font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">summoning...</div>
+  <div id="game"></div>
+  <div id="rotate">&#128123;<br>Turn your phone<br>sideways</div>
+  <script src="vendor/phaser.min.js"></script>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
