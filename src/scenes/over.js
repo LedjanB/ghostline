@@ -1,5 +1,5 @@
-// Game over panel, shown on top of the finished run.
-import { W, H, DEATH_LINES } from '../data.js';
+// Results: distance, medal, candles, missions finished and level-ups. One tap to go again.
+import { W, H, DEATH_LINES, medalFor } from '../data.js';
 import { Save } from '../save.js';
 import { Audio } from '../audio.js';
 import { text, button, focusGroup } from '../ui.js';
@@ -13,31 +13,60 @@ export class OverScene extends Phaser.Scene {
   create() {
     const r = this.result;
     const dim = this.add.rectangle(0, 0, W, H, 0x07060d).setOrigin(0).setAlpha(0).setInteractive();
-    this.tweens.add({ targets: dim, alpha: 0.6, duration: 300 });
+    this.tweens.add({ targets: dim, alpha: 0.65, duration: 300 });
 
     const panel = this.add.container(W / 2, H / 2 + 30).setAlpha(0);
-    const bg = this.add.rectangle(0, 0, 460, 300, 0x140f24).setStrokeStyle(3, 0x8f7fbf);
-    const line = text(this, 0, -118, Phaser.Utils.Array.GetRandom(DEATH_LINES), 16, '#ff5577');
-    const dist = text(this, 0, -76, `${r.meters}M`, 32, '#e6f0ff');
-    const candles = text(this, 0, -36, `+${r.candles} CANDLES`, 16, '#ffd75e');
-    const best = text(this, 0, -10, r.isBest ? 'NEW BEST!' : `BEST ${r.best}M`, 16, r.isBest ? '#ffd75e' : '#a99fd0');
-    const extra = text(this, 0, 16, `${r.close} CLOSE CALLS   TOTAL ${Save.get().candles}`, 8, '#a99fd0');
-    panel.add([bg, line, dist, candles, best, extra]);
-    this.tweens.add({ targets: panel, alpha: 1, y: H / 2, duration: 350, ease: 'Back.easeOut' });
-    if (r.isBest) {
-      Audio.sfx('best');
-      this.tweens.add({ targets: best, scaleX: 1.25, scaleY: 1.25, duration: 300, yoyo: true, repeat: -1 });
+    const bg = this.add.rectangle(0, 0, 520, 330, 0x140f24).setStrokeStyle(3, 0x8f7fbf);
+    const items = [bg];
+    items.push(text(this, 0, -146, Phaser.Utils.Array.GetRandom(DEATH_LINES), 16, '#ff5577'));
+    items.push(text(this, 0, -110, `${r.meters}M`, 32, '#e6f0ff'));
+    if (r.blast) items.push(text(this, 0, -84, `INCLUDES +${r.blast}M GRAVE BLAST`, 8, '#9fc8ff'));
+    const medal = medalFor(r.meters);
+    if (medal) {
+      const m = this.add.image(-170, -110, `medal_${medal.name}`).setScale(4);
+      items.push(m, text(this, -170, -76, medal.name, 8, '#e6f0ff'));
+      this.tweens.add({ targets: m, angle: { from: -12, to: 12 }, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     }
+    const bestLine = r.daily
+      ? `TODAY'S BEST ${r.dailyBest}M`
+      : r.isBest ? 'NEW BEST!' : `BEST ${r.best}M`;
+    const best = text(this, 170, -110, bestLine, 8, r.isBest ? '#ffd75e' : '#a99fd0');
+    items.push(best);
+    const missionCandles = r.missions.reward;
+    items.push(text(this, 0, -58, `+${r.candles} CANDLES${missionCandles ? `  +${missionCandles} MISSIONS` : ''}`, 16, '#ffd75e'));
+
+    // missions finished this run
+    let y = -30;
+    if (r.missions.completed.length) {
+      for (const d of r.missions.completed.slice(0, 3)) {
+        items.push(text(this, 0, y, `${'*'.repeat(d.stars)} ${d.text}`, 8, '#7fe0c0'));
+        y += 16;
+      }
+    } else {
+      items.push(text(this, 0, y, 'NO MISSIONS DONE. CHECK THEM IN THE MENU', 8, '#6f6590'));
+      y += 16;
+    }
+    for (const lu of r.missions.levelUps) {
+      items.push(text(this, 0, y + 6, `LEVEL ${lu.level}! ${lu.title} +${lu.bonus}`, 16, '#ffd75e'));
+      y += 26;
+    }
+    items.push(text(this, 0, 64, `${r.close} CLOSE CALLS   TOTAL ${Save.get().candles} CANDLES`, 8, '#a99fd0'));
+    panel.add(items);
+    this.tweens.add({ targets: panel, alpha: 1, y: H / 2, duration: 350, ease: 'Back.easeOut' });
+
+    if (r.missions.levelUps.length) this.time.delayedCall(400, () => Audio.sfx('levelup'));
+    else if (r.isBest) Audio.sfx('best');
+    if (r.isBest) this.tweens.add({ targets: best, scaleX: 1.3, scaleY: 1.3, duration: 300, yoyo: true, repeat: -1 });
 
     this.inputMap = createInput(this);
     this.ready = false;
-    this.time.delayedCall(450, () => {
+    this.time.delayedCall(500, () => {
       this.ready = true;
       this.group = focusGroup(this, [
-        button(this, W / 2 - 100, H / 2 + 72, 'RETRY', () => this.retry(), { w: 170 }),
-        button(this, W / 2 + 100, H / 2 + 72, 'MENU', () => this.menu(), { w: 170 }),
+        button(this, W / 2 - 110, H / 2 + 116, 'RETRY', () => this.retry(), { w: 190, h: 38 }),
+        button(this, W / 2 + 110, H / 2 + 116, 'MENU', () => this.menu(), { w: 190, h: 38 }),
       ], { horizontal: true });
-      text(this, W / 2, H / 2 + 118, `${prompt('confirm')} = SELECT`, 8, '#6f6590');
+      text(this, W / 2, H / 2 + 148, `${prompt('confirm')} = SELECT`, 8, '#6f6590');
     });
   }
 

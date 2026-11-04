@@ -1,5 +1,6 @@
 // Title screen + character shop. Works with mouse, touch, keyboard and gamepad.
-import { W, H, CHARACTERS, PX_PER_METER } from '../data.js';
+import { W, H, CHARACTERS, PX_PER_METER, GIFT_HOURS } from '../data.js';
+import { todayKey } from '../run-features.js';
 import { Save } from '../save.js';
 import { Audio } from '../audio.js';
 import { text, button, focusGroup } from '../ui.js';
@@ -17,12 +18,12 @@ export class MenuScene extends Phaser.Scene {
     this.edge = this.add.tileSprite(0, 0, 320, 180, 'hospital_edge').setOrigin(0).setScale(2);
     this.add.image(W / 2, H / 2 + 20, 'dark').setScale(2).setAlpha(0.78);
 
-    this.add.image(W / 2, 60, 'glow').setScale(5, 1.6).setBlendMode(Phaser.BlendModes.ADD).setTint(0x6f8fff).setAlpha(0.35);
-    this.title = text(this, W / 2, 60, 'GHOSTLINE', 32, '#cfe0ff').setStroke('#07060d', 6);
-    this.subtitle = text(this, W / 2, 90, '', 8, '#8f7fbf');
-    this.ghost = this.add.sprite(W / 2 + 196, 54, 'ghost0').setScale(2).setAlpha(0.9);
+    this.add.image(W / 2, 48, 'glow').setScale(5, 1.6).setBlendMode(Phaser.BlendModes.ADD).setTint(0x6f8fff).setAlpha(0.35);
+    this.title = text(this, W / 2, 48, 'GHOSTLINE', 32, '#cfe0ff').setStroke('#07060d', 6);
+    this.subtitle = text(this, W / 2, 76, '', 8, '#8f7fbf');
+    this.ghost = this.add.sprite(W / 2 + 196, 44, 'ghost0').setScale(2).setAlpha(0.9);
     this.ghost.play('ghost_float');
-    this.tweens.add({ targets: this.ghost, y: 66, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    this.tweens.add({ targets: this.ghost, y: 56, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.time.addEvent({
       delay: 2600, loop: true,
       callback: () => { if (Save.get().settings.flicker) this.tweens.add({ targets: this.title, alpha: 0.3, duration: 50, yoyo: true, repeat: 2 }); },
@@ -32,23 +33,27 @@ export class MenuScene extends Phaser.Scene {
     this.candleText = text(this, 40, 20, '', 16, '#ffd75e', 0).setStroke('#07060d', 4);
     this.bestText = text(this, W - 14, 20, '', 16, '#a99fd0', 1).setStroke('#07060d', 4);
 
-    this.add.image(W / 2, 168, 'glow').setScale(2.4).setBlendMode(Phaser.BlendModes.ADD).setTint(0xffb060).setAlpha(0.25);
-    this.charSprite = this.add.sprite(W / 2, 162, 'survivor_run0').setScale(4);
-    this.nameText = text(this, W / 2, 212, '', 16, '#e6f0ff').setStroke('#07060d', 4);
-    this.perkText = text(this, W / 2, 234, '', 16, '#a99fd0').setStroke('#07060d', 4);
-    this.dots = CHARACTERS.map((c, i) => this.add.rectangle(W / 2 - 27 + i * 18, 254, 8, 8, 0x3a2f5a));
+    this.add.image(W / 2, 148, 'glow').setScale(2.4).setBlendMode(Phaser.BlendModes.ADD).setTint(0xffb060).setAlpha(0.25);
+    this.charSprite = this.add.sprite(W / 2, 140, 'survivor_run0').setScale(4);
+    this.nameText = text(this, W / 2, 188, '', 16, '#e6f0ff').setStroke('#07060d', 4);
+    this.perkText = text(this, W / 2, 208, '', 16, '#a99fd0').setStroke('#07060d', 4);
+    this.dots = CHARACTERS.map((c, i) => this.add.rectangle(W / 2 - 27 + i * 18, 225, 8, 8, 0x3a2f5a));
 
-    button(this, W / 2 - 140, 162, '<', () => this.browse(-1), { w: 44, h: 44 });
-    button(this, W / 2 + 140, 162, '>', () => this.browse(1), { w: 44, h: 44 });
+    button(this, W / 2 - 140, 140, '<', () => this.browse(-1), { w: 44, h: 44 });
+    button(this, W / 2 + 140, 140, '>', () => this.browse(1), { w: 44, h: 44 });
 
-    this.mainBtn = button(this, W / 2, 288, 'PLAY', () => this.mainAction(), { w: 280, h: 40, silent: true });
-    this.modeBtn = button(this, 112, 336, '', () => this.toggleMode(), { w: 196, h: 30 });
-    this.settingsBtn = button(this, 320, 336, 'SETTINGS', () => this.openSettings(), { w: 196, h: 30 });
-    this.fullBtn = button(this, 528, 336, 'FULLSCREEN', () => this.fullscreen(), { w: 196, h: 30 });
-    this.group = focusGroup(this, [this.mainBtn, this.modeBtn, this.settingsBtn, this.fullBtn]);
+    this.mainBtn = button(this, W / 2, 258, 'PLAY', () => this.mainAction(), { w: 300, h: 38, silent: true });
+    this.missionsBtn = button(this, 112, 302, 'MISSIONS', () => this.overlay('missions'), { w: 196, h: 30 });
+    this.charmsBtn = button(this, 320, 302, 'CHARMS', () => this.overlay('charms'), { w: 196, h: 30 });
+    this.giftBtn = button(this, 528, 302, 'GIFT', () => this.claimGift(), { w: 196, h: 30, silent: true });
+    this.modeBtn = button(this, 112, 340, '', () => this.toggleMode(), { w: 196, h: 30 });
+    this.settingsBtn = button(this, 320, 340, 'SETTINGS', () => this.openSettings(), { w: 196, h: 30 });
+    this.fullBtn = button(this, 528, 340, 'FULLSCREEN', () => this.fullscreen(), { w: 196, h: 30 });
+    this.group = focusGroup(this, [this.mainBtn, this.missionsBtn, this.charmsBtn, this.giftBtn, this.modeBtn, this.settingsBtn, this.fullBtn]);
+    this.time.addEvent({ delay: 1000, loop: true, callback: () => this.refreshGift() });
 
     this.inputMap = createInput(this);
-    this.hint = text(this, W / 2, 112, '', 8, '#6f6590');
+    this.hint = text(this, W / 2, 92, '', 8, '#6f6590');
     this.offDevice = Device.onChange(() => this.refreshHint());
     this.events.once('shutdown', () => this.offDevice());
     this.events.on('resume', () => { this.inputMap.update(); this.inputMap.update(); this.refresh(); });
@@ -83,7 +88,42 @@ export class MenuScene extends Phaser.Scene {
   }
 
   toggleMode() {
-    Save.update((s) => { s.mode = s.mode === 'creative' ? 'normal' : 'creative'; });
+    const order = ['normal', 'daily', 'creative'];
+    Save.update((s) => { s.mode = order[(order.indexOf(s.mode) + 1) % order.length]; });
+    this.refresh();
+  }
+
+  overlay(key) {
+    this.scene.pause();
+    this.scene.launch(key, { from: 'menu' });
+  }
+
+  giftReadyIn() {
+    return Math.max(0, Save.get().giftAt + GIFT_HOURS * 3600e3 - Date.now());
+  }
+
+  // Crossy Road-style free gift every few hours
+  refreshGift() {
+    const left = this.giftReadyIn();
+    if (left <= 0) {
+      this.giftBtn.setLabel('FREE GIFT!').setColors(0x4a1f4a, 0xff9fd0);
+      if (!this.giftPulse) this.giftPulse = this.tweens.add({ targets: this.giftBtn.lbl, scaleX: 1.1, scaleY: 1.1, duration: 400, yoyo: true, repeat: -1 });
+    } else {
+      const mins = Math.ceil(left / 60e3);
+      const h = Math.floor(mins / 60), m = mins % 60;
+      this.giftBtn.setLabel(`GIFT ${h}H ${m}M`).setColors(0x1d1a26, 0x4a4560);
+      if (this.giftPulse) { this.giftPulse.stop(); this.giftPulse = null; this.giftBtn.lbl.setScale(1); }
+    }
+  }
+
+  claimGift() {
+    if (this.giftReadyIn() > 0) { Audio.sfx('deny'); return; }
+    const n = 20 + Math.floor(Math.random() * 41);
+    Save.update((s) => { s.candles += n; s.giftAt = Date.now(); });
+    Audio.sfx('gift');
+    if (Save.get().settings.flicker) this.cameras.main.flash(200, 255, 159, 208);
+    const t = text(this, W / 2, 230, `+${n} CANDLES`, 24, '#ffd75e').setStroke('#07060d', 6);
+    this.tweens.add({ targets: t, y: 190, alpha: 0, duration: 1400, ease: 'Quad.easeOut', onComplete: () => t.destroy() });
     this.refresh();
   }
 
@@ -155,11 +195,20 @@ export class MenuScene extends Phaser.Scene {
       d.setFillStyle(i === this.index ? 0xcfe0ff : o ? 0x8f7fbf : 0x3a2f5a);
     });
     const creative = save.mode === 'creative';
-    this.modeBtn.setLabel(creative ? 'CREATIVE' : 'NORMAL');
-    if (creative) this.modeBtn.setColors(0x1d3a3a, 0x7fe0c0); else this.modeBtn.setColors(0x2a1f4a, 0x8f7fbf);
-    this.subtitle.setText(creative ? "CREATIVE MODE: YOU CAN'T LOSE" : "DON'T LET GO");
+    const daily = save.mode === 'daily';
+    this.modeBtn.setLabel(creative ? 'CREATIVE' : daily ? 'DAILY' : 'NORMAL');
+    if (creative) this.modeBtn.setColors(0x1d3a3a, 0x7fe0c0);
+    else if (daily) this.modeBtn.setColors(0x1f2a4a, 0x6fb7ff);
+    else this.modeBtn.setColors(0x2a1f4a, 0x8f7fbf);
+    this.subtitle.setText(creative ? "CREATIVE MODE: YOU CAN'T LOSE"
+      : daily ? 'DAILY HAUNT: SAME LEVEL ALL DAY, RACE YOUR GHOST' : "DON'T LET GO");
+    const todayBest = save.daily.date === todayKey() ? save.daily.best : 0;
+    if (daily) this.bestText.setText(`TODAY ${todayBest}M`);
+    this.missionsBtn.setLabel('MISSIONS');
+    this.charmsBtn.setLabel(`CHARMS ${save.charms.equipped.length}/2`);
+    this.refreshGift();
     const cx = Math.floor(save.creative.x / PX_PER_METER);
-    const playLabel = creative && cx > 0 ? `CONTINUE ${cx}M` : 'PLAY';
+    const playLabel = creative && cx > 0 ? `CONTINUE ${cx}M` : daily ? 'PLAY DAILY' : 'PLAY';
     if (owned) this.mainBtn.setLabel(playLabel).setColors(0x2a1f4a, 0x8f7fbf);
     else if (save.candles >= c.price) this.mainBtn.setLabel(`BUY ${c.price}`).setColors(0x4a3510, 0xffd75e);
     else this.mainBtn.setLabel(`NEED ${c.price}`).setColors(0x1d1a26, 0x4a4560);

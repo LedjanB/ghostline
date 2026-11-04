@@ -17,13 +17,16 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 - `src/audio.js` Web Audio synth: buses, music layers, SFX
 - `src/input.js` action map (float, pause, confirm, back, nav) for keyboard, pointer, gamepad
 - `src/save.js` versioned save with migration + backup
-- `src/pacing.js` difficulty curve and spawn tables
+- `src/pacing.js` difficulty curve, speed curve and spawn tables
+- `src/missions.js` mission pool, levels, per-run tracker
+- `src/run-features.js` mixed into PlayScene: pickups, lasers, ghouls, weather, giants, opening, daily ghost, spin/revive/finalize
+- `src/scenes/spin.js` Grave Spin; `missions.js`, `charms.js` menu overlays
 
 ## Rules
 - Run state is reset in `init()`, never the constructor.
 - Simulation runs on a fixed 120 Hz step in `PlayScene.step()`; drawing happens in `render()`.
 - Gameplay reads actions from `src/input.js`, never raw keys.
-- Bump `SAVE_VERSION` and add a migration when the save shape changes (now v3: `mode`, `creative` checkpoint).
+- Bump `SAVE_VERSION` and add a migration when the save shape changes (now v4: `mode` normal/daily/creative, `creative` checkpoint, `missions`, `charms`, `daily`, `giftAt`).
 - Creative mode: `PlayScene.rebirth()` replaces death; `saveCheckpoint()` writes the creative slot.
 - iPhone fullscreen = home screen web app (`manifest.webmanifest`, apple meta tags, `icons/`).
 

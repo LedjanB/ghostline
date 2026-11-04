@@ -503,3 +503,113 @@ export function makeAnims(scene) {
   mk('ghost_float', ['ghost0', 'ghost1'], 5);
   mk('candle_flicker', ['candle0', 'candle1'], 6);
 }
+
+// ---------------- v3 content: NPCs, pickups, hazards, UI icons, background events ----------------
+const GHOUL_PAL = { G: '#8fb08a', D: '#5e7a5a', K: '#1a1010', M: '#4a1a1a', W: '#d8d2c0', S: '#b0a890' };
+const GHOUL_HEAD = ['...GGGG...', '..GGGGGG..', '..GKGGKG..', '..GGGGGG..', '...GMMG...'];
+const GHOUL = {
+  walk0: [...GHOUL_HEAD, '..WWWWWW..', '.GWWWWWWG.', '.G.WSWW.G.', '...WWWW...', '...DD.DD..', '...D...D..', '..DD...DD.'],
+  walk1: [...GHOUL_HEAD, '..WWWWWW..', '.GWWWWWWG.', '.G.WWSW.G.', '...WWWW...', '....DDD...', '....DD....', '...DDDD...'],
+  panic: ['G..GGGG..G', 'G.GGGGGG.G', 'GGKKGGKKGG', '..KKGGKK..', '...GMMG...', '..WMMMMW..', '..WWWWWW..', '...WSWW...', '...WWWW...', '..DD..DD..', '.DD....DD.', 'DD......DD'],
+};
+const SOUL_ROWS = [
+  '....B....', '...BB....', '..BBLB...', '..BLLBB..', '.BLLWLB..', '.BLWWLBB.',
+  'BBLWWWLB.', 'BLLWWWLLB', 'BLLKWKLLB', 'BLLWWWWLB', '.BLLWWLB.', '..BBBBB..',
+];
+const SOUL_ROWS2 = ['...B.....', '...BB....', ...SOUL_ROWS.slice(2)];
+const SOUL_PAL = { B: '#2a6bff', L: '#6fb7ff', W: '#dff3ff', K: '#0b0918' };
+const LETTERS = {
+  B: ['TTTTTTTTTT', 'TYYYYYYTTT', 'TYYTTTYYTT', 'TYYTTTYYTT', 'TYYYYYYTTT', 'TYYTTTYYTT', 'TYYTTTYYTT', 'TYYYYYYTTT', 'TTTTTTTTTT'],
+  O: ['TTTTTTTTTT', 'TTYYYYYYTT', 'TYYTTTTYYT', 'TYYTTTTYYT', 'TYYTTTTYYT', 'TYYTTTTYYT', 'TYYTTTTYYT', 'TTYYYYYYTT', 'TTTTTTTTTT'],
+};
+const LETTER_PAL = { T: '#3a2a5a', Y: '#ffd75e' };
+const ORB = (icon) => {
+  const base = [
+    '....RRRRR....', '..RR.....RR..', '.R.........R.', '.R.........R.', 'R...........R', 'R...........R',
+    'R...........R', 'R...........R', 'R...........R', '.R.........R.', '.R.........R.', '..RR.....RR..', '....RRRRR....',
+  ];
+  return base.map((row, y) => row.split('').map((c, x) => (icon[y - 2] && icon[y - 2][x - 2] && icon[y - 2][x - 2] !== '.' ? icon[y - 2][x - 2] : c)).join(''));
+};
+const ICON_MAGNET = ['.........', '.XX...XX.', '.XX...XX.', '.XX...XX.', '.XX...XX.', '.XXX.XXX.', '..XXXXX..', '...XXX...', '.........'];
+const ICON_SLOW = ['.XXXXXXX.', '..X...X..', '...X.X...', '....X....', '...X.X...', '..X.X.X..', '.XXXXXXX.', '.........', '.........'];
+const ICON_SHIELD = ['..XXXXX..', '.XXXXXXX.', '.XXWXXXX.', '.XXXXXXX.', '.XXXXXXX.', '..XXXXX..', '...XXX...', '....X....', '.........'];
+const EMITTER = ['..KKKKKK..', '.KWWWWWWK.', 'KWWKWWKWWK', 'KWKKWWKKWK', 'KWWWWWWWWK', '.KWKWKWKK.', '..KKKKKK..', '...KKKK...'];
+const MEDAL = ['..RR..RR..', '..RR..RR..', '...RRRR...', '..CCCCCC..', '.CCLCCCCC.', 'CCLCCCCCCC', 'CCCCCCCCCC', 'CCCCCCCCDC', '.CCCCCCDC.', '..CCCCCC..'];
+const SYM = {
+  candles: ['...Y....Y.', '..YOY..YOY', '...K....K.', '..CC...CC.', '..CC.Y.CC.', '..CC.K.CC.', '..CCCCCCC.', '..CCCCCCC.', '.DDDDDDDDD'],
+  blast: ['......Y...', '.....YO...', '....K.....', '..KKKK....', '.KKKKKK...', 'KKWKKWKK..', 'KKKKKKKK..', '.KKWWKK...', '..KKKK....'],
+  revive: ['.RR...RR.', 'RRRR.RRRR', 'RWRRRRRRR', 'RRRRRRRRR', '.RRRRRRR.', '..RRRRR..', '...RRR...', '....R....'],
+  bone: ['WW......WW', 'WWW....WWW', '.WWWWWWWW.', '.WWWWWWWW.', 'WWW....WWW', 'WW......WW'],
+  gift: ['...R.R....', '....R.....', 'PPPPRPPPPP', 'PPPPRPPPPP', 'QQQQRQQQQQ', 'QQQQRQQQQQ', 'QQQQRQQQQQ', 'QQQQRQQQQQ'],
+};
+const SYM_PAL = { Y: '#ffd75e', O: '#ff8a2a', K: '#1d1a26', C: '#f3e6c4', D: '#c9b48a', W: '#e8e2d0', R: '#e0303a', P: '#9b5de5', Q: '#6a3fb0' };
+
+function giantShadow(ctx, w, h) {
+  ctx.fillStyle = 'rgba(3,2,8,0.92)';
+  // head, neck, shoulders: a huge figure walking past outside
+  ctx.beginPath(); ctx.ellipse(w / 2, 34, 22, 28, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillRect(w / 2 - 10, 56, 20, 16);
+  ctx.beginPath(); ctx.moveTo(4, h); ctx.quadraticCurveTo(10, 70, w / 2, 68); ctx.quadraticCurveTo(w - 10, 70, w - 4, h); ctx.fill();
+}
+function giantTentacle(ctx, w, h) {
+  for (let y = 0; y < h; y++) {
+    const t = y / h;
+    const r = 3 + t * 13;
+    const x = w / 2 + Math.sin(t * 5) * 8 * (1 - t);
+    ctx.fillStyle = 'rgba(10,18,12,0.95)';
+    ctx.fillRect(x - r, y, r * 2, 1);
+    if (y % 9 === 4 && t > 0.15) { ctx.fillStyle = 'rgba(60,90,60,0.9)'; ctx.fillRect(x + r - 4, y, 3, 3); }
+  }
+}
+function rain(ctx, w, h) {
+  const r = rng(77);
+  ctx.fillStyle = 'rgba(160,190,230,0.55)';
+  for (let i = 0; i < 26; i++) {
+    const x = Math.floor(r() * w), y = Math.floor(r() * h);
+    for (let k = 0; k < 5; k++) ctx.fillRect((x - k + w) % w, (y + k * 2) % h, 1, 2);
+  }
+}
+function fog(ctx, w, h) {
+  const r = rng(88);
+  for (let i = 0; i < 40; i++) {
+    const x = r() * w, y = h * 0.3 + r() * h * 0.6, rad = 10 + r() * 22;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, rad);
+    g.addColorStop(0, 'rgba(200,190,230,0.22)'); g.addColorStop(1, 'rgba(200,190,230,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+    // wrap so it tiles
+    if (x + rad > w) ctx.fillRect(x - rad - w, y - rad, rad * 2, rad * 2);
+  }
+}
+
+export function makeArt2(scene) {
+  px(scene, 'ghoul0', GHOUL.walk0, GHOUL_PAL);
+  px(scene, 'ghoul1', GHOUL.walk1, GHOUL_PAL);
+  px(scene, 'ghoul_panic', GHOUL.panic, GHOUL_PAL);
+  px(scene, 'soul0', SOUL_ROWS, SOUL_PAL);
+  px(scene, 'soul1', SOUL_ROWS2, SOUL_PAL);
+  px(scene, 'letter_B', LETTERS.B, LETTER_PAL);
+  px(scene, 'letter_O', LETTERS.O, LETTER_PAL);
+  px(scene, 'orb_magnet', ORB(ICON_MAGNET), { R: '#ff6b9a', X: '#ff6b9a' });
+  px(scene, 'orb_slow', ORB(ICON_SLOW), { R: '#9ff0ff', X: '#9ff0ff' });
+  px(scene, 'orb_shield', ORB(ICON_SHIELD), { R: '#4fa8ff', X: '#4fa8ff', W: '#dff0ff' });
+  px(scene, 'emitter', EMITTER, { K: '#1d1a26', W: '#b8ffd2' });
+  for (const [name, col] of [['BRONZE', '#c98a4a'], ['SILVER', '#c8d0dc'], ['GOLD', '#ffd75e'], ['PLATINUM', '#dff6ff']]) {
+    px(scene, `medal_${name}`, MEDAL, { R: '#b0303a', C: col, L: '#ffffff', D: '#00000055' });
+  }
+  for (const [k, rows] of Object.entries(SYM)) px(scene, `sym_${k}`, rows, SYM_PAL);
+  canvas(scene, 'giant_shadow', 120, 150, giantShadow);
+  canvas(scene, 'giant_tentacle', 40, 150, giantTentacle);
+  canvas(scene, 'rain', 64, 64, rain);
+  canvas(scene, 'fog', 320, 90, fog);
+}
+
+export function makeAnims2(scene) {
+  const mk = (key, frames, rate) => {
+    if (scene.anims.exists(key)) return;
+    scene.anims.create({ key, frames: frames.map((k) => ({ key: k })), frameRate: rate, repeat: -1 });
+  };
+  mk('ghoul_walk', ['ghoul0', 'ghoul1'], 6);
+  mk('ghoul_run', ['ghoul_panic', 'ghoul1'], 12);
+  mk('soul_flicker', ['soul0', 'soul1'], 6);
+}

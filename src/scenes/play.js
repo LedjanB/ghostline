@@ -9,8 +9,9 @@ import { Audio } from '../audio.js';
 import { text } from '../ui.js';
 import { createInput, prompt, Device } from '../input.js';
 import {
-  UNLOCK, difficulty, spawnTable, gapAfter, bansheeDelay, createIntroTracker,
+  UNLOCK, difficulty, spawnTable, gapAfter, bansheeDelay, createIntroTracker, speedAt,
 } from '../pacing.js';
+import { Features, dailySeed } from '../run-features.js';
 
 const STEP = 1 / 120;
 const MAX_STEPS = 12;
@@ -77,7 +78,7 @@ export class PlayScene extends Phaser.Scene {
     const save = Save.get();
     this.char = CHARACTERS.find((c) => c.id === save.selected) || CHARACTERS[0];
     this.settings = save.settings;
-    this.rand = makeRng(Date.now());
+    this.rand = makeRng(save.mode === 'daily' ? dailySeed() : Date.now());
     this.intro = createIntroTracker();
     this.acc = 0;
     this.worldX = 0;
@@ -140,6 +141,7 @@ export class PlayScene extends Phaser.Scene {
       this.bestPx = 0; // records only count in normal mode
       if (this.worldX > 0) this.nextBanshee = 8;
     }
+    this.featInit(save);
   }
 
   create() {
@@ -185,6 +187,7 @@ export class PlayScene extends Phaser.Scene {
     Audio.danger(false);
     Audio.intensity(0.2);
 
+    this.featCreate();
     this.scene.launch('hud');
 
     this.onHidden = () => this.requestPause();
@@ -230,6 +233,7 @@ export class PlayScene extends Phaser.Scene {
   // ---------------- simulation (fixed step) ----------------
   step(dt, holding) {
     this.clock += dt;
+    holding = holding && this.openingDone;
     this.prevPy = this.py;
 
     if (holding && !this.started) {
@@ -240,7 +244,7 @@ export class PlayScene extends Phaser.Scene {
 
     const meters = this.worldX / PX_PER_METER;
     const pace = difficulty(meters);
-    if (!this.dead) this.speed = 230 + 290 * Math.min(1, meters / 2600);
+    if (!this.dead) this.speed = speedAt(meters) * this.speedMul * Math.min(1, 0.3 + this.openingT * 0.9);
     const move = this.speed * dt;
     this.worldX += move;
     this.scroll += move;
@@ -254,7 +258,8 @@ export class PlayScene extends Phaser.Scene {
       this.bansheeTimer(dt, meters, pace.diff);
     }
     this.stepWorld(dt, move);
-    if (!this.dead) this.collide();
+    this.featStep(dt, meters, pace, holding);
+    if (!this.dead && this.openingDone) this.collide();
     this.stepLight(dt);
     this.stepZoneFx(dt);
     if (this.combo > 0 && this.clock - this.lastCandleAt > 0.6) { this.combo = 0; this.events.emit('combo', 0); }
@@ -294,7 +299,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   stepGhost(dt, holding) {
-    if (this.dead) return;
+    if (this.dead || !this.openingDone) return;
     let tx, ty;
     if (holding) { tx = PLAYER_X - 4; ty = this.py - 46 + Math.sin(this.clock * 9) * 2; }
     else { tx = PLAYER_X - 20; ty = this.py - 40 + Math.sin(this.clock * 3) * 4; }
@@ -340,6 +345,20 @@ export class PlayScene extends Phaser.Scene {
         break;
       }
       case 'hands': length = this.spawnHands(x0, d, this.intro.first('hands')); break;
+      case 'laser': length = this.spawnLaser(d); break;
+      case 'movingBeam': {
+        const first = this.intro.first('movingBeam');
+        const amp = first ? 40 : r.range(45, 75);
+        const len = r.range(70, 110);
+        const vertical = r.chance(0.3);
+        const hh = vertical ? len / 2 : 0;
+        const y = r.range(TOP + 10 + hh + amp, BOTTOM - 10 - hh - amp);
+        length = this.spawnBeam(x0, d, vertical ? Math.PI / 2 : 0, false, y, null, len);
+        const b = this.beams[this.beams.length - 1];
+        b.baseY = y;
+        b.osc = { amp, w: first ? 1.4 : r.range(1.6, 2.4), ph: r.range(0, 6.28) };
+        break;
+      }
       case 'swing': length = this.spawnSwing(x0, this.intro.first('swing')); break;
     }
     this.nextSpawn = this.worldX + length + gapAfter(d, r);
@@ -347,7 +366,8 @@ export class PlayScene extends Phaser.Scene {
 
   spawnCandles(x0, breather) {
     const r = this.rand;
-    const shape = r.pick(breather ? ['wave', 'arc', 'grid', 'wave'] : ['line', 'wave', 'arc', 'grid']);
+    const shape = r.pick(breather ? ['wave', 'arc', 'word', 'skull', 'heart', 'wave'] : ['line', 'wave', 'arc', 'grid', 'arrow', 'word']);
+    if (['word', 'arrow', 'skull', 'heart'].includes(shape)) return this.spawnGlyphCandles(x0, shape);
     if (shape === 'line') {
       const n = r.int(8, 12), y = r.range(TOP + 10, BOTTOM - 10);
       for (let i = 0; i < n; i++) this.addCandle(x0 + i * 22, y);
@@ -454,14 +474,22 @@ export class PlayScene extends Phaser.Scene {
     if (this.nextBanshee > 0) return;
     const first = this.intro.first('banshee');
     this.nextBanshee = bansheeDelay(diff, this.rand);
+    // Jetpack Joyride missile swarms: 5 at fixed heights in quick succession
+    if (!first && meters > UNLOCK.swarm && this.rand.chance(0.25)) {
+      const ys = [TOP + 20, TOP + 80, H / 2, BOTTOM - 80, BOTTOM - 20];
+      Phaser.Utils.Array.Shuffle(ys).forEach((y, i) => this.addWarning(0, 1.0 + i * 0.3, y));
+      this.nextBanshee += 3;
+      return;
+    }
     this.addWarning(0, first ? 1.9 : 1.1);
     if (!first && diff > 0.35 && this.rand.chance(0.35)) this.addWarning(this.rand.chance(0.5) ? 90 : -90, 1.1);
   }
 
-  addWarning(offset, trackTime) {
+  addWarning(offset, trackTime, fixedY = null) {
     const g = this.add.graphics().setDepth(29);
     const t = text(this, W - 26, 0, '!', 16, '#ffffff').setDepth(30);
-    this.warnings.push({ y: Phaser.Math.Clamp(this.py + offset, TOP, BOTTOM), offset, t: 0, phase: 'track', trackTime, g, txt: t });
+    const y = fixedY ?? Phaser.Math.Clamp(this.py + offset, TOP, BOTTOM);
+    this.warnings.push({ y, offset, t: 0, phase: 'track', trackTime, g, txt: t, fixed: fixedY !== null });
     Audio.sfx('warn');
   }
 
@@ -469,7 +497,8 @@ export class PlayScene extends Phaser.Scene {
     const s = this.add.image(W + 50, y, 'banshee').setScale(2).setDepth(12);
     const eyes = this.add.image(W + 50, y, 'glow').setScale(0.7).setDepth(21)
       .setBlendMode(Phaser.BlendModes.ADD).setTint(0xff2244).setAlpha(0.8);
-    this.banshees.push({ x: W + 50, y, s, eyes });
+    const diffNow = difficulty(this.worldX / PX_PER_METER).diff;
+    this.banshees.push({ x: W + 50, y, s, eyes, vx: 650 + 350 * diffNow });
     Audio.sfx('scream');
   }
 
@@ -485,6 +514,7 @@ export class PlayScene extends Phaser.Scene {
     for (const b of this.beams) {
       b.x -= move;
       b.ang += b.rot * dt;
+      if (b.osc) b.y = b.baseY + Math.sin(this.clock * b.osc.w + b.osc.ph) * b.osc.amp;
       const dx = (Math.cos(b.ang) * b.len) / 2, dy = (Math.sin(b.ang) * b.len) / 2;
       b.ax = b.x - dx; b.ay = b.y - dy; b.bx = b.x + dx; b.by = b.y + dy;
       if (b.x < -b.len) { b.dead = true; b.nodes.forEach((n) => n.destroy()); b.glows.forEach((n) => n.destroy()); }
@@ -535,10 +565,12 @@ export class PlayScene extends Phaser.Scene {
 
     for (const w of this.warnings) {
       w.t += dt;
-      if (w.phase === 'track') {
+      if (w.phase === 'track' && w.fixed) {
+        if (w.t > w.trackTime) { w.phase = 'lock'; w.t = 0; }
+      } else if (w.phase === 'track') {
         const target = Phaser.Math.Clamp(this.py + w.offset, TOP, BOTTOM);
         w.y += (target - w.y) * (1 - Math.exp(-5 * dt));
-        if (w.t > w.trackTime) { w.phase = 'lock'; w.t = 0; Audio.sfx('warn'); }
+        if (w.t > w.trackTime) { w.phase = 'lock'; w.t = 0; Audio.sfx('warn'); Audio.hush(0.5); }
       } else if (w.phase === 'lock' && w.t > 0.45) {
         w.dead = true;
         this.spawnBanshee(w.y);
@@ -548,7 +580,8 @@ export class PlayScene extends Phaser.Scene {
     this.warnings = this.warnings.filter((w) => !w.dead);
 
     for (const b of this.banshees) {
-      b.x -= this.dead ? move : move + 650 * dt;
+      b.x -= this.dead ? move : move + b.vx * dt;
+      if (!b.passed && b.x < PLAYER_X - 40 && !this.dead) { b.passed = true; this.tracker?.add('banshees', 1); }
       if (b.x < -80) { b.dead = true; b.s.destroy(); b.eyes.destroy(); }
     }
     this.banshees = this.banshees.filter((b) => !b.dead);
@@ -561,6 +594,7 @@ export class PlayScene extends Phaser.Scene {
       if (!c.dead && Math.hypot(c.x - px, c.y - py) < 22) this.collect(c);
     }
     if (this.invuln > 0) return;
+    if (this.laserHits(py)) { this.hit(); return; }
     // each check returns clearance in px (<= 0 means a hit)
     const test = (obj, clearance) => {
       if (clearance <= 0) { this.hit(); return true; }
@@ -593,6 +627,7 @@ export class PlayScene extends Phaser.Scene {
   nearMiss() {
     // small-tier feedback: popup + sound + a sliver of light
     this.nearMisses++;
+    this.tracker?.add('near', 1);
     this.light = Math.min(1, this.light + 0.03);
     Audio.sfx('close');
     const t = text(this, PLAYER_X + 30, this.py - 34, 'CLOSE!', 16, '#9ff0ff').setDepth(31).setStroke('#07060d', 4);
@@ -603,6 +638,8 @@ export class PlayScene extends Phaser.Scene {
     this.combo = this.clock - this.lastCandleAt < 0.45 ? this.combo + 1 : 1;
     this.lastCandleAt = this.clock;
     this.runCandles += this.char.candleMul;
+    this.lastCandleX = this.worldX;
+    this.tracker?.add('candles', this.char.candleMul);
     this.light = Math.min(1, this.light + 0.07);
     Audio.sfx('candle', { combo: this.combo });
     this.events.emit('candles', this.runCandles);
@@ -635,13 +672,7 @@ export class PlayScene extends Phaser.Scene {
     this.shake(160, 0.006);
     this.flash(160, 160, 200, 255);
     this.burst(PLAYER_X, this.py, 0xcfe0ff, 18, 70, 600);
-    const clearX = PLAYER_X + 280;
-    const gone = (x, y) => this.burst(x, y, 0x9fb8e8, 8, 30, 400);
-    for (const b of this.beams) if (b.x - b.len / 2 < clearX) { gone(b.x, b.y); b.x = -1e5; }
-    for (const h of this.hands) if (h.x < clearX) { gone(h.x, h.y); h.x = -1e5; }
-    for (const sw of this.swings) if (sw.x < clearX) { if (sw.hx !== undefined) gone(sw.hx, sw.hy); sw.x = -1e5; }
-    for (const b of this.banshees) { gone(b.x, b.y); b.x = -1e5; }
-    for (const w of this.warnings) w.dead = true;
+    this.clearAround(280);
     this.events.emit('rebirths', this.rebirths);
     const t = text(this, PLAYER_X + 40, this.py - 40, 'REBORN!', 16, '#cfe0ff').setDepth(31).setStroke('#07060d', 4);
     this.tweens.add({ targets: t, y: '-=36', alpha: 0, duration: 1000, ease: 'Quad.easeOut', onComplete: () => t.destroy() });
@@ -665,6 +696,10 @@ export class PlayScene extends Phaser.Scene {
 
   die() {
     this.dead = true;
+    this.deathSpeed = this.speed;
+    this.deathM = Math.floor(this.worldX / PX_PER_METER);
+    this.tracker?.death(this.deathM);
+    if (this.power) { this.power = null; this.events.emit('power', null); }
     this.hitStop = 0.09;
     this.shake(280, 0.012);
     this.flash(140, 255, 60, 90);
@@ -687,7 +722,7 @@ export class PlayScene extends Phaser.Scene {
     if (this.py >= BOTTOM + 4) {
       this.py = BOTTOM + 4;
       if (this.vy > 140) {
-        this.vy = -this.vy * 0.45;
+        this.vy = -this.vy * (this.charm.bouncy ? 0.72 : 0.45);
         this.spin *= 0.6;
         this.deathFloorHits++;
         Audio.sfx('bounce');
@@ -699,30 +734,17 @@ export class PlayScene extends Phaser.Scene {
       }
     }
     if (this.deathFloorHits > 0) {
-      this.speed *= Math.exp(-1.7 * dt);
+      this.speed *= Math.exp(-(this.charm.bouncy ? 1.0 : 1.7) * dt);
       if (this.speed < 12) this.speed = 0;
     }
     if (this.speed === 0 && this.vy === 0 && !this.ended) {
       this.ended = true;
-      this.time.delayedCall(600, () => this.endRun());
+      this.time.delayedCall(600, () => this.afterDeath());
     }
   }
 
-  endRun() {
-    const meters = Math.floor(this.worldX / PX_PER_METER);
-    const prevBest = Save.get().best;
-    Save.update((s) => {
-      s.candles += this.runCandles;
-      s.best = Math.max(s.best, meters);
-      s.runs += 1;
-    });
-    this.scene.launch('over', {
-      meters, candles: this.runCandles, isBest: meters > prevBest, best: Math.max(prevBest, meters), close: this.nearMisses,
-    });
-  }
-
   stepLight(dt) {
-    if (!this.dead && this.started) this.light = Math.max(0, this.light - 0.035 * this.char.drainMul * dt);
+    if (!this.dead && this.started) this.light = Math.max(0, this.light - 0.035 * this.char.drainMul * (this.charm.nightlight ? 0.75 : 1) * dt);
   }
 
   stepZoneFx(dt) {
@@ -769,6 +791,7 @@ export class PlayScene extends Phaser.Scene {
         this.mid.setTexture(`${zone.id}_mid`);
         this.edge.setTexture(`${zone.id}_edge`);
         Audio.music(zone.song);
+        this.setWeather(zone.id);
         this.banner(zone.name);
         this.tweens.add({ targets: this.fader, alpha: 0, duration: 450, ease: 'Quad.easeOut', onComplete: () => { this.transitioning = false; } });
       },
@@ -873,6 +896,7 @@ export class PlayScene extends Phaser.Scene {
     }
 
     this.renderBest(lead, py);
+    this.renderFeatures(lead, py);
 
     let flick = 0;
     if (this.clock < this.flickerUntil) flick = (Math.floor(this.clock * 30) % 2) * 0.3;
@@ -917,3 +941,5 @@ export class PlayScene extends Phaser.Scene {
     }
   }
 }
+
+Object.assign(PlayScene.prototype, Features);

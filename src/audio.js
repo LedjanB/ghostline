@@ -4,7 +4,10 @@
 import { Save } from './save.js';
 
 let ctx = null;
-let master, limiter, musicBus, duckBus, sfxBus, noiseBuf;
+let master, limiter, musicBus, duckBus, sfxBus, ambBus, noiseBuf;
+let ambience = null; // current zone ambience
+let ambNodes = [];
+let nextAmbEvent = 0;
 let layerBase, layerDrive, layerDanger;
 let songName = null;
 let step = 0;
@@ -67,6 +70,7 @@ function init() {
   duckBus = ctx.createGain(); duckBus.gain.value = 1; duckBus.connect(master);
   musicBus = ctx.createGain(); musicBus.connect(duckBus);
   sfxBus = ctx.createGain(); sfxBus.connect(master);
+  ambBus = ctx.createGain(); ambBus.gain.value = 0; ambBus.connect(sfxBus);
   layerBase = ctx.createGain(); layerBase.gain.value = 1; layerBase.connect(musicBus);
   layerDrive = ctx.createGain(); layerDrive.gain.value = 0; layerDrive.connect(musicBus);
   layerDanger = ctx.createGain(); layerDanger.gain.value = 0; layerDanger.connect(musicBus);
@@ -128,7 +132,9 @@ function noise(t, dur, vol, bus, freq = 3000, type = 'highpass') {
 
 // Music timing reads the audio clock (ctx.currentTime), never frame time.
 function schedule() {
-  if (!ctx || !songName) return;
+  if (!ctx) return;
+  scheduleAmbience();
+  if (!songName) return;
   const song = SONGS[songName];
   const sixteenth = 60 / song.bpm / 4;
   if (nextTime < ctx.currentTime) nextTime = ctx.currentTime + 0.05;
@@ -154,6 +160,50 @@ function schedule() {
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
+// ---- zone ambience (audio-design: soundscapes under the music) ----
+function loopNoise(freq, type, vol, q = 0.7, lfoRate = 0, lfoDepth = 0) {
+  const s = ctx.createBufferSource();
+  s.buffer = noiseBuf; s.loop = true;
+  const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+  const g = ctx.createGain(); g.gain.value = vol;
+  s.connect(f); f.connect(g); g.connect(ambBus);
+  const nodes = [s, f, g];
+  if (lfoRate) {
+    const lfo = ctx.createOscillator(); lfo.frequency.value = lfoRate;
+    const lg = ctx.createGain(); lg.gain.value = lfoDepth;
+    lfo.connect(lg); lg.connect(g.gain); lfo.start();
+    nodes.push(lfo, lg);
+  }
+  s.start();
+  return nodes;
+}
+function setAmbience(name) {
+  if (!ctx || ambience === name) return;
+  ambNodes.forEach((n) => { try { n.stop && n.stop(); } catch (e) { /* already stopped */ } n.disconnect && n.disconnect(); });
+  ambNodes = [];
+  ambience = name;
+  if (name === 'hospital') ambNodes = loopNoise(2500, 'highpass', 0.05, 0.5); // rain on windows
+  if (name === 'forest') ambNodes = loopNoise(420, 'bandpass', 0.09, 0.8, 0.13, 0.06); // wind gusts
+  if (name === 'sewer') ambNodes = loopNoise(140, 'lowpass', 0.16, 1, 0.07, 0.05); // low rumble
+  ambBus.gain.setTargetAtTime(name ? 1 : 0, ctx.currentTime, 0.6);
+  nextAmbEvent = ctx.currentTime + 1;
+}
+function scheduleAmbience() {
+  if (!ambience || ctx.currentTime < nextAmbEvent) return;
+  const t = ctx.currentTime + 0.02;
+  if (ambience === 'hospital') { // distant heart monitor
+    tone(t, 1000, 0.08, 'sine', 0.015, ambBus);
+    nextAmbEvent = t + 1.4;
+  } else if (ambience === 'forest') { // crickets + the odd owl
+    if (Math.random() < 0.15) { tone(t, 420, 0.25, 'sine', 0.03, ambBus, 380); tone(t + 0.35, 400, 0.4, 'sine', 0.03, ambBus, 350); }
+    else for (let i = 0; i < 3; i++) tone(t + i * 0.06, 4200, 0.03, 'square', 0.006, ambBus);
+    nextAmbEvent = t + rand(0.6, 1.6);
+  } else if (ambience === 'sewer') { // water drips
+    tone(t, rand(900, 1400), 0.12, 'sine', 0.03, ambBus, 500);
+    nextAmbEvent = t + rand(0.4, 1.8);
+  }
+}
+
 export const Audio = {
   music(name) {
     init();
@@ -177,6 +227,15 @@ export const Audio = {
     duckBus.gain.setTargetAtTime(on ? 0.3 : 1, ctx.currentTime, on ? 0.08 : 0.35);
   },
   applySettings,
+  ambience(name) { init(); setAmbience(name); },
+  // silence right before a scare so it hits harder
+  hush(sec) {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    duckBus.gain.cancelScheduledValues(t);
+    duckBus.gain.setTargetAtTime(0.08, t, 0.05);
+    duckBus.gain.setTargetAtTime(1, t + sec, 0.2);
+  },
   sfx(name, opts = {}) {
     if (!ctx || ctx.state !== 'running') return;
     const t = ctx.currentTime + 0.005;
@@ -221,6 +280,30 @@ export const Audio = {
         [0, 7, 12, 19].forEach((st, i) => tone(t + i * 0.08, midi(64 + st), 0.25, 'triangle', 0.08, sfxBus));
         noise(t, 0.4, 0.05, sfxBus, 3000);
         break;
+      case 'soul':
+        tone(t, 660, 0.2, 'sine', 0.07, sfxBus, 1320);
+        tone(t + 0.08, 990, 0.25, 'triangle', 0.05, sfxBus, 1980);
+        break;
+      case 'letter': tone(t, 784, 0.12, 'square', 0.05, sfxBus); tone(t + 0.1, 1175, 0.18, 'square', 0.05, sfxBus); break;
+      case 'boo':
+        [0, 4, 7, 12, 16].forEach((st, i) => tone(t + i * 0.07, midi(67 + st), 0.2, 'square', 0.05, sfxBus));
+        tone(t, 110, 0.6, 'sawtooth', 0.06, sfxBus, 55);
+        break;
+      case 'powerup': [0, 5, 9, 14].forEach((st, i) => tone(t + i * 0.05, midi(72 + st), 0.12, 'triangle', 0.07, sfxBus)); break;
+      case 'powerdown': tone(t, 700, 0.3, 'triangle', 0.06, sfxBus, 250); break;
+      case 'mission':
+        tone(t, midi(76), 0.1, 'square', 0.05, sfxBus); tone(t + 0.1, midi(83), 0.25, 'square', 0.05, sfxBus);
+        break;
+      case 'levelup': [0, 4, 7, 12, 7, 12, 16].forEach((st, i) => tone(t + i * 0.09, midi(64 + st), 0.2, 'triangle', 0.08, sfxBus)); break;
+      case 'laserCharge': tone(t, 200, 1.4, 'sawtooth', 0.025, sfxBus, 900); break;
+      case 'laserFire': noise(t, 0.9, 0.08, sfxBus, 1800, 'bandpass'); tone(t, 140, 0.9, 'square', 0.04, sfxBus, 120); break;
+      case 'thunder': noise(t, 1.8, 0.14, sfxBus, 180, 'lowpass'); break;
+      case 'ghoul': tone(t, rand(900, 1200), 0.18, 'square', 0.035, sfxBus, 1700, dt); break;
+      case 'grab': noise(t, 0.3, 0.08, sfxBus, 1200, 'bandpass'); tone(t, 330, 0.3, 'sine', 0.08, sfxBus, 660); break;
+      case 'tick': tone(t, 1800, 0.02, 'square', 0.02, sfxBus); break;
+      case 'win': [0, 4, 7, 12].forEach((st, i) => tone(t + i * 0.06, midi(76 + st), 0.16, 'square', 0.05, sfxBus)); break;
+      case 'lose': tone(t, 300, 0.25, 'triangle', 0.05, sfxBus, 150); break;
+      case 'gift': [0, 7, 12, 16, 19].forEach((st, i) => tone(t + i * 0.07, midi(72 + st), 0.2, 'triangle', 0.07, sfxBus)); break;
       case 'bounce': tone(t, 140, 0.1, 'square', 0.06 * vv, sfxBus, 70, dt); break;
       case 'buy': [0, 4, 7, 12].forEach((s, i) => tone(t + i * 0.07, midi(72 + s), 0.12, 'square', 0.05, sfxBus)); break;
       case 'deny': tone(t, 200, 0.15, 'square', 0.06, sfxBus, 150); break;

@@ -24,6 +24,19 @@ export class HudScene extends Phaser.Scene {
     this.rebirthText = text(this, 14, 52, reborn(play.rebirths), 16, '#9fb8e8', 0).setStroke('#07060d', 4)
       .setVisible(play.creative);
 
+    // souls (spin tokens), B-O-O letters, active power-up, mission toasts
+    this.soulIcon = this.add.sprite(250, 18, 'soul0').setScale(1.4);
+    this.soulText = text(this, 262, 18, `${play.souls}`, 16, '#9fc8ff', 0).setStroke('#07060d', 4);
+    const showMeta = !play.creative;
+    this.soulIcon.setVisible(showMeta); this.soulText.setVisible(showMeta);
+    this.letters = ['B', 'O', 'O'].map((l, i) => this.add.image(W / 2 - 24 + i * 24, 52, `letter_${l}`).setScale(1.6).setAlpha(0.25).setVisible(showMeta));
+    this.powerIcon = this.add.image(540, 18, 'orb_magnet').setScale(1.4).setVisible(false);
+    this.powerBar = this.add.graphics();
+    this.toastBg = this.add.rectangle(W / 2, 90, 470, 46, 0x140f24).setStrokeStyle(2, 0xffd75e).setAlpha(0);
+    this.toastTitle = text(this, W / 2, 78, '', 8, '#ffd75e').setAlpha(0);
+    this.toastText = text(this, W / 2, 98, '', 16, '#e6f0ff').setAlpha(0);
+    this.toasts = [];
+
     const ev = play.events;
     const on = (name, fn) => { ev.on(name, fn); this.events.once('shutdown', () => ev.off(name, fn)); };
     on('meters', (m) => this.distText.setText(`${m}M`));
@@ -35,9 +48,38 @@ export class HudScene extends Phaser.Scene {
     on('light', (v) => { this.light = v; this.drawLight(false); });
     on('lightLow', (blink) => this.drawLight(blink));
     on('shield', (has) => this.shieldIcon.setVisible(has));
+    on('souls', (n) => {
+      this.soulText.setText(`${n}`);
+      this.tweens.add({ targets: [this.soulIcon, this.soulText], scaleX: '*=1.3', scaleY: '*=1.3', duration: 80, yoyo: true });
+    });
+    on('letters', (n) => this.letters.forEach((l, i) => {
+      l.setAlpha(i < n ? 1 : 0.25);
+      if (i === n - 1) this.tweens.add({ targets: l, scaleX: 2.4, scaleY: 2.4, duration: 120, yoyo: true });
+    }));
+    on('power', (p) => {
+      this.powerBar.clear();
+      if (!p) { this.powerIcon.setVisible(false); return; }
+      this.powerIcon.setTexture(`orb_${p.kind}`).setVisible(true);
+      this.powerBar.fillStyle(0x07060d, 1); this.powerBar.fillRect(526, 30, 28, 4);
+      this.powerBar.fillStyle(0xffb0d0, 1); this.powerBar.fillRect(526, 30, Math.round(28 * p.left), 4);
+    });
+    on('toast', (msg) => { this.toasts.push(msg); if (this.toasts.length === 1) this.showToast(); });
     on('rebirths', (n) => {
       this.rebirthText.setText(reborn(n));
       this.tweens.add({ targets: this.rebirthText, scaleX: 1.3, scaleY: 1.3, duration: 90, yoyo: true });
+    });
+  }
+
+  // one mission toast at a time, like Jetpack Joyride's mission popups
+  showToast() {
+    const msg = this.toasts[0];
+    if (!msg) return;
+    this.toastTitle.setText('MISSION COMPLETE!');
+    this.toastText.setText(msg);
+    const items = [this.toastBg, this.toastTitle, this.toastText];
+    this.tweens.add({
+      targets: items, alpha: 1, duration: 200, yoyo: true, hold: 1600,
+      onComplete: () => { this.toasts.shift(); this.showToast(); },
     });
   }
 

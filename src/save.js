@@ -1,6 +1,6 @@
 // Versioned save (save-systems skill): plain data only, version stamp,
 // migrate old saves, validate on load, keep a backup of the last good save.
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 const KEY = 'ghostline-save';
 const BACKUP_KEY = 'ghostline-save.bak';
 const LEGACY_KEY = 'ghostline-save-v1'; // v1 of the game stored here, without a version field
@@ -18,6 +18,11 @@ function defaults() {
     mode: 'normal', // 'normal' | 'creative'
     // creative-mode checkpoint, its own slot so it never touches normal-mode records
     creative: { x: 0, rebirths: 0 },
+    // v4: missions + levels, charms, daily run, gift timer
+    missions: { active: [], done: [], stars: 0, level: 1, totals: {} },
+    charms: { owned: [], equipped: [] },
+    daily: { date: '', best: 0, ghost: [] },
+    giftAt: 0,
     settings: { music: 0.8, sfx: 0.9, muted: false, shake: true, flicker: true },
   };
 }
@@ -37,8 +42,19 @@ const MIGRATIONS = {
     };
   },
   2: (old) => ({ ...old, version: 3, mode: 'normal', creative: { x: 0, rebirths: 0 } }),
+  3: (old) => {
+    const d = defaults();
+    return { ...old, version: 4, missions: d.missions, charms: d.charms, daily: d.daily, giftAt: 0 };
+  },
 };
 
+const CHARM_IDS = ['magnet', 'nightlight', 'lucky', 'headstart', 'bouncy', 'graverobber'];
+const strArr = (a) => (Array.isArray(a) ? a.filter((x) => typeof x === 'string') : []);
+const numMap = (o) => {
+  const out = {};
+  if (o && typeof o === 'object') for (const [k, v] of Object.entries(o)) if (Number.isFinite(v)) out[k] = v;
+  return out;
+};
 const isInt = (n) => Number.isFinite(n) && Math.floor(n) === n && n >= 0;
 const clamp01 = (n, fb) => (Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : fb);
 
@@ -61,7 +77,24 @@ function validate(raw) {
     runs: isInt(s.runs) ? s.runs : 0,
     owned: Array.isArray(s.owned) ? s.owned.filter((id) => CHARACTER_IDS.includes(id)) : [],
     selected: CHARACTER_IDS.includes(s.selected) ? s.selected : 'survivor',
-    mode: s.mode === 'creative' ? 'creative' : 'normal',
+    mode: ['normal', 'daily', 'creative'].includes(s.mode) ? s.mode : 'normal',
+    missions: {
+      active: strArr(s.missions?.active).slice(0, 3),
+      done: strArr(s.missions?.done),
+      stars: isInt(s.missions?.stars) ? s.missions.stars : 0,
+      level: isInt(s.missions?.level) && s.missions.level >= 1 ? s.missions.level : 1,
+      totals: numMap(s.missions?.totals),
+    },
+    charms: {
+      owned: strArr(s.charms?.owned).filter((id) => CHARM_IDS.includes(id)),
+      equipped: strArr(s.charms?.equipped).filter((id) => CHARM_IDS.includes(id)).slice(0, 2),
+    },
+    daily: {
+      date: typeof s.daily?.date === 'string' ? s.daily.date : '',
+      best: isInt(s.daily?.best) ? s.daily.best : 0,
+      ghost: Array.isArray(s.daily?.ghost) ? s.daily.ghost.filter(Number.isFinite).slice(0, 4000) : [],
+    },
+    giftAt: Number.isFinite(s.giftAt) ? s.giftAt : 0,
     creative: {
       x: Number.isFinite(s.creative?.x) && s.creative.x >= 0 ? s.creative.x : 0,
       rebirths: isInt(s.creative?.rebirths) ? s.creative.rebirths : 0,
@@ -77,6 +110,7 @@ function validate(raw) {
   if (!out.owned.includes('survivor')) out.owned.unshift('survivor');
   out.owned = [...new Set(out.owned)];
   if (!out.owned.includes(out.selected)) out.selected = 'survivor';
+  out.charms.equipped = out.charms.equipped.filter((id) => out.charms.owned.includes(id));
   return out;
 }
 

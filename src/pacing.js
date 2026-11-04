@@ -15,7 +15,15 @@ export const UNLOCK = {
   banshee: 380,
   beamPair: 560,
   rotor: 760,
+  movingBeam: 300,
+  laser: 450,
+  swarm: 900,
 };
+
+// Canabalt-style speed: rises fast early, then slower the faster you go
+export function speedAt(m) {
+  return 230 + 300 * (1 - Math.exp(-m / 1100));
+}
 
 export function difficulty(m) {
   const base = Math.min(1, m / 2600);
@@ -33,6 +41,8 @@ export function spawnTable(m, diff, breather) {
   if (m >= UNLOCK.hands) t.push(['hands', 16]);
   if (m >= UNLOCK.beamPair) t.push(['beamPair', 6 + 8 * diff]);
   if (m >= UNLOCK.rotor) t.push(['rotor', 5 + 8 * diff]);
+  if (m >= UNLOCK.movingBeam) t.push(['movingBeam', 8 + 6 * diff]);
+  if (m >= UNLOCK.laser) t.push(['laser', 7 + 5 * diff]);
   return t;
 }
 
