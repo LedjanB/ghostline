@@ -9,6 +9,15 @@ A spooky-fun pixel runner in the style of Jetpack Joyride. A ghost drags you thr
 - **P**, **Esc** or gamepad **Start** to pause
 - Menus work with mouse, touch, arrows + Enter, or a gamepad d-pad + A
 
+## Creative mode
+Switch **NORMAL / CREATIVE** in the menu. In creative you can't lose: when something hits you, you're reborn on the spot and the hazards around you vanish. Your spot is saved every 10 seconds, on pause and when you leave, so **CONTINUE** picks up where you stopped. Candles you grab still count for the shop; best distance only counts in normal mode. Pause has **RESTART AT 0M**.
+
+## Fullscreen on iPhone
+Safari can't make a web page fullscreen, so Ghostline is a home screen web app:
+1. Open https://ledjanb.github.io/ghostline/ in Safari
+2. Tap Share, then **Add to Home Screen**, then **Add**
+3. Open Ghostline from your home screen and turn the phone sideways
+
 ## What's in v2
 - Fixed 120 Hz simulation so it plays the same on any phone or PC
 - Pacing: candle-only breathers, a rising sawtooth difficulty, and each hazard introduced in an easy version first

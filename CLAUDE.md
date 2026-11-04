@@ -23,7 +23,9 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 - Run state is reset in `init()`, never the constructor.
 - Simulation runs on a fixed 120 Hz step in `PlayScene.step()`; drawing happens in `render()`.
 - Gameplay reads actions from `src/input.js`, never raw keys.
-- Bump `SAVE_VERSION` and add a migration when the save shape changes.
+- Bump `SAVE_VERSION` and add a migration when the save shape changes (now v3: `mode`, `creative` checkpoint).
+- Creative mode: `PlayScene.rebirth()` replaces death; `saveCheckpoint()` writes the creative slot.
+- iPhone fullscreen = home screen web app (`manifest.webmanifest`, apple meta tags, `icons/`).
 
 ## Test
 Serve the folder (`python -m http.server 8000`) and open http://localhost:8000.

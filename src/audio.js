@@ -217,6 +217,10 @@ export const Audio = {
         tone(t, 600, 0.3, 'triangle', 0.1, sfxBus, 1200);
         noise(t, 0.2, 0.08, sfxBus, 4000);
         break;
+      case 'rebirth':
+        [0, 7, 12, 19].forEach((st, i) => tone(t + i * 0.08, midi(64 + st), 0.25, 'triangle', 0.08, sfxBus));
+        noise(t, 0.4, 0.05, sfxBus, 3000);
+        break;
       case 'bounce': tone(t, 140, 0.1, 'square', 0.06 * vv, sfxBus, 70, dt); break;
       case 'buy': [0, 4, 7, 12].forEach((s, i) => tone(t + i * 0.07, midi(72 + s), 0.12, 'square', 0.05, sfxBus)); break;
       case 'deny': tone(t, 200, 0.15, 'square', 0.06, sfxBus, 150); break;

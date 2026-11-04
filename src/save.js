@@ -1,6 +1,6 @@
 // Versioned save (save-systems skill): plain data only, version stamp,
 // migrate old saves, validate on load, keep a backup of the last good save.
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 const KEY = 'ghostline-save';
 const BACKUP_KEY = 'ghostline-save.bak';
 const LEGACY_KEY = 'ghostline-save-v1'; // v1 of the game stored here, without a version field
@@ -15,6 +15,9 @@ function defaults() {
     owned: ['survivor'],
     selected: 'survivor',
     runs: 0,
+    mode: 'normal', // 'normal' | 'creative'
+    // creative-mode checkpoint, its own slot so it never touches normal-mode records
+    creative: { x: 0, rebirths: 0 },
     settings: { music: 0.8, sfx: 0.9, muted: false, shake: true, flicker: true },
   };
 }
@@ -33,6 +36,7 @@ const MIGRATIONS = {
       settings: { ...d.settings, muted: !!old.muted },
     };
   },
+  2: (old) => ({ ...old, version: 3, mode: 'normal', creative: { x: 0, rebirths: 0 } }),
 };
 
 const isInt = (n) => Number.isFinite(n) && Math.floor(n) === n && n >= 0;
@@ -57,6 +61,11 @@ function validate(raw) {
     runs: isInt(s.runs) ? s.runs : 0,
     owned: Array.isArray(s.owned) ? s.owned.filter((id) => CHARACTER_IDS.includes(id)) : [],
     selected: CHARACTER_IDS.includes(s.selected) ? s.selected : 'survivor',
+    mode: s.mode === 'creative' ? 'creative' : 'normal',
+    creative: {
+      x: Number.isFinite(s.creative?.x) && s.creative.x >= 0 ? s.creative.x : 0,
+      rebirths: isInt(s.creative?.rebirths) ? s.creative.rebirths : 0,
+    },
     settings: {
       music: clamp01(s.settings?.music, d.settings.music),
       sfx: clamp01(s.settings?.sfx, d.settings.sfx),

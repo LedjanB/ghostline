@@ -125,10 +125,25 @@ export class PlayScene extends Phaser.Scene {
     this.warnings = [];
     this.candles = [];
     this.drips = [];
+
+    // creative mode: infinite rebirths, the run continues from the saved checkpoint
+    this.creative = save.mode === 'creative';
+    this.rebirths = 0;
+    this.savedCandles = 0;
+    this.nextAutosave = 10;
+    this.skipCheckpoint = false;
+    if (this.creative) {
+      this.worldX = save.creative.x;
+      this.rebirths = save.creative.rebirths;
+      this.zoneIndex = Math.floor(this.worldX / PX_PER_METER / ZONE_LENGTH_M);
+      this.nextSpawn = this.worldX + 520;
+      this.bestPx = 0; // records only count in normal mode
+      if (this.worldX > 0) this.nextBanshee = 8;
+    }
   }
 
   create() {
-    const zone = ZONES[0];
+    const zone = ZONES[this.zoneIndex % ZONES.length];
     this.far = this.add.tileSprite(0, 0, 320, 180, `${zone.id}_far`).setOrigin(0).setScale(2).setDepth(0);
     this.mid = this.add.tileSprite(0, 0, 320, 180, `${zone.id}_mid`).setOrigin(0).setScale(2).setDepth(1);
     this.edge = this.add.tileSprite(0, 0, 320, 180, `${zone.id}_edge`).setOrigin(0).setScale(2).setDepth(15);
@@ -178,12 +193,14 @@ export class PlayScene extends Phaser.Scene {
       this.game.events.off('hidden', this.onHidden);
       this.offDevice();
       Audio.danger(false);
+      if (!this.skipCheckpoint) this.saveCheckpoint();
     });
     this.render(0);
   }
 
   requestPause() {
     if (this.dead || !this.scene.isActive()) return;
+    this.saveCheckpoint();
     this.scene.pause();
     this.scene.launch('pause');
   }
@@ -241,6 +258,10 @@ export class PlayScene extends Phaser.Scene {
     this.stepLight(dt);
     this.stepZoneFx(dt);
     if (this.combo > 0 && this.clock - this.lastCandleAt > 0.6) { this.combo = 0; this.events.emit('combo', 0); }
+    if (this.creative) {
+      this.nextAutosave -= dt;
+      if (this.nextAutosave <= 0) { this.nextAutosave = 10; this.saveCheckpoint(); }
+    }
     this.emitHud(meters);
     Audio.intensity(this.dead ? 0 : 0.2 + pace.diff * 0.9);
     Audio.danger(!this.dead && this.warnings.length > 0);
@@ -594,7 +615,41 @@ export class PlayScene extends Phaser.Scene {
     });
   }
 
+  // save-systems: a separate creative checkpoint, written on safe moments
+  // (every 10 s, on rebirth, pause, zone change, leaving the run, app going to background)
+  saveCheckpoint() {
+    if (!this.creative || this.dead) return;
+    const gain = this.runCandles - this.savedCandles;
+    this.savedCandles = this.runCandles;
+    const x = Math.floor(this.worldX);
+    const rebirths = this.rebirths;
+    Save.update((s) => { s.creative.x = x; s.creative.rebirths = rebirths; s.candles += gain; });
+  }
+
+  // creative mode: instead of dying, the ghost pulls you back and clears the way
+  rebirth() {
+    this.rebirths++;
+    this.invuln = 2;
+    this.light = Math.max(this.light, 0.5);
+    Audio.sfx('rebirth');
+    this.shake(160, 0.006);
+    this.flash(160, 160, 200, 255);
+    this.burst(PLAYER_X, this.py, 0xcfe0ff, 18, 70, 600);
+    const clearX = PLAYER_X + 280;
+    const gone = (x, y) => this.burst(x, y, 0x9fb8e8, 8, 30, 400);
+    for (const b of this.beams) if (b.x - b.len / 2 < clearX) { gone(b.x, b.y); b.x = -1e5; }
+    for (const h of this.hands) if (h.x < clearX) { gone(h.x, h.y); h.x = -1e5; }
+    for (const sw of this.swings) if (sw.x < clearX) { if (sw.hx !== undefined) gone(sw.hx, sw.hy); sw.x = -1e5; }
+    for (const b of this.banshees) { gone(b.x, b.y); b.x = -1e5; }
+    for (const w of this.warnings) w.dead = true;
+    this.events.emit('rebirths', this.rebirths);
+    const t = text(this, PLAYER_X + 40, this.py - 40, 'REBORN!', 16, '#cfe0ff').setDepth(31).setStroke('#07060d', 4);
+    this.tweens.add({ targets: t, y: '-=36', alpha: 0, duration: 1000, ease: 'Quad.easeOut', onComplete: () => t.destroy() });
+    this.saveCheckpoint();
+  }
+
   hit() {
+    if (this.creative && !this.shield) { this.rebirth(); return; }
     if (this.shield) {
       this.shield = false;
       this.invuln = 1.4;
@@ -709,6 +764,7 @@ export class PlayScene extends Phaser.Scene {
       targets: this.fader, alpha: 1, duration: 260, ease: 'Quad.easeIn',
       onComplete: () => {
         this.zoneIndex = idx;
+        this.saveCheckpoint();
         this.far.setTexture(`${zone.id}_far`);
         this.mid.setTexture(`${zone.id}_mid`);
         this.edge.setTexture(`${zone.id}_edge`);

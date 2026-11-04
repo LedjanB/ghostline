@@ -19,6 +19,10 @@ export class HudScene extends Phaser.Scene {
     this.combo = text(this, 176, 52, '', 16, '#ffb060', 0).setStroke('#07060d', 4);
     this.light = 1;
     this.drawLight(false);
+    // creative mode: rebirth counter under the distance
+    const reborn = (n) => (n > 0 ? `REBORN x${n}` : 'CREATIVE');
+    this.rebirthText = text(this, 14, 52, reborn(play.rebirths), 16, '#9fb8e8', 0).setStroke('#07060d', 4)
+      .setVisible(play.creative);
 
     const ev = play.events;
     const on = (name, fn) => { ev.on(name, fn); this.events.once('shutdown', () => ev.off(name, fn)); };
@@ -31,6 +35,10 @@ export class HudScene extends Phaser.Scene {
     on('light', (v) => { this.light = v; this.drawLight(false); });
     on('lightLow', (blink) => this.drawLight(blink));
     on('shield', (has) => this.shieldIcon.setVisible(has));
+    on('rebirths', (n) => {
+      this.rebirthText.setText(reborn(n));
+      this.tweens.add({ targets: this.rebirthText, scaleX: 1.3, scaleY: 1.3, duration: 90, yoyo: true });
+    });
   }
 
   drawLight(blink) {

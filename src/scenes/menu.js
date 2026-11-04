@@ -1,5 +1,5 @@
 // Title screen + character shop. Works with mouse, touch, keyboard and gamepad.
-import { W, H, CHARACTERS } from '../data.js';
+import { W, H, CHARACTERS, PX_PER_METER } from '../data.js';
 import { Save } from '../save.js';
 import { Audio } from '../audio.js';
 import { text, button, focusGroup } from '../ui.js';
@@ -19,7 +19,7 @@ export class MenuScene extends Phaser.Scene {
 
     this.add.image(W / 2, 60, 'glow').setScale(5, 1.6).setBlendMode(Phaser.BlendModes.ADD).setTint(0x6f8fff).setAlpha(0.35);
     this.title = text(this, W / 2, 60, 'GHOSTLINE', 32, '#cfe0ff').setStroke('#07060d', 6);
-    text(this, W / 2, 90, "DON'T LET GO", 8, '#8f7fbf');
+    this.subtitle = text(this, W / 2, 90, '', 8, '#8f7fbf');
     this.ghost = this.add.sprite(W / 2 + 196, 54, 'ghost0').setScale(2).setAlpha(0.9);
     this.ghost.play('ghost_float');
     this.tweens.add({ targets: this.ghost, y: 66, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
@@ -41,15 +41,11 @@ export class MenuScene extends Phaser.Scene {
     button(this, W / 2 - 140, 162, '<', () => this.browse(-1), { w: 44, h: 44 });
     button(this, W / 2 + 140, 162, '>', () => this.browse(1), { w: 44, h: 44 });
 
-    this.mainBtn = button(this, W / 2, 290, 'PLAY', () => this.mainAction(), { w: 220, h: 40, silent: true });
-    this.settingsBtn = button(this, W / 2 - 112, 336, 'SETTINGS', () => this.openSettings(), { w: 200, h: 30 });
-    this.fullBtn = button(this, W / 2 + 112, 336, 'FULLSCREEN', () => {
-      try {
-        if (this.scale.isFullscreen) this.scale.stopFullscreen();
-        else this.scale.startFullscreen();
-      } catch (e) { /* not allowed here */ }
-    }, { w: 200, h: 30 });
-    this.group = focusGroup(this, [this.mainBtn, this.settingsBtn, this.fullBtn]);
+    this.mainBtn = button(this, W / 2, 288, 'PLAY', () => this.mainAction(), { w: 280, h: 40, silent: true });
+    this.modeBtn = button(this, 112, 336, '', () => this.toggleMode(), { w: 196, h: 30 });
+    this.settingsBtn = button(this, 320, 336, 'SETTINGS', () => this.openSettings(), { w: 196, h: 30 });
+    this.fullBtn = button(this, 528, 336, 'FULLSCREEN', () => this.fullscreen(), { w: 196, h: 30 });
+    this.group = focusGroup(this, [this.mainBtn, this.modeBtn, this.settingsBtn, this.fullBtn]);
 
     this.inputMap = createInput(this);
     this.hint = text(this, W / 2, 112, '', 8, '#6f6590');
@@ -77,9 +73,59 @@ export class MenuScene extends Phaser.Scene {
     this.mid.tilePositionX += 14 * m;
     this.edge.tilePositionX += 26 * m;
     this.inputMap.update();
+    if (this.modal) {
+      if (this.inputMap.pressed('confirm') || this.inputMap.pressed('back')) this.closeModal();
+      return;
+    }
     if (this.inputMap.pressed('left')) this.browse(-1);
     if (this.inputMap.pressed('right')) this.browse(1);
     this.group.handle(this.inputMap);
+  }
+
+  toggleMode() {
+    Save.update((s) => { s.mode = s.mode === 'creative' ? 'normal' : 'creative'; });
+    this.refresh();
+  }
+
+  // iPhone Safari has no fullscreen for pages. The only way is the home screen web app,
+  // so on iOS this shows how; everywhere else it uses the normal fullscreen API.
+  fullscreen() {
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent)
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const standalone = window.navigator.standalone === true
+      || window.matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches;
+    if (ios && !standalone) { this.showIosHelp(); return; }
+    try {
+      if (this.scale.isFullscreen) this.scale.stopFullscreen();
+      else this.scale.startFullscreen();
+    } catch (e) { /* not allowed here */ }
+  }
+
+  showIosHelp() {
+    const lines = [
+      'FULLSCREEN ON IPHONE',
+      '',
+      '1. TAP THE SHARE BUTTON',
+      '   (SQUARE WITH ARROW UP)',
+      '2. TAP "ADD TO HOME SCREEN"',
+      '3. TAP "ADD"',
+      '4. OPEN GHOSTLINE FROM',
+      '   YOUR HOME SCREEN',
+    ];
+    const objs = [this.add.rectangle(0, 0, W, H, 0x07060d).setOrigin(0).setAlpha(0.94).setInteractive()];
+    lines.forEach((l, i) => objs.push(text(this, W / 2, 50 + i * 28, l, 16, i === 0 ? '#ffd75e' : '#e6f0ff')));
+    objs.push(text(this, W / 2, 284, 'USE THE GITHUB.IO LINK IN SAFARI', 8, '#a99fd0'));
+    const ok = button(this, W / 2, 322, 'GOT IT', () => this.closeModal(), { w: 180, h: 34 });
+    ok.focus(true);
+    this.modal = { objs, ok };
+  }
+
+  closeModal() {
+    if (!this.modal) return;
+    this.modal.objs.forEach((o) => o.destroy());
+    this.modal.ok.destroy();
+    this.modal = null;
+    this.inputMap.claimPointers();
   }
 
   openSettings() {
@@ -108,7 +154,13 @@ export class MenuScene extends Phaser.Scene {
       const o = save.owned.includes(CHARACTERS[i].id);
       d.setFillStyle(i === this.index ? 0xcfe0ff : o ? 0x8f7fbf : 0x3a2f5a);
     });
-    if (owned) this.mainBtn.setLabel('PLAY').setColors(0x2a1f4a, 0x8f7fbf);
+    const creative = save.mode === 'creative';
+    this.modeBtn.setLabel(creative ? 'CREATIVE' : 'NORMAL');
+    if (creative) this.modeBtn.setColors(0x1d3a3a, 0x7fe0c0); else this.modeBtn.setColors(0x2a1f4a, 0x8f7fbf);
+    this.subtitle.setText(creative ? "CREATIVE MODE: YOU CAN'T LOSE" : "DON'T LET GO");
+    const cx = Math.floor(save.creative.x / PX_PER_METER);
+    const playLabel = creative && cx > 0 ? `CONTINUE ${cx}M` : 'PLAY';
+    if (owned) this.mainBtn.setLabel(playLabel).setColors(0x2a1f4a, 0x8f7fbf);
     else if (save.candles >= c.price) this.mainBtn.setLabel(`BUY ${c.price}`).setColors(0x4a3510, 0xffd75e);
     else this.mainBtn.setLabel(`NEED ${c.price}`).setColors(0x1d1a26, 0x4a4560);
   }
