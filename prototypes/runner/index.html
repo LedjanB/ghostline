@@ -109,7 +109,8 @@ class Run extends Phaser.Scene {
     this.stumbles = 0;
     this.invuln = 0;
     this.traps = [];
-    this.nextTrapAt = 900;       // px until the first trap
+    this.nextTrapAt = 700;       // px until the first trap
+    this.lastKinds = [];
     this.state = 'run';          // run | caught
     this.caughtT = 0;
     this.cause = '';
@@ -220,10 +221,16 @@ class Run extends Phaser.Scene {
   spawnTrap() {
     const v = this.speed();
     const roll = Math.random();
-    let kind;
-    if (this.dist < 2500) kind = roll < 0.6 ? 'grave' : 'branch';           // teach jump, then slide
-    else if (this.dist < 5000) kind = roll < 0.35 ? 'grave' : roll < 0.65 ? 'branch' : roll < 0.85 ? 'hands' : 'pit';
-    else kind = roll < 0.25 ? 'grave' : roll < 0.5 ? 'branch' : roll < 0.75 ? 'hands' : 'pit';
+    // mix: all 4 kinds early, weights shift toward the hard ones, never the same kind 3 times in a row
+    const w = this.dist < 1500 ? { grave: 4, branch: 4, hands: 1, pit: 0 }
+            : this.dist < 4000 ? { grave: 3, branch: 3, hands: 2, pit: 1.5 }
+            : { grave: 2, branch: 3, hands: 2.5, pit: 2.5 };
+    const last2 = this.lastKinds || [];
+    if (last2.length === 2 && last2[0] === last2[1]) w[last2[0]] = 0;
+    let total = 0; for (const k in w) total += w[k];
+    let r = roll * total, kind = 'grave';
+    for (const k in w) { r -= w[k]; if (r <= 0) { kind = k; break; } }
+    this.lastKinds = [...last2, kind].slice(-2);
     const x = W + 40;
     let tr;
     if (kind === 'grave') tr = { kind, x, w: 30, h: 44, low: true };
@@ -232,11 +239,11 @@ class Run extends Phaser.Scene {
     if (kind === 'pit') tr = { kind, x, w: Phaser.Math.Clamp(v * 0.24, 90, 160), h: 0, low: true };
     tr.hit = false;
     this.traps.push(tr);
-    // next gap scales with speed so reaction time stays fair (~0.85-1.6 s)
-    const minGap = v * 0.85 + tr.w, maxGap = v * 1.6 + tr.w;
+    // next gap scales with speed so reaction time stays fair (~0.6-1.15 s)
+    const minGap = v * 0.6 + tr.w, maxGap = v * 1.15 + tr.w;
     this.nextTrapAt = Phaser.Math.Between(minGap, maxGap);
-    // sometimes a quick double
-    if (this.dist > 3500 && Math.random() < 0.18) this.nextTrapAt = v * 0.6 + tr.w;
+    // quick doubles: a jump trap then a slide trap (or the other way) close together
+    if (this.dist > 1800 && Math.random() < 0.3) this.nextTrapAt = v * 0.8 + tr.w;
   }
 
   miloBox() {

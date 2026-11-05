@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Ghostline v6 Prototype B</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #111; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #game { width: 100%; height: 100%; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+<!-- PROTOTYPE B (throwaway, prototype-fast skill). Not imported by the real game. -->
+<!-- Question: does switching to flight feel like a big moment? -->
+<!-- Builds on A: Boo orb, flight sections (chasms), air traps, salt shotgun (auto-fire), ghouls + crates. -->
+<script src="../../vendor/phaser.min.js"></script>
+<script>
+(() => {
+// ---------- tuning (magic numbers welcome, this is a spike) ----------
+const W = 960, H = 540;
+const GROUND_Y = 430;
+const MILO_X = 330;
+const MILO_W = 26, MILO_H = 46, MILO_SLIDE_H = 22;
+const GRAVITY = 2700;
+const JUMP_V = 860;
+const JUMP_CUT = 0.45;
+const COYOTE = 0.09, BUFFER = 0.13;
+const SLIDE_TIME = 0.62;
+const FAST_FALL = 3200;
+const BASE_SPEED = 330, MAX_SPEED = 640, SPEED_RAMP = 4.2;
+const STUMBLE_SLOW = 0.45;
+const STUMBLE_RECOVER = 1.3;
+const STUMBLE_COMBO = 2.6;
+const START_GAP = 230;
+const MAX_GAP = 270;
+const CLEAN_PUSHBACK = 9;
+const PX_PER_M = 40;
+const STEP = 1 / 120;
+// flight
+const FLY_TIME = 9.5;          // Boo orb flight length (s)
+const FLY_UP = 2500, FLY_DOWN = 1900, FLY_VMAX = 470;
+const FLY_TOP = 330;           // max height above ground while flying
+const SECTION_SECONDS = 6;     // chasm width in seconds of running
+const FIRST_CHASM = 3600, CHASM_EVERY = 7000; // px
+const LAND_GAP = 175;          // creature distance right after landing (it caught up a bit)
+const LAND_GAP_MIN = 95;
+const AIR_HIT_COST = 40;       // each air hit = creature closer when you land
+const CATCHUP_TIME = 1.6, CATCHUP_BOOST = 1.06; // after landing it sprints for a moment
+// weapon
+const SALT_AMMO = 22, SALT_TIME = 15, SALT_CD = 0.3, SALT_RANGE = 340, PELLET_V = 980;
+const CANDLE_PUSH = 22;
+
+// ---------- input (tiny action map: jump/rise, slide/dive) ----------
+const input = { jumpHeld: false, jumpPressed: false, slidePressed: false };
+const JUMP_KEYS = ['Space', 'ArrowUp', 'KeyW'];
+const SLIDE_KEYS = ['ArrowDown', 'KeyS'];
+window.addEventListener('keydown', (e) => {
+  if (JUMP_KEYS.includes(e.code)) { if (!e.repeat) input.jumpPressed = true; input.jumpHeld = true; e.preventDefault(); }
+  if (SLIDE_KEYS.includes(e.code)) { if (!e.repeat) input.slidePressed = true; e.preventDefault(); }
+}, true);
+window.addEventListener('keyup', (e) => { if (JUMP_KEYS.includes(e.code)) input.jumpHeld = false; }, true);
+let touchStart = null;
+window.addEventListener('pointerdown', (e) => {
+  touchStart = { x: e.clientX, y: e.clientY, swiped: false };
+  input.jumpPressed = true; input.jumpHeld = true;
+}, true);
+window.addEventListener('pointermove', (e) => {
+  if (!touchStart || touchStart.swiped) return;
+  if (e.clientY - touchStart.y > 40) {
+    touchStart.swiped = true; input.jumpHeld = false; input.slidePressed = true; input.cancelJump = true;
+  }
+}, true);
+const endPointer = () => { input.jumpHeld = false; touchStart = null; };
+window.addEventListener('pointerup', endPointer, true);
+window.addEventListener('pointercancel', endPointer, true);
+let padPrev = { a: false, b: false };
+function pollPad() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  for (const p of pads) {
+    if (!p) continue;
+    const a = !!(p.buttons[0] && p.buttons[0].pressed);
+    const b = !!((p.buttons[1] && p.buttons[1].pressed) || (p.buttons[13] && p.buttons[13].pressed) || p.axes[1] > 0.6);
+    if (a && !padPrev.a) input.jumpPressed = true;
+    if (b && !padPrev.b) input.slidePressed = true;
+    input.padHeld = a; padPrev = { a, b };
+    return;
+  }
+  input.padHeld = false;
+}
+
+let best = 0;
+try { best = Number(localStorage.getItem('ghostline-protoB-best')) || 0; } catch (e) {}
+
+const overlap = (a, b) => a.r > b.l && a.l < b.r && a.b > b.t && a.t < b.b;
+
+class Run extends Phaser.Scene {
+  constructor() { super('run'); }
+
+  init() {
+    // all run state lives here (reset every run)
+    this.t = 0; this.acc = 0; this.dist = 0;
+    this.baseSpeed = BASE_SPEED; this.slowT = 0; this.slowAmt = 0;
+    this.y = 0; this.vy = 0; this.grounded = true;
+    this.coyote = 0; this.buffer = 0; this.slide = 0;
+    this.gap = START_GAP; this.lastStumble = -99; this.stumbles = 0;
+    this.invuln = 0; this.flash = 0; this.shakeT = 0;
+    this.traps = []; this.airs = []; this.pickups = []; this.candles = []; this.pellets = []; this.poofs = [];
+    this.nextTrapAt = 700; this.lastKinds = [];
+    this.nextChasm = FIRST_CHASM; this.chasm = null;
+    this.nextOrb = 1600 + Math.random() * 800;
+    this.nextWeapon = 900;
+    this.airNextAt = 0;
+    this.flying = false; this.flyKind = ''; this.flyT = 0; this.landingGap = LAND_GAP;
+    this.airHits = 0; this.flights = 0;
+    this.creatureFlyT = 0; this.creatureFlyX = 0; this.creatureReturn = 1; this.catchUpT = 0;
+    this.weapon = null; this.kills = 0;
+    this.state = 'run'; this.caughtT = 0; this.cause = ''; this.creatureLunge = 0;
+    this.started = false;
+    this.pop = { text: '', t: 0 };
+  }
+
+  create() {
+    this.g = this.add.graphics();
+    this.debug = this.add.text(12, 10, '', { fontFamily: 'monospace', fontSize: '15px', color: '#9fdc8f' });
+    this.big = this.add.text(W / 2, 150, '', { fontFamily: 'monospace', fontSize: '30px', color: '#ffffff', align: 'center' }).setOrigin(0.5);
+    this.hint = this.add.text(W / 2, 215, '', { fontFamily: 'monospace', fontSize: '16px', color: '#bbbbbb', align: 'center' }).setOrigin(0.5);
+    this.popText = this.add.text(W / 2, 110, '', { fontFamily: 'monospace', fontSize: '44px', color: '#e8f6ff', fontStyle: 'bold' }).setOrigin(0.5);
+    const touch = matchMedia('(pointer: coarse)').matches;
+    this.hint.setText(touch
+      ? 'TAP = jump (hold = higher)   SWIPE DOWN = slide\nflying: HOLD = rise\nweapons shoot on their own'
+      : 'SPACE / UP = jump (hold = higher)   DOWN = slide\nflying: HOLD SPACE = rise\nweapons shoot on their own');
+  }
+
+  speed() {
+    const k = this.slowAmt > 0 ? Phaser.Math.Linear(STUMBLE_SLOW, 1, Math.min(1, this.slowT / STUMBLE_RECOVER)) : 1;
+    return this.baseSpeed * k;
+  }
+
+  update(_time, delta) {
+    pollPad();
+    this.acc += Math.min(delta / 1000, 0.1);
+    let stepped = false;
+    while (this.acc >= STEP) { this.step(STEP); this.acc -= STEP; stepped = true; }
+    if (stepped) { input.jumpPressed = false; input.slidePressed = false; input.cancelJump = false; }
+    this.render();
+  }
+
+  popup(text, t = 0.9) { this.pop = { text, t, max: t }; }
+
+  // ---------- simulation ----------
+  step(dt) {
+    const held = input.jumpHeld || input.padHeld;
+    if (this.state === 'caught') {
+      this.caughtT += dt;
+      this.creatureLunge = Math.min(1, this.creatureLunge + dt * 4);
+      if (this.caughtT > 0.8 && input.jumpPressed && !input.cancelJump) this.scene.restart();
+      return;
+    }
+    if (!this.started) {
+      if (input.jumpPressed || input.slidePressed) { this.started = true; this.hint.setText(''); }
+      else return;
+    }
+    this.t += dt;
+    this.invuln = Math.max(0, this.invuln - dt);
+    this.flash = Math.max(0, this.flash - dt * 3);
+    this.pop.t = Math.max(0, this.pop.t - dt);
+
+    this.baseSpeed = Math.min(MAX_SPEED, this.baseSpeed + SPEED_RAMP * dt);
+    if (this.slowAmt > 0) { this.slowT += dt; if (this.slowT >= STUMBLE_RECOVER) this.slowAmt = 0; }
+    const v = this.flying ? this.baseSpeed * 1.08 : this.speed(); // a touch faster in the air: it feels like a rush
+    this.dist += v * dt;
+
+    if (this.flying) { if (this.flyStep(dt, held) === 'caught') return; }
+    else if (this.groundStep(dt, held, v) === 'caught') return;
+
+    // --- spawners ---
+    if (!this.flying) this.spawnGround(v, dt);
+    else this.spawnAir(v, dt);
+
+    // --- move the world ---
+    for (const o of this.traps) o.x -= (v + (o.vx || 0)) * dt;
+    for (const o of this.pickups) { o.x -= v * dt; o.bob += dt; }
+    for (const o of this.airs) {
+      if (o.kind === 'beam') { o.t += dt; continue; }
+      o.x -= (v + o.vx) * dt; o.bob += dt;
+      if (o.kind === 'banshee') o.hy += Math.sign(this.y + 20 - o.hy) * Math.min(70 * dt, Math.abs(this.y + 20 - o.hy));
+    }
+    for (const c of this.candles) {
+      const mx = MILO_X, my = GROUND_Y - this.y - MILO_H / 2;
+      const dx = mx - c.x, dy = my - c.y, d = Math.hypot(dx, dy);
+      if (d < 160) { c.x += (dx / d) * 700 * dt; c.y += (dy / d) * 700 * dt; } // magnet
+      else c.x -= v * dt;
+    }
+    for (const p of this.poofs) p.t += dt;
+    this.traps = this.traps.filter((o) => o.x + o.w > -60 && !o.gone);
+    this.pickups = this.pickups.filter((o) => o.x > -60 && !o.gone);
+    this.airs = this.airs.filter((o) => (o.kind === 'beam' ? o.t < o.warn + o.on : o.x + o.w > -60) && !o.gone);
+    this.candles = this.candles.filter((c) => c.x > -40 && !c.gone);
+    this.poofs = this.poofs.filter((p) => p.t < 0.35);
+
+    this.weaponStep(dt);
+    this.collide();
+  }
+
+  groundStep(dt, held, v) {
+    // auto-grab at a chasm edge: the flight section
+    if (this.chasm && this.chasm.x < MILO_X + 30 && this.chasm.x + this.chasm.w > MILO_X) {
+      this.startFlight('section');
+      return;
+    }
+    if (input.jumpPressed && !input.cancelJump) this.buffer = BUFFER;
+    else this.buffer = Math.max(0, this.buffer - dt);
+    if (input.cancelJump) this.buffer = 0;
+    if (this.grounded) this.coyote = COYOTE; else this.coyote = Math.max(0, this.coyote - dt);
+    if (input.slidePressed) {
+      this.slide = SLIDE_TIME; this.buffer = 0;
+      if (!this.grounded && this.vy > -200) this.vy = Math.min(this.vy, -200);
+    }
+    if (this.slide > 0) this.slide = Math.max(0, this.slide - dt);
+    if (this.buffer > 0 && this.coyote > 0) {
+      this.vy = JUMP_V; this.grounded = false; this.coyote = 0; this.buffer = 0; this.slide = 0;
+    }
+    if (!held && this.vy > 0) this.vy *= Math.pow(JUMP_CUT, dt * 20);
+    if (!this.grounded) { this.vy -= (GRAVITY + (this.slide > 0 ? FAST_FALL : 0)) * dt; this.y += this.vy * dt; }
+    const overPit = this.pitUnder();
+    if (this.y <= 0 && !overPit) { this.y = 0; this.vy = 0; this.grounded = true; }
+    else if (this.y > 0 || overPit) this.grounded = false;
+    if (this.y < -60) { this.getCaught('fell in a pit'); return 'caught'; }
+
+    // creature: runs at your full speed, gains when you're slowed; sprints right after you land
+    this.catchUpT = Math.max(0, this.catchUpT - dt);
+    this.creatureReturn = Math.min(1, this.creatureReturn + dt * 1.6);
+    const creatureV = this.baseSpeed * (this.catchUpT > 0 ? CATCHUP_BOOST : 1);
+    this.gap -= (creatureV - v) * dt;
+    if (this.t - this.lastStumble > 3 && this.catchUpT <= 0) this.gap = Math.min(MAX_GAP, this.gap + CLEAN_PUSHBACK * dt);
+    if (this.gap <= 30) { this.getCaught('it closed the gap'); return 'caught'; }
+  }
+
+  flyStep(dt, held) {
+    this.creatureFlyT += dt;
+    if (input.slidePressed) this.vy = -FLY_VMAX; // dive
+    this.vy += (held ? FLY_UP : -FLY_DOWN) * dt;
+    this.vy = Phaser.Math.Clamp(this.vy, -FLY_VMAX, FLY_VMAX);
+    this.y += this.vy * dt;
+    const floor = this.pitUnder() ? 30 : 0; // Boo never lets you drop into the chasm
+    if (this.y < floor) { this.y = floor; this.vy = Math.max(0, this.vy); }
+    if (this.y > FLY_TOP) { this.y = FLY_TOP; this.vy = Math.min(0, this.vy); }
+    // the flight ends
+    if (this.flyKind === 'orb') {
+      this.flyT -= dt;
+      if (this.chasm && this.chasm.x < MILO_X + 30) this.flyKind = 'section'; // a chasm came: Boo keeps carrying
+      else if (this.flyT <= 0 && !this.pitUnder()) this.land();
+    } else if (this.flyKind === 'section') {
+      if (!this.chasm || this.chasm.x + this.chasm.w < MILO_X - 40) this.land();
+    }
+  }
+
+  startFlight(kind) {
+    this.flying = true; this.flyKind = kind; this.flights++;
+    this.flyT = FLY_TIME; this.landingGap = LAND_GAP;
+    this.vy = 380; this.grounded = false; this.slide = 0;
+    if (this.y < 10) this.y = 10;
+    this.creatureFlyT = 0; this.creatureFlyX = MILO_X - this.gap;
+    this.airNextAt = this.speed() * 0.9;
+    // ground stuff ahead fades out, the air is the game now
+    for (const o of this.traps) if (o.x > MILO_X - 20 && o.kind !== 'chasm') { o.gone = true; this.poof(o.x + o.w / 2, GROUND_Y - 20); }
+    this.popup(kind === 'orb' ? 'BOO!' : 'BOO! HOLD ON!', 1.0);
+    this.flash = 0.5;
+    this.cameras.main.shake(140, 0.006);
+  }
+
+  land() {
+    this.flying = false; this.flyKind = '';
+    this.vy = 0; this.grounded = this.y <= 0;
+    this.gap = Math.max(LAND_GAP_MIN, this.landingGap);
+    this.creatureReturn = 0; this.catchUpT = CATCHUP_TIME;
+    for (const o of this.airs) { o.gone = true; if (o.kind !== 'beam') this.poof(o.x + o.w / 2, GROUND_Y - o.hy); }
+    this.nextTrapAt = this.speed() * 1.1; // a breath before ground traps
+    if (this.chasm && this.chasm.x + this.chasm.w < MILO_X) { this.chasm = null; this.nextChasm = this.dist + CHASM_EVERY; }
+    this.popup('IT\'S COMING', 0.9);
+  }
+
+  pitUnder() {
+    const l = MILO_X - MILO_W / 2 + 6, r = MILO_X + MILO_W / 2 - 6;
+    return this.traps.some((o) => (o.kind === 'pit' || o.kind === 'chasm') && l > o.x && r < o.x + o.w);
+  }
+
+  poof(x, y) { this.poofs.push({ x, y, t: 0 }); }
+
+  // ---------- spawning ----------
+  spawnGround(v, dt) {
+    const x = W + 40;
+    // flight section: a chasm. Clear runway before it.
+    if (!this.chasm && this.dist >= this.nextChasm) {
+      this.chasm = { kind: 'chasm', x, w: v * SECTION_SECONDS, h: 0 };
+      this.traps.push(this.chasm);
+      this.nextTrapAt = this.chasm.w + v * 1.0;
+    }
+    const runway = !this.chasm && this.dist > this.nextChasm - v * 1.6;
+    this.nextTrapAt -= v * dt;
+    if (this.nextTrapAt <= 0 && !runway && !this.chasm) this.spawnTrap(v);
+    if (this.chasm && this.chasm.x + this.chasm.w < MILO_X - 40) { this.chasm = null; this.nextChasm = this.dist + CHASM_EVERY; }
+
+    // pickups
+    if (this.dist >= this.nextOrb && !this.chasm && !runway) {
+      this.pickups.push({ kind: 'orb', x, hy: 115 + Math.random() * 25, bob: 0 });
+      this.nextOrb = this.dist + 3600 + Math.random() * 2200;
+    }
+    if (this.dist >= this.nextWeapon && !this.weapon && !this.chasm && !runway) {
+      this.pickups.push({ kind: 'salt', x: x + 120, hy: 22, bob: 0 });
+      this.nextWeapon = this.dist + 2600 + Math.random() * 1600;
+    }
+  }
+
+  spawnTrap(v) {
+    const roll = Math.random();
+    const w = this.dist < 1500 ? { grave: 4, branch: 4, hands: 1, pit: 0, crate: 1.5, ghoul: 0 }
+            : this.dist < 4000 ? { grave: 3, branch: 3, hands: 2, pit: 1.5, crate: 2, ghoul: 2 }
+            : { grave: 2, branch: 3, hands: 2.5, pit: 2.5, crate: 2, ghoul: 2.5 };
+    const last2 = this.lastKinds;
+    if (last2.length === 2 && last2[0] === last2[1]) w[last2[0]] = 0;
+    let total = 0; for (const k in w) total += w[k];
+    let r = roll * total, kind = 'grave';
+    for (const k in w) { r -= w[k]; if (r <= 0) { kind = k; break; } }
+    this.lastKinds = [...last2, kind].slice(-2);
+    const x = W + 40;
+    let tr;
+    if (kind === 'grave') tr = { kind, x, w: 30, h: 44 };
+    if (kind === 'branch') tr = { kind, x, w: 70, h: 26, top: GROUND_Y - 58 };
+    if (kind === 'hands') tr = { kind, x, w: 120, h: 26 };
+    if (kind === 'pit') tr = { kind, x, w: Phaser.Math.Clamp(v * 0.24, 90, 160), h: 0 };
+    if (kind === 'crate') tr = { kind, x, w: 40, h: 40, hp: 2 };                 // jump it or shoot it
+    if (kind === 'ghoul') tr = { kind, x, w: 28, h: 48, hp: 2, vx: 70 };        // walks at you
+    this.traps.push(tr);
+    const minGap = v * 0.6 + tr.w, maxGap = v * 1.15 + tr.w;
+    this.nextTrapAt = Phaser.Math.Between(minGap, maxGap);
+    if (this.dist > 1800 && Math.random() < 0.3) this.nextTrapAt = v * 0.8 + tr.w;
+  }
+
+  spawnAir(v, dt) {
+    this.airNextAt -= v * dt;
+    if (this.airNextAt > 0) return;
+    const roll = Math.random();
+    const kind = roll < 0.45 ? 'bats' : roll < 0.75 ? 'beam' : 'banshee';
+    const x = W + 30;
+    if (kind === 'bats') {
+      const n = 2 + Math.floor(Math.random() * 3), hy = 60 + Math.random() * 220;
+      for (let i = 0; i < n; i++) this.airs.push({ kind: 'bat', x: x + i * 34, hy: hy + (i % 2) * 26, w: 20, h: 14, vx: 90, hp: 1, bob: i });
+    }
+    if (kind === 'beam') {
+      // spirit beam: telegraph, then a full-width line. Leave a safe band somewhere.
+      const hy = 40 + Math.random() * 260;
+      this.airs.push({ kind: 'beam', hy, w: W, h: 14, t: 0, warn: 0.9, on: 0.7 });
+    }
+    if (kind === 'banshee') this.airs.push({ kind: 'banshee', x, hy: 80 + Math.random() * 200, w: 38, h: 46, vx: 170, bob: 0 });
+    this.airNextAt = v * (0.55 + Math.random() * 0.45);
+  }
+
+  // ---------- weapon: salt shotgun, aims and fires on its own ----------
+  weaponStep(dt) {
+    for (const p of this.pellets) { p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; }
+    this.pellets = this.pellets.filter((p) => p.life > 0 && !p.gone);
+    if (!this.weapon) return;
+    const wp = this.weapon;
+    wp.t -= dt; wp.cd -= dt;
+    if (wp.t <= 0 || wp.ammo <= 0) { this.weapon = null; this.popup('SALT GONE', 0.6); return; }
+    if (wp.cd > 0) return;
+    const mx = MILO_X + 10, my = GROUND_Y - this.y - MILO_H * 0.55;
+    let target = null, bestD = SALT_RANGE;
+    const consider = (cx, cy) => { const d = Math.hypot(cx - mx, cy - my); if (cx > mx - 5 && d < bestD) { bestD = d; target = { cx, cy }; } };
+    for (const o of this.traps) if (o.hp > 0) consider(o.x + o.w / 2, GROUND_Y - o.h / 2);
+    for (const o of this.airs) if (o.hp > 0) consider(o.x + o.w / 2, GROUND_Y - o.hy - o.h / 2);
+    if (!target) return;
+    const a = Math.atan2(target.cy - my, target.cx - mx);
+    for (const s of [-0.13, 0, 0.13]) this.pellets.push({ x: mx, y: my, vx: Math.cos(a + s) * PELLET_V, vy: Math.sin(a + s) * PELLET_V, life: SALT_RANGE / PELLET_V + 0.05 });
+    wp.cd = SALT_CD; wp.ammo--;
+  }
+
+  // ---------- collisions ----------
+  miloBox() {
+    const h = this.flying ? MILO_H : this.slide > 0 && this.grounded ? MILO_SLIDE_H : (this.slide > 0 ? MILO_H * 0.7 : MILO_H);
+    const bottom = GROUND_Y - this.y;
+    return { l: MILO_X - MILO_W / 2 + 3, r: MILO_X + MILO_W / 2 - 3, t: bottom - h + 3, b: bottom - 3 };
+  }
+
+  trapBox(o) {
+    if (o.kind === 'branch') return { l: o.x, r: o.x + o.w, t: o.top, b: o.top + o.h };
+    return { l: o.x, r: o.x + o.w, t: GROUND_Y - o.h, b: GROUND_Y };
+  }
+
+  airBox(o) {
+    if (o.kind === 'beam') return { l: 0, r: W, t: GROUND_Y - o.hy - o.h / 2, b: GROUND_Y - o.hy + o.h / 2 };
+    return { l: o.x, r: o.x + o.w, t: GROUND_Y - o.hy - o.h, b: GROUND_Y - o.hy };
+  }
+
+  kill(o, x, y) {
+    o.gone = true; this.kills++; this.poof(x, y);
+    if (o.kind !== 'crate' || Math.random() < 0.5) this.candles.push({ x, y });
+  }
+
+  collide() {
+    // pellets vs targets
+    for (const p of this.pellets) {
+      for (const o of this.traps) {
+        if (!(o.hp > 0) || o.gone) continue;
+        const b = this.trapBox(o);
+        if (p.x > b.l && p.x < b.r && p.y > b.t && p.y < b.b) {
+          p.gone = true; o.hp--; o.flashT = 0.08;
+          if (o.hp <= 0) this.kill(o, o.x + o.w / 2, GROUND_Y - o.h / 2);
+          break;
+        }
+      }
+      if (p.gone) continue;
+      for (const o of this.airs) {
+        if (!(o.hp > 0) || o.gone) continue;
+        const b = this.airBox(o);
+        if (p.x > b.l && p.x < b.r && p.y > b.t && p.y < b.b) {
+          p.gone = true; o.hp--;
+          if (o.hp <= 0) this.kill(o, o.x + o.w / 2, (b.t + b.b) / 2);
+          break;
+        }
+      }
+    }
+    const m = this.miloBox();
+    // pickups
+    for (const o of this.pickups) {
+      const r = o.kind === 'orb' ? 22 : 16;
+      const cy = GROUND_Y - o.hy;
+      const b = { l: o.x - r, r: o.x + r, t: cy - r, b: cy + r };
+      if (!overlap(m, b)) continue;
+      o.gone = true;
+      if (o.kind === 'orb' && !this.flying) this.startFlight('orb');
+      if (o.kind === 'salt') { this.weapon = { ammo: SALT_AMMO, t: SALT_TIME, cd: 0 }; this.popup('SALT SHOTGUN', 0.8); }
+    }
+    // candles
+    for (const c of this.candles) {
+      if (Math.abs(c.x - MILO_X) < 20 && Math.abs(c.y - (m.t + m.b) / 2) < 30) {
+        c.gone = true;
+        if (this.flying) this.landingGap = Math.min(MAX_GAP, this.landingGap + CANDLE_PUSH);
+        else this.gap = Math.min(MAX_GAP, this.gap + CANDLE_PUSH);
+      }
+    }
+    if (this.invuln > 0) return;
+    if (!this.flying) {
+      for (const o of this.traps) {
+        if (o.hit || o.gone || o.kind === 'pit' || o.kind === 'chasm') continue;
+        if (overlap(m, this.trapBox(o))) { o.hit = true; this.stumble(); return; }
+      }
+    } else {
+      for (const o of this.airs) {
+        if (o.gone) continue;
+        if (o.kind === 'beam' && o.t < o.warn) continue; // only the telegraph, not live yet
+        if (overlap(m, this.airBox(o))) { this.airHit(o); return; }
+      }
+    }
+  }
+
+  stumble() {
+    if (this.t - this.lastStumble < STUMBLE_COMBO) return this.getCaught('two stumbles in a row');
+    this.lastStumble = this.t; this.stumbles++;
+    this.slowAmt = 1; this.slowT = 0; this.invuln = 0.5; this.flash = 1;
+    this.cameras.main.shake(160, 0.008);
+  }
+
+  airHit(o) {
+    // in the air the creature can't reach you, but every hit means it's closer when you land
+    this.airHits++;
+    this.landingGap -= AIR_HIT_COST;
+    if (this.flyKind === 'orb') this.flyT -= 1.5;
+    this.invuln = 0.9; this.flash = 1;
+    if (o.kind === 'bat') { o.gone = true; this.poof(o.x, GROUND_Y - o.hy); }
+    this.cameras.main.shake(160, 0.008);
+    if (this.landingGap < LAND_GAP_MIN - AIR_HIT_COST * 1.5) this.landingGap = LAND_GAP_MIN - AIR_HIT_COST * 1.5;
+  }
+
+  getCaught(cause) {
+    this.state = 'caught'; this.cause = cause;
+    this.cameras.main.shake(300, 0.018); this.flash = 1;
+    const m = Math.floor(this.dist / PX_PER_M);
+    const newBest = m > best;
+    if (newBest) { best = m; try { localStorage.setItem('ghostline-protoB-best', String(m)); } catch (e) {} }
+    this.big.setText(`CAUGHT\n${m} m${newBest ? '  NEW BEST' : ''}`);
+    this.hint.setText(`${cause}\n\njump to run again`);
+  }
+
+  // ---------- drawing (grey boxes) ----------
+  render() {
+    const g = this.g;
+    g.clear();
+    g.fillStyle(this.flying ? 0x1d2030 : 0x1b1b22).fillRect(0, 0, W, H);
+    g.fillStyle(0x3a3a44).fillRect(0, GROUND_Y, W, H - GROUND_Y);
+    g.fillStyle(0x4a4a55);
+    const off = this.dist % 80;
+    for (let x = -off; x < W; x += 80) g.fillRect(x, GROUND_Y + 8, 30, 4);
+
+    // ground traps
+    for (const o of this.traps) {
+      if (o.kind === 'pit' || o.kind === 'chasm') {
+        g.fillStyle(0x060608).fillRect(o.x, GROUND_Y, o.w, H - GROUND_Y);
+        if (o.kind === 'chasm') { g.fillStyle(0x8a7a9a).fillRect(o.x - 4, GROUND_Y - 2, 4, 20); g.fillRect(o.x + o.w, GROUND_Y - 2, 4, 20); }
+        continue;
+      }
+      const hitCol = 0x666666;
+      if (o.kind === 'grave') g.fillStyle(o.hit ? hitCol : 0xa0a0a8).fillRect(o.x, GROUND_Y - o.h, o.w, o.h);
+      if (o.kind === 'branch') {
+        g.fillStyle(0x5a4a3a).fillRect(o.x + o.w / 2 - 4, 0, 8, o.top);
+        g.fillStyle(o.hit ? hitCol : 0xb08a5a).fillRect(o.x, o.top, o.w, o.h);
+      }
+      if (o.kind === 'hands') {
+        g.fillStyle(o.hit ? hitCol : 0x8fb08a);
+        for (let i = 0; i < 4; i++) g.fillRect(o.x + 6 + i * 29, GROUND_Y - o.h + (i % 2) * 6, 14, o.h - (i % 2) * 6);
+      }
+      if (o.kind === 'crate') {
+        g.fillStyle(o.hit ? hitCol : (o.flashT > 0 ? 0xffffff : 0x9a6a3a)).fillRect(o.x, GROUND_Y - o.h, o.w, o.h);
+        g.fillStyle(0x5a3a1a).fillRect(o.x + 4, GROUND_Y - o.h + 4, o.w - 8, 4).fillRect(o.x + 4, GROUND_Y - 8, o.w - 8, 4);
+      }
+      if (o.kind === 'ghoul') {
+        const bob = Math.sin(this.t * 10 + o.x * 0.05) * 2;
+        g.fillStyle(o.hit ? hitCol : (o.flashT > 0 ? 0xffffff : 0x6f9a6a)).fillRect(o.x, GROUND_Y - o.h + bob, o.w, o.h - bob);
+        g.fillStyle(0xffe070).fillRect(o.x + 4, GROUND_Y - o.h + 10 + bob, 5, 5).fillRect(o.x + 14, GROUND_Y - o.h + 10 + bob, 5, 5);
+      }
+      if (o.flashT > 0) o.flashT -= 1 / 60;
+    }
+
+    // pickups
+    for (const o of this.pickups) {
+      const cy = GROUND_Y - o.hy + Math.sin(o.bob * 4) * 5;
+      if (o.kind === 'orb') {
+        g.fillStyle(0x9fe8ff, 0.25).fillCircle(o.x, cy, 30);
+        g.fillStyle(0xdff8ff).fillCircle(o.x, cy, 16);
+        g.fillStyle(0x223344).fillRect(o.x - 6, cy - 4, 3, 5).fillRect(o.x + 3, cy - 4, 3, 5);
+      } else {
+        g.fillStyle(0xf0f0f0).fillRect(o.x - 14, cy - 12, 28, 24);
+        g.fillStyle(0x333333).fillRect(o.x - 8, cy - 2, 16, 4);
+      }
+    }
+
+    // air traps
+    for (const o of this.airs) {
+      const b = this.airBox(o);
+      if (o.kind === 'beam') {
+        if (o.t < o.warn) { if (Math.floor(o.t * 10) % 2 === 0) g.fillStyle(0xff6060, 0.6).fillRect(0, (b.t + b.b) / 2 - 1, W, 2); }
+        else g.fillStyle(0xff5050).fillRect(0, b.t, W, b.b - b.t).fillStyle(0xffd0d0).fillRect(0, b.t + 4, W, b.b - b.t - 8);
+      }
+      if (o.kind === 'bat') {
+        const flap = Math.sin(o.bob * 18) * 5;
+        g.fillStyle(0xa070c0).fillRect(b.l + 6, b.t, 8, b.b - b.t).fillRect(b.l, b.t + 3 + flap, 20, 4);
+      }
+      if (o.kind === 'banshee') {
+        g.fillStyle(0xb8d0e8, 0.85).fillRect(b.l, b.t, o.w, o.h);
+        g.fillStyle(0x223344).fillRect(b.l + 8, b.t + 12, 6, 8).fillRect(b.l + 22, b.t + 12, 6, 8).fillRect(b.l + 12, b.t + 26, 12, 10);
+      }
+    }
+
+    // candles
+    g.fillStyle(0xffd060);
+    for (const c of this.candles) g.fillRect(c.x - 4, c.y - 8, 8, 14);
+
+    // pellets
+    g.fillStyle(0xffffff);
+    for (const p of this.pellets) g.fillRect(p.x - 2, p.y - 2, 4, 4);
+
+    // poofs
+    for (const p of this.poofs) { g.fillStyle(0xe8e8f0, 1 - p.t / 0.35).fillCircle(p.x, p.y, 8 + p.t * 60); }
+
+    this.drawCreature(g);
+
+    // Milo (+ Boo carrying him)
+    const m = this.miloBox();
+    const blink = this.invuln > 0 && Math.floor(this.invuln * 20) % 2 === 0;
+    if (!blink) g.fillStyle(this.state === 'caught' ? 0x884444 : 0x6fa8ff).fillRect(m.l - 3, m.t - 3, m.r - m.l + 6, m.b - m.t + 6);
+    if (this.flying) {
+      const bx = MILO_X, by = m.t - 26 + Math.sin(this.t * 8) * 2;
+      g.fillStyle(0xe8f6ff).fillRect(bx - 22, by - 14, 44, 26).fillRect(bx - 18, by + 12, 8, 8).fillRect(bx + 10, by + 12, 8, 8);
+      g.fillStyle(0x223344).fillRect(bx - 9, by - 6, 5, 7).fillRect(bx + 4, by - 6, 5, 7);
+      if (this.flyKind === 'orb') { // flight timer under Boo
+        g.fillStyle(0x000000, 0.5).fillRect(bx - 24, by - 26, 48, 5);
+        g.fillStyle(this.flyT < 2.5 ? 0xffb040 : 0x9fe8ff).fillRect(bx - 24, by - 26, 48 * Math.max(0, this.flyT) / FLY_TIME, 5);
+      }
+    }
+    if (this.weapon) { g.fillStyle(0xf0f0f0).fillRect(m.r, m.t + 14, 16, 6); }
+
+    // danger edge + flash
+    const gapNow = this.flying ? this.landingGap : this.gap;
+    const near = Phaser.Math.Clamp(1 - (gapNow - 30) / (START_GAP - 30), 0, 1);
+    if (!this.flying) g.fillStyle(0xaa2222, near * 0.35).fillRect(0, 0, 40 + near * 80, H);
+    if (this.flash > 0) g.fillStyle(this.flying ? 0xffffff : 0xff3030, this.flash * 0.22).fillRect(0, 0, W, H);
+
+    // danger meter (in flight it shows how close it will be when you land)
+    g.fillStyle(0x000000, 0.5).fillRect(W - 232, 14, 214, 16);
+    g.fillStyle(near > 0.66 ? 0xff4040 : near > 0.33 ? 0xffb040 : 0x60d060, this.flying ? 0.55 : 1).fillRect(W - 230, 16, 210 * near, 12);
+
+    // popup text
+    if (this.pop.t > 0) {
+      const k = this.pop.t / this.pop.max;
+      this.popText.setText(this.pop.text).setAlpha(Math.min(1, k * 3)).setScale(1 + (1 - k) * 0.25 + (k > 0.85 ? (k - 0.85) * 2 : 0));
+    } else this.popText.setText('');
+
+    const m2 = Math.floor(this.dist / PX_PER_M);
+    const recovering = this.t - this.lastStumble < STUMBLE_COMBO;
+    const mode = this.flying ? (this.flyKind === 'orb' ? `FLYING (Boo orb, ${Math.max(0, this.flyT).toFixed(1)} s)` : 'FLYING (flight section)') : 'RUNNING';
+    this.debug.setText([
+      `PROTOTYPE B   ${m2} m   best ${best} m   ${mode}`,
+      `speed  ${(this.flying ? this.baseSpeed * 1.08 : this.speed()).toFixed(0)} px/s`,
+      this.flying ? `creature when you land  ${Math.max(0, Math.max(LAND_GAP_MIN, this.landingGap) - 30).toFixed(0)} px   air hits ${this.airHits}`
+                  : `creature distance  ${Math.max(0, this.gap - 30).toFixed(0)} px${this.catchUpT > 0 ? '   (sprinting)' : ''}`,
+      `stumbles ${this.stumbles}${recovering && this.stumbles && !this.flying ? '  CAREFUL' : ''}   kills ${this.kills}   flights ${this.flights}`,
+      this.weapon ? `salt shotgun  ${this.weapon.ammo} shots  ${this.weapon.t.toFixed(0)} s` : '',
+    ].join('\n'));
+    if (!this.started && this.state === 'run') this.big.setText('RUN.');
+    else if (this.state === 'run') this.big.setText('');
+  }
+
+  drawCreature(g) {
+    let cx, jumpY = 0, armUp = 0, fours;
+    const near = Phaser.Math.Clamp(1 - (this.gap - 30) / (START_GAP - 30), 0, 1);
+    if (this.flying) {
+      // it can't follow: it jumps and reaches up, then falls behind
+      const t = this.creatureFlyT;
+      cx = this.creatureFlyX + Math.min(t, 0.5) * 120 - Math.max(0, t - 1.4) * 320;
+      if (t < 1.4) { jumpY = Math.abs(Math.sin(t * Math.PI / 0.7)) * 70; armUp = 1; }
+      fours = false;
+      if (cx < -120) return;
+    } else {
+      const target = MILO_X - this.gap + this.creatureLunge * (this.gap - 10);
+      cx = Phaser.Math.Linear(-140, target, Phaser.Math.Easing.Cubic.Out(this.creatureReturn));
+      fours = this.slowAmt > 0 || near > 0.6 || this.catchUpT > 0;
+    }
+    const bob = Math.sin(this.t * 14) * 4 - jumpY;
+    g.fillStyle(0x5a5466);
+    if (fours) {
+      g.fillRect(cx - 70, GROUND_Y - 62 + bob, 70, 26);
+      g.fillRect(cx - 66, GROUND_Y - 36, 8, 36); g.fillRect(cx - 12, GROUND_Y - 36, 8, 36);
+      g.fillStyle(0xeeeeee).fillRect(cx - 4, GROUND_Y - 72 + bob, 22, 26);
+      g.fillStyle(0x111111).fillRect(cx, GROUND_Y - 56 + bob, 18, 3);
+    } else {
+      g.fillRect(cx - 24, GROUND_Y - 150 + bob, 18, 110);
+      g.fillRect(cx - 26, GROUND_Y - 40 + bob, 6, 40); g.fillRect(cx - 10, GROUND_Y - 40 + bob, 6, 40);
+      if (armUp) g.fillRect(cx - 4, GROUND_Y - 260 + bob, 6, 120); // reaching straight up
+      else g.fillRect(cx - 8, GROUND_Y - 140 + bob, 44 + near * 30, 6);
+      g.fillStyle(0xeeeeee).fillRect(cx - 28, GROUND_Y - 178 + bob, 26, 30);
+      g.fillStyle(0x111111).fillRect(cx - 24, GROUND_Y - 160 + bob, 18, 3);
+    }
+  }
+}
+
+window.__game = new Phaser.Game({
+  type: Phaser.AUTO,
+  parent: 'game',
+  width: W, height: H,
+  backgroundColor: '#111111',
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  scene: [Run],
+});
+})();
+</script>
+</body>
+</html>
