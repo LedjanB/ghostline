@@ -2,7 +2,7 @@
 import { W, H, CHARACTERS, PX_PER_METER, GIFT_HOURS, ZONES } from '../data.js';
 import { ZoneLayers } from '../zones.js';
 import { WorldLook } from '../looks.js';
-import { LOOKS, owned, PAGES } from '../unlocks.js';
+import { LOOKS, owned as ownedItems, PAGES } from '../unlocks.js';
 import { todayKey } from '../run-features.js';
 import { Save } from '../save.js';
 import { Audio } from '../audio.js';
@@ -217,7 +217,7 @@ export class MenuScene extends Phaser.Scene {
       : daily ? 'DAILY: RACE TODAY\'S GHOST' : endless ? 'ENDLESS: BEYOND THE DOOR' : save.ending.seen ? 'THE DOOR IS OPEN' : "DON'T LOOK BACK");
     const todayBest = save.daily.date === todayKey() ? save.daily.best : 0;
     if (daily) this.bestText.setText(`TODAY ${todayBest}M`);
-    const pages = owned(save.unlocks.got).pages.length;
+    const pages = ownedItems(save.unlocks.got).pages.length;
     this.doorText.setText(save.ending.seen ? 'THE DOOR IS OPEN' : pages ? `THE DOOR: ${pages}/${PAGES.length} PAGES` : '');
     this.missionsBtn.setLabel('MISSIONS');
     const fresh = save.unlocks.fresh;
