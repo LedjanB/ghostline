@@ -78,7 +78,8 @@ export class OverScene extends Phaser.Scene {
 
     this.inputMap = createInput(this);
     this.ready = false;
-    this.time.delayedCall(this.cards.length ? 1100 : 500, () => this.nextCard());
+    // the results stay readable for a moment before any card covers them
+    this.time.delayedCall(this.cards.length ? 2600 : 500, () => this.nextCard());
   }
 
   // ---------- reveal cards ----------
@@ -88,7 +89,7 @@ export class OverScene extends Phaser.Scene {
     if (!c) { this.showButtons(); return; }
     const objs = [];
     const add = (o) => { objs.push(o); return o; };
-    add(this.add.rectangle(0, 0, W, H, 0x07060d).setOrigin(0).setAlpha(0.85).setInteractive().setDepth(50));
+    add(this.add.rectangle(0, 0, W, H, 0x07060d).setOrigin(0).setAlpha(0.95).setInteractive().setDepth(50));
     const box = add(this.add.rectangle(W / 2, H / 2, 420, 260, 0x1d1436).setStrokeStyle(3, 0xffd75e).setDepth(51));
     const rays = add(this.add.image(W / 2, H / 2 - 20, 'glow').setScale(4).setBlendMode(Phaser.BlendModes.ADD).setTint(0xffb0e0).setAlpha(0.35).setDepth(51));
     this.tweens.add({ targets: rays, scale: 4.6, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });

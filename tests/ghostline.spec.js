@@ -170,7 +170,7 @@ test('every run unlocks something, new hats and trails go straight on Boo', asyn
   expect(save.unlocks.got).toBeGreaterThanOrEqual(1);
   expect(save.boo.trail).toBe('ember');
   expect(save.bestScore).toBeGreaterThan(0);
-  await page.waitForTimeout(1300);
+  await page.waitForTimeout(2900); // the results stay readable for 2.6 s before the first card
   expect(await page.evaluate(() => !!window.__game.scene.getScene('over').card)).toBe(true);
   expect(errors).toEqual([]);
 });

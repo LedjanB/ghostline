@@ -252,7 +252,7 @@ export const Features = {
   renderBubble() {
     if (!this.bubble) return;
     const half = this.bubble[0].width / 2 + 8;
-    const x = Math.min(W - half, Math.max(half, this.ghost.x + 40)), y = Math.max(60, this.ghost.y - 34);
+    const x = Math.min(W - half, Math.max(half, this.ghost.x + 40)), y = Math.max(this.runner ? 82 : 60, this.ghost.y - 34); // v6: never over the score row
     this.bubble[0].setPosition(x, y); this.bubble[1].setPosition(x, y + 1); this.bubble[2].setPosition(x - 26, y + 16);
     if (this.clock > this.bubbleUntil) { this.bubble.forEach((o) => o.destroy()); this.bubble = null; }
   },

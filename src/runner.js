@@ -136,6 +136,7 @@ export const RunnerFeatures = {
     this.gateShade = this.add.graphics().setDepth(4.48); this.gateShadeHi = this.add.graphics().setDepth(15.6);
     // the death scene: room dims under the actors, the arm sits on THE STRETCH, the dark wall swallows both
     this.grabDim = this.add.graphics().setDepth(9.6);
+    this.hurtGfx = this.add.graphics().setDepth(19.5).setAlpha(0);
     this.grabGfx = this.add.graphics().setDepth(9.72);
     this.grabDark = this.add.graphics().setDepth(25);
     this.player.setScale(MILO_SCALE); // the dark it brings with it: backgrounds only, under every hazard
@@ -197,6 +198,7 @@ export const RunnerFeatures = {
 
   startRun() {
     this.started = true;
+    this.headUntil = Math.max(this.headUntil, this.clock + 0.5); // the world title waits for the controls to clear
     this.tweens.killTweensOf([this.tutorial, this.tutorial2]);
     this.tweens.add({ targets: [this.tutorial, this.tutorial2], alpha: 0, y: '-=20', duration: 400, onComplete: () => { this.tutorial.destroy(); this.tutorial2.destroy(); } });
   },
@@ -238,6 +240,8 @@ export const RunnerFeatures = {
     const win = comboWindow(this.runDiff), since = this.clock - this.lastStumble;
     const strike = !this.flying && since < win && this.stumbles > 0 ? Math.round((1 - since / win) * 20) / 20 : null;
     if (strike !== this.lastStrike) { this.lastStrike = strike; this.events.emit('strike', strike); }
+    // while one more stumble gets you, the meter says so: it drops near empty and refills as the danger passes
+    if (strike !== null) this.light = Math.min(this.light, 0.1 + 0.9 * (1 - strike));
     this.lungeT += dt;
     this.stumbleT = Math.max(0, this.stumbleT - dt);
   },
@@ -281,7 +285,7 @@ export const RunnerFeatures = {
     this.deathCause = kind;
     Audio.sfx('stumble');
     this.shake(160, 0.008);
-    this.flash(90, 255, 60, 90);
+    this.hurtEdge();
     this.burst(PLAYER_X + 8, FLOOR - 6, 0x8a8a9a, 8, 30, 300);
     this.popup(this.gap - RUN.CAUGHT < 45 ? 'IT\'S RIGHT BEHIND YOU' : 'STUMBLE!', '#ff8a9a');
     this.stumbleT = 0.4; // the stumble pose (render)
@@ -321,6 +325,24 @@ export const RunnerFeatures = {
     this.tweens.add({ targets: t, alpha: 0, delay: 1400, duration: 400, onComplete: () => t.destroy() });
   },
 
+  // a hit: a short red edge round the screen instead of a full-screen flash, so Milo and the
+  // hazards stay readable (testers lost both under the old wash)
+  hurtEdge() {
+    const g = this.hurtGfx;
+    if (!g.drawn) {
+      g.drawn = true;
+      for (let i = 0; i < 6; i++) {
+        const a = 0.55 * (1 - i / 6), w = 6;
+        g.fillStyle(0xff2244, a);
+        g.fillRect(i * w, 0, w, H); g.fillRect(W - (i + 1) * w, 0, w, H);
+        g.fillRect(0, i * w, W, w); g.fillRect(0, H - (i + 1) * w, W, w);
+      }
+    }
+    this.tweens.killTweensOf(g);
+    g.setAlpha(1);
+    this.tweens.add({ targets: g, alpha: 0, duration: 220, ease: 'Quad.easeIn' });
+  },
+
   // ---------------- the death scene ----------------
   // 0-0.3 s the arm shoots out; 0.3-0.8 it lifts Milo, kicking; 0.8-1.2 it holds him up and grins;
   // 1.2-2.0 it pulls him back into the dark, which closes over the screen. Then the results.
@@ -330,6 +352,12 @@ export const RunnerFeatures = {
     this.speed *= Math.exp(-7 * dt); if (this.speed < 8) this.speed = 0;
     if (g.t > 0.3 && !g.hit) { g.hit = true; Audio.sfx('stumble'); this.shake(120, 0.008); this.buzz(80); }
     if (g.t > 0.85 && !g.roared) { g.roared = true; Audio.sfx('roar'); this.shake(260, 0.006); }
+    if (g.t > 1.2 && !g.hushed) { // the HUD and Boo's bubble go too: only the dark and the grin
+      g.hushed = true;
+      const hud = this.scene.get('hud');
+      if (hud && hud.cameras && hud.cameras.main) this.tweens.add({ targets: hud.cameras.main, alpha: 0, duration: 300 });
+      if (this.bubble) this.tweens.add({ targets: this.bubble, alpha: 0, duration: 200 });
+    }
     if (g.t > 2.1 && !this.ended) { this.ended = true; this.time.delayedCall(250, () => this.afterDeath()); }
   },
 
@@ -438,8 +466,8 @@ export const RunnerFeatures = {
     const x0 = W + 60, gc = sp.gates[sp.i++];
     const half = sp.half;
     const beam = (y1, y2) => this.spawnBeam(x0, 0, Math.PI / 2, false, (y1 + y2) / 2, null, y2 - y1);
-    beam(CEIL + 6, gc - half);
-    beam(gc + half, FLOOR - 6);
+    beam(CEIL + 22, gc - half); // the top node stays clear of the HUD row
+    beam(gc + half, FLOOR - 8);
     for (let k = -1; k <= 1; k++) this.addCandle(x0 + k * 40, gc);
     // candles bend from this gap to the next so the line is easy to follow
     const next = sp.gates[sp.i];
@@ -496,7 +524,7 @@ export const RunnerFeatures = {
     this.breakCombo();
     this.deathCause = kind;
     Audio.sfx('stumble');
-    this.shake(160, 0.008); this.flash(90, 255, 60, 90);
+    this.shake(160, 0.008); this.hurtEdge();
     this.burst(PLAYER_X, this.py, 0xcfe0ff, 10, 40, 400);
     const left = this.landingGap - RUN.CAUGHT;
     this.popup(left <= 0 ? 'IT WILL CATCH YOU' : left < 40 ? 'CAREFUL!' : 'OUCH!', '#ff8a9a');
@@ -683,7 +711,9 @@ export const RunnerFeatures = {
     const type = zoneAt(this.zoneIndex).swing;
     const s = this.add.image(x0, CEIL, type).setScale(2).setOrigin(0.5, 0).setDepth(6);
     const info = { lamp: { off: 9, r: 14, glow: 0xfff2b0 }, axe: { off: 17, r: 14, glow: null }, hook: { off: 18, r: 10, glow: null } }[type];
-    const glow = info.glow ? this.add.image(x0, CEIL, 'glow').setScale(1.4).setDepth(21).setBlendMode(Phaser.BlendModes.ADD).setTint(info.glow).setAlpha(0.4) : null;
+    // hooks and axes are grey on grey rooms: they get a warning glow so they read as danger
+    const glow = this.add.image(x0, CEIL, 'glow').setScale(info.glow ? 1.4 : 1.0).setDepth(21).setBlendMode(Phaser.BlendModes.ADD)
+      .setTint(info.glow || this.hz.warn).setAlpha(info.glow ? 0.4 : 0.55);
     const len = FLOOR - CEIL - 20 - info.off - info.r; // lowest swing: through standing height, over a slide
     this.swings.push({ x: x0, len, type, s, glow, info, th: 0, amp: this.rand.range(0.32, 0.45), w: this.rand.range(2.2, 2.8), phase: this.rand.range(0, Math.PI * 2), lastSign: 0, ground: true });
   },
@@ -1223,7 +1253,7 @@ export const RunnerFeatures = {
     // cover the ceiling and floor seams; the sign sits over the door, out of the HUD row.
     const body = this.gate.parts[0];
     if (body.depth !== 4.47) body.setDepth(4.47);
-    const x0 = body.x - 80, x1 = body.x + 80, ramp = 130;
+    const x0 = body.x - 80, x1 = body.x + 80, ramp = 210;
     // shade the wall itself so it sits back with the dark rooms (a tint alone left it pale), and the
     // trims over the ceiling and floor even more, so they read as a lintel and a threshold
     const sh = this.gateShade.clear();
@@ -1231,7 +1261,7 @@ export const RunnerFeatures = {
     const hi = this.gateShadeHi.clear();
     hi.fillStyle(0x07060d, 0.72); hi.fillRect(x0, 0, 160, CEIL); hi.fillRect(x0, FLOOR, 160, H - FLOOR);
     for (let i = 0; i < 13; i++) { // the shadow the wall throws on both sides hides the zone seam
-      const a = 0.7 * (1 - i / 13), w = ramp / 13;
+      const a = 0.9 * Math.pow(1 - i / 13, 1.4), w = ramp / 13;
       g.fillStyle(0x07060d, a);
       g.fillRect(x0 - (i + 1) * w, CEIL, w + 0.5, FLOOR - CEIL);
       g.fillRect(x1 + i * w, CEIL, w + 0.5, FLOOR - CEIL);

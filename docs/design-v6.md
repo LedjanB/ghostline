@@ -86,6 +86,11 @@ If both prototypes pass, the real build reuses the v5 systems and replaces the r
 - Flights: rare but long. A flight section every other world (6.5 s), a Boo orb about every 1,400 to 2,000 m (8 s).
 - THE STRETCH stays scary-funny. Release on web and itch first. Phase 1 = fix v6 (story, missions, perks, charms,
   flights, creature sounds, safer first runs).
+- Phase 2 (vertical slice, worlds 1 and 2): Milo run/jump/fall/stumble frames, THE STRETCH 4-step walk, the grab
+  death scene, the ward's hand-made flight (THREAD THE NEEDLE), shaded gates with the world's giant behind them,
+  dust instead of rain indoors, one new system per run, a red edge instead of a full-screen hit flash, the meter
+  drops while one more stumble gets you, results readable before the level-up cards. AI testers: 6, 6, 6 out of 10
+  (round 2 was 5, 5, 4), all three would run again.
 
 ## Open questions
 - The creature's final name and look
