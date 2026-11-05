@@ -285,7 +285,8 @@ export class PlayScene extends Phaser.Scene {
       if (this.nextAutosave <= 0) { this.nextAutosave = 10; this.saveCheckpoint(); }
     }
     this.emitHud(meters);
-    Audio.intensity(this.dead ? 0 : 0.2 + pace.diff * 0.9);
+    // v6: the drive layer follows THE STRETCH, not just the distance
+    Audio.intensity(this.dead ? 0 : Math.max(0.2 + pace.diff * 0.9, this.runner && !this.flying ? 0.25 + (1 - this.light) * 0.75 : 0));
     Audio.danger(!this.dead && (this.warnings.length > 0 || (this.runner && this.light < 0.3)));
   }
 

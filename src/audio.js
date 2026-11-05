@@ -370,6 +370,10 @@ export const Audio = {
       case 'jump': tone(t, 300, 0.12, 'square', 0.04 * vv, sfxBus, 620, dt); break;
       case 'slide': noise(t, 0.22, 0.05 * vv, sfxBus, 600, 'lowpass'); break;
       case 'stumble': noise(t, 0.12, 0.09, sfxBus, 400, 'lowpass'); tone(t, 180, 0.2, 'square', 0.06, sfxBus, 90); break;
+      // THE STRETCH: a heavy, soft step (louder the closer it is), a wet breath, a roar when you stumble
+      case 'step': { const v = opts.v ?? 0.5; tone(t, rand(55, 70), 0.09, 'triangle', 0.05 * v * vv, sfxBus, 40); noise(t, 0.05, 0.02 * v, sfxBus, 300, 'lowpass'); break; }
+      case 'breath': { const v = opts.v ?? 0.6; noise(t, 0.55, 0.035 * v, sfxBus, 700, 'bandpass'); noise(t + 0.6, 0.45, 0.025 * v, sfxBus, 500, 'bandpass'); break; }
+      case 'roar': tone(t, 220, 0.45, 'sawtooth', 0.05, sfxBus, 70, dt); noise(t, 0.35, 0.05, sfxBus, 500, 'lowpass'); break;
       case 'flame': noise(t, 0.16, 0.035 * vv, sfxBus, 900, 'lowpass'); break;
       case 'holy': tone(t, 880, 0.08, 'sine', 0.05 * vv, sfxBus, 1320, dt); noise(t, 0.06, 0.03, sfxBus, 4000); break;
       case 'salt': noise(t, 0.07, 0.07 * vv, sfxBus, 3000, 'highpass'); tone(t, 220, 0.06, 'square', 0.03, sfxBus, 110, dt); break;

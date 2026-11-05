@@ -79,6 +79,14 @@ Add the Boo orb, a flight section, and air traps when flying. Add one auto-fire 
 
 If both prototypes pass, the real build reuses the v5 systems and replaces the run itself.
 
+## Decisions (Nov 5)
+- **The ending is hard to reach.** It only opens after a long story across many runs: the door on the Other Side
+  needs every journal page (the full unlock track) AND a run that reaches the end of world 8. Most players will
+  need many hours. After it, endless mode. Built in phase 3 (alpha), see the review doc's roadmap.
+- Flights: rare but long. A flight section every other world (6.5 s), a Boo orb about every 1,400 to 2,000 m (8 s).
+- THE STRETCH stays scary-funny. Release on web and itch first. Phase 1 = fix v6 (story, missions, perks, charms,
+  flights, creature sounds, safer first runs).
+
 ## Open questions
 - The creature's final name and look
 - Does the LIGHT meter go away completely, or does the dark come back as part of the creature?

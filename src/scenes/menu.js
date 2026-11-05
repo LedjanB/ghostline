@@ -210,7 +210,7 @@ export class MenuScene extends Phaser.Scene {
     else if (daily) this.modeBtn.setColors(0x1f2a4a, 0x6fb7ff);
     else this.modeBtn.setColors(0x2a1f4a, 0x8f7fbf);
     this.subtitle.setText(creative ? "CREATIVE: YOU CAN'T LOSE"
-      : daily ? 'DAILY: RACE TODAY\'S GHOST' : "DON'T LET GO");
+      : daily ? 'DAILY: RACE TODAY\'S GHOST' : "DON'T LOOK BACK");
     const todayBest = save.daily.date === todayKey() ? save.daily.best : 0;
     if (daily) this.bestText.setText(`TODAY ${todayBest}M`);
     this.missionsBtn.setLabel('MISSIONS');

@@ -25,7 +25,7 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 - `src/looks.js` `WorldLook`: per-character color grade + signature effect (used by play and menu)
 - `src/run-features.js` mixed into PlayScene: pickups, lasers, ghouls, weather, giants, opening, daily ghost, Spirit Rush, Dark Chase, Boo quips, tips, spin/revive/finalize
 - `src/scenes/spin.js` Grave Spin; `missions.js`, `charms.js` menu overlays
-- `src/runner.js` (v6, branch `v6-runner`) mixed into PlayScene last: run/jump/slide, THE STRETCH chaser, ground traps, Boo flights (one chasm per world + rare orb; the v5 hazards are the air traps), one trap per world (`WORLD_TRAPS`), weapons (`WEAPONS`: salt, flame, holy, bone; Boo's ecto blaster in flight). Tuning in `RUN`
+- `src/runner.js` (v6, branch `v6-runner`) mixed into PlayScene last: run/jump/slide, THE STRETCH chaser, ground traps, Boo flights (a chasm every other world + a rare 8 s orb; the v5 hazards are the air traps), one trap per world (`WORLD_TRAPS`), weapons (`WEAPONS`: salt, flame, holy, bone; Boo's ecto blaster in flight). Tuning in `RUN`
 - `src/runner-art.js` THE STRETCH, ground and world traps, weapons, HUD face icon (pixel art)
 
 ## Rules

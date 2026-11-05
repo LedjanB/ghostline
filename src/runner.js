@@ -10,6 +10,7 @@ import { Audio } from './audio.js';
 import { text } from './ui.js';
 import { Features } from './run-features.js';
 import { Device } from './input.js';
+import { Save } from './save.js';
 
 const TOP = CEIL + 16;
 const BOTTOM = FLOOR - 16;   // Milo's centre when standing
@@ -26,10 +27,12 @@ export const RUN = {
   STUMBLE_COST: 40,          // px the creature gains per stumble
   CLEAN: 5,                  // px/s it falls back while you run clean
   CANDLE: 1.2, KILL: 8,
-  LAND_GAP: 86, AIR_HIT: 30, // flight: it waits where you land; each air hit = closer
-  ORB_TIME: 3.5,             // Boo orb flight (s): a short moment, not a level
-  CHASM_S: 2.6,              // flight section width in seconds of running
-  CHASM_AT_M: 220,           // one flight section per world, this far into it
+  LAND_GAP: 100, AIR_HIT: 30, // flight: it waits where you land; each air hit = 30 px closer (3 hits = caught)
+  ORB_TIME: 8,               // Boo orb flight (s): rare, but long enough to be a real moment
+  ORB_FIRST_M: 900, ORB_EVERY_M: [1800, 2600],
+  CHASM_S: 6.5,              // flight section width in seconds of running
+  CHASM_AT_M: 220,           // a flight section every other world (0, 2, 4, 6), this far into it
+  SAFE_RUNS: 3, SAFE_M: 300, // a player's first runs: Boo saves you until 300 m
 };
 // weapons (picked up during the run; each breaks after its time or ammo). They aim and fire on their own.
 export const WEAPONS = {
@@ -81,7 +84,23 @@ export const RunnerFeatures = {
     this.lastKinds = [];
     this.runDiff = 0;
     this.chasmZones = new Set(); this.chasm = null;
-    this.nextOrbX = this.worldX + 420 * PX_PER_METER;
+    this.nextOrbX = this.worldX + RUN.ORB_FIRST_M * PX_PER_METER;
+    this.cleanFromX = this.worldX;
+    this.stepT = 0; this.breathT = 0;
+    // perks (characters) and charms, v6 meanings
+    this.perk = {
+      startGap: this.char.id === 'nurse' ? 24 : 0,                         // Nurse Ivy: it starts further back
+      fly: (this.char.id === 'vampire' ? 1.5 : 1),                         // Count Vlad: Boo carries you longer
+      stumble: this.char.id === 'skeleton' ? 0.7 : 1,                      // Rattles: stumbles cost less
+      power: this.char.powerMul || 1,                                      // Fang: power-ups and weapons last longer
+      candle: this.charm.nightlight ? 2 : 1,                               // Night Light: candles push it back twice as far
+      flyPlus: this.charm.longrush ? 3 : 0,                                // Long Ride: +3 s per flight
+      jump: this.charm.bouncy ? 1.08 : 1,                                  // Bouncy Bones: jump higher
+    };
+    this.gap = RUN.START_GAP + this.perk.startGap; this.gapVis = this.gap;
+    // a player's first few runs are gentle: Boo saves you until 300 m
+    this.safeRun = !this.creative && !this.daily && (Save.get().runs || 0) < RUN.SAFE_RUNS;
+    this.rescues = 0;
     this.nextWeaponX = this.worldX + 90 * PX_PER_METER;
     this.crFlyT = 0; this.crFlyX = 0; this.crEnter = 1; this.catchUpT = 0;
     this.caughtBy = false;
@@ -132,7 +151,7 @@ export const RunnerFeatures = {
     }
     if (this.slide > 0) this.slide = Math.max(0, this.slide - dt);
     if (this.buffer > 0 && this.coyote > 0) {
-      this.vy = -JUMP_V; this.grounded = false; this.coyote = 0; this.buffer = 0; this.slide = 0;
+      this.vy = -JUMP_V * this.perk.jump; this.grounded = false; this.coyote = 0; this.buffer = 0; this.slide = 0;
       Audio.sfx('jump');
       this.tweens.add({ targets: this.player, scaleX: 1.7, scaleY: 2.4, duration: 70, yoyo: true, ease: 'Quad.easeOut' });
     }
@@ -175,7 +194,8 @@ export const RunnerFeatures = {
     if (!this.flying) {
       this.catchUpT = Math.max(0, this.catchUpT - dt);
       this.crEnter = Math.min(1, this.crEnter + dt * 1.7);
-      if (this.clock - this.lastStumble > 3 && this.catchUpT <= 0 && this.started && this.gap < maxGap(this.runDiff)) this.gap = Math.min(maxGap(this.runDiff), this.gap + cleanRate(this.runDiff) * dt);
+      const cap = maxGap(this.runDiff) + this.perk.startGap;
+      if (this.clock - this.lastStumble > 3 && this.catchUpT <= 0 && this.started && this.gap < cap) this.gap = Math.min(cap, this.gap + cleanRate(this.runDiff) * dt);
       // it sprints for a moment after you land, but the sprint alone never catches you
       if (this.catchUpT > 0 && this.gap > RUN.CAUGHT + 24) this.gap = Math.max(RUN.CAUGHT + 24, this.gap - 12 * dt);
       if (this.gap <= RUN.CAUGHT && this.openingDone) { this.caught('caught'); return; }
@@ -186,6 +206,24 @@ export const RunnerFeatures = {
     // the meter that used to be LIGHT now shows how close it is; the world darkens as it gets closer
     const g = this.flying ? this.landingGap : this.gap;
     this.light = Phaser.Math.Clamp((g - RUN.CAUGHT) / (RUN.START_GAP - RUN.CAUGHT), 0, 1);
+    this.tracker?.max('clean', Math.floor((this.worldX - this.cleanFromX) / PX_PER_METER));
+    this.stretchSounds(dt);
+  },
+
+  // audio-design: it is heard before it is seen. Steps get louder and faster as it closes in;
+  // it breathes when it's right behind you; silence while Boo carries you.
+  stretchSounds(dt) {
+    if (this.dead || !this.started) return;
+    const near = 1 - this.light;
+    if (this.flying) return;
+    const crawling = this.catchUpT > 0 || near > 0.6 || this.clock - this.lastStumble < 1.2;
+    this.stepT -= dt;
+    if (this.stepT <= 0) {
+      this.stepT = crawling ? 0.18 : 0.42 - near * 0.12;
+      Audio.sfx('step', { v: 0.25 + near * 0.75 });
+    }
+    this.breathT -= dt;
+    if (near > 0.55 && this.breathT <= 0) { this.breathT = 1.4; Audio.sfx('breath', { v: near }); }
   },
 
   stumble(kind) {
@@ -200,7 +238,10 @@ export const RunnerFeatures = {
     }
     if (this.clock - this.lastStumble < comboWindow(this.runDiff)) { this.caught('caught'); return; }
     this.lastStumble = this.clock; this.stumbles++;
-    this.gap -= stumbleCost(this.runDiff);
+    this.cleanFromX = this.worldX;
+    this.tracker?.add('stumbles', 1);
+    this.gap -= stumbleCost(this.runDiff) * this.perk.stumble;
+    Audio.sfx('roar');
     this.slowT = 0; this.invuln = 0.6;
     this.breakCombo();
     this.deathCause = kind;
@@ -215,6 +256,8 @@ export const RunnerFeatures = {
 
   caught(cause) {
     if (this.dead) return;
+    // first runs: until 300 m, Boo shoves it back (or pulls you out of the pit) instead of game over
+    if (this.safeRun && this.worldX / PX_PER_METER < RUN.SAFE_M) { this.rescue(cause); return; }
     if (this.creative) { // creative: Boo pulls you free, the creature is shoved back
       this.rebirth();
       this.gap = RUN.START_GAP; this.landingGap = RUN.LAND_GAP;
@@ -231,16 +274,33 @@ export const RunnerFeatures = {
     this.die();
   },
 
+  rescue(cause) {
+    this.rescues++;
+    this.invuln = 1.6; this.lastStumble = -99;
+    this.gap = Math.max(this.gap, RUN.CAUGHT + 46); this.gapVis = Math.min(this.gapVis, this.gap);
+    if (cause === 'pit' || this.py > BOTTOM) { this.py = BOTTOM - 70; this.vy = -380; this.grounded = false; this.dropPitUnderMilo(); }
+    Audio.sfx('grab'); this.shake(140, 0.006);
+    this.burst(PLAYER_X - 30, FLOOR - 40, 0xcfe0ff, 14, 50, 450);
+    this.ghostX = PLAYER_X - 40; this.ghostY = this.py - 30;
+    this.popup(cause === 'pit' ? 'BOO PULLED YOU OUT!' : 'BOO SHOVED IT BACK!', '#cfe0ff');
+    this.quip('shield', true);
+  },
+  dropPitUnderMilo() {
+    for (const t of this.traps) if (t.kind === 'pit') { const x = this.sx(t.wx); if (x < PLAYER_X + 20 && x + t.w > PLAYER_X - 20) this.dropTrap(t); }
+  },
+
   // candles push it back a little (in the air: it'll be a little further back when you land)
   candlePush() {
-    if (this.flying) this.landingGap = Math.min(RUN.START_GAP, this.landingGap + RUN.CANDLE);
-    else this.gap = Math.min(RUN.MAX_GAP, this.gap + RUN.CANDLE);
+    const k = RUN.CANDLE * this.perk.candle;
+    if (this.flying) this.landingGap = Math.min(RUN.START_GAP, this.landingGap + k);
+    else this.gap = Math.min(RUN.MAX_GAP + this.perk.startGap, this.gap + k);
   },
 
   // ---------------- Boo's flights ----------------
   startFlight(kind) {
     this.flying = true; this.flyKind = kind; this.flights++;
-    this.flyT = RUN.ORB_TIME; this.landingGap = RUN.LAND_GAP; this.airHits = 0;
+    this.flyT = RUN.ORB_TIME * this.perk.fly + this.perk.flyPlus; this.landingGap = RUN.LAND_GAP; this.airHits = 0;
+    this.tracker?.add('flights', 1);
     this.grounded = false; this.slide = 0;
     this.vy = -360;
     this.crFlyT = 0; this.crFlyX = PLAYER_X - this.gapVis;
@@ -286,6 +346,11 @@ export const RunnerFeatures = {
     if (this.chasm && this.sx(this.chasm.wx + this.chasm.w) < PLAYER_X) this.chasm = null;
     Audio.thrust(false);
     if (this.gap <= RUN.CAUGHT) { this.caught('caught'); return; }
+    if (this.airHits === 0) { // a clean flight earns real distance
+      this.tracker?.add('cleanLands', 1);
+      this.addCombo('power', PLAYER_X + 40, this.py - 40);
+      this.popup('CLEAN LANDING!', '#9fe8ff');
+    }
     this.flyPop(this.gap - RUN.CAUGHT < 40 ? 'IT\'S RIGHT THERE' : 'IT\'S COMING');
     this.quip('landed');
   },
@@ -324,19 +389,20 @@ export const RunnerFeatures = {
     this.runDiff = pace.diff;
     const spawnWX = this.worldX + (W + 40 - PLAYER_X);
     const zoneM = meters % ZONE_LENGTH_M;
+    const toGate = ZONE_LENGTH_M - zoneM;
     // one flight section per world (a gap Boo carries you over)
-    if (!this.chasm && !this.chasmZones.has(this.zoneIndex) && zoneM >= RUN.CHASM_AT_M && zoneM < RUN.CHASM_AT_M + 60 && !this.gate) {
+    const chasmWorld = this.zoneIndex % 2 === 0;
+    if (chasmWorld && !this.chasm && !this.chasmZones.has(this.zoneIndex) && zoneM >= RUN.CHASM_AT_M && zoneM < RUN.CHASM_AT_M + 60 && !this.gate) {
       this.chasmZones.add(this.zoneIndex);
-      const w = v * RUN.CHASM_S;
+      const w = v * (RUN.CHASM_S * this.perk.fly + this.perk.flyPlus);
       this.chasm = this.addTrap('chasm', spawnWX, { w });
       this.nextTrapX = spawnWX + w + v * 0.9;
       // candles lead the eye to the edge
       for (let i = 0; i < 6; i++) this.addCandle(W + 40 - 150 + i * 22, BOTTOM - 4);
       return;
     }
-    const runway = !this.chasm && !this.chasmZones.has(this.zoneIndex) && zoneM > RUN.CHASM_AT_M - v * 1.4 / PX_PER_METER && zoneM < RUN.CHASM_AT_M;
+    const runway = chasmWorld && !this.chasm && !this.chasmZones.has(this.zoneIndex) && zoneM > RUN.CHASM_AT_M - v * 1.4 / PX_PER_METER && zoneM < RUN.CHASM_AT_M;
     if (this.chasm || runway) return;
-    const toGate = ZONE_LENGTH_M - zoneM;
     if (this.gate || toGate < 22) return; // gates stay clear
 
     // pickups: a weapon (salt first, then a different one each time) and the (rare) Boo orb
@@ -347,9 +413,11 @@ export const RunnerFeatures = {
       this.runPickups.push(p);
       this.nextWeaponX = Infinity; // the next one is scheduled when this weapon breaks
     }
-    if (this.worldX >= this.nextOrbX) {
+    // the (rare) Boo orb never lands near a flight section or a gate
+    const nearChasm = chasmWorld && zoneM > RUN.CHASM_AT_M - 120 && zoneM < RUN.CHASM_AT_M + 160;
+    if (this.worldX >= this.nextOrbX && !nearChasm && toGate > 80) {
       this.runPickups.push(this.makePickup('orb', spawnWX + 30, BOTTOM - 62));
-      this.nextOrbX = this.worldX + this.rand.range(800, 1100) * PX_PER_METER;
+      this.nextOrbX = this.worldX + this.rand.range(RUN.ORB_EVERY_M[0], RUN.ORB_EVERY_M[1]) * PX_PER_METER;
     }
 
     if (this.worldX < this.nextTrapX) return;
@@ -504,7 +572,7 @@ export const RunnerFeatures = {
       // cleared it clean: that's worth something
       if (!t.passed && x + t.w < PLAYER_X - 12) {
         t.passed = true;
-        if (!t.hit && t.kind !== 'chasm' && !this.dead) this.addCombo('dodge', PLAYER_X, this.py - 30);
+        if (!t.hit && t.kind !== 'chasm' && !this.dead) { this.addCombo('dodge', PLAYER_X, this.py - 30); this.tracker?.add('dodges', 1); }
       }
       if (x + t.w < -80) this.dropTrap(t);
     }
@@ -567,7 +635,8 @@ export const RunnerFeatures = {
 
   armWeapon(kind) {
     const def = WEAPONS[kind];
-    this.weapon = { kind, ammo: def.ammo, t: def.time, cd: 0 };
+    this.weapon = { kind, ammo: def.ammo === Infinity ? Infinity : Math.round(def.ammo * this.perk.power), t: def.time * this.perk.power, cd: 0 };
+    this.tracker?.add('weapons', 1);
     this.lastWeapon = kind;
     this.gunImg.setTexture(def.icon);
     Audio.sfx('powerup');
@@ -619,7 +688,7 @@ export const RunnerFeatures = {
     if (!wp) return;
     const def = WEAPONS[wp.kind];
     wp.t -= dt; wp.cd -= dt;
-    if (!this.power) this.events.emit('power', { kind: 'weapon', icon: def.icon, left: Math.max(0, Math.min(wp.t / def.time, wp.ammo / def.ammo)) });
+    if (!this.power) this.events.emit('power', { kind: 'weapon', icon: def.icon, left: Math.max(0, Math.min(wp.t / (def.time * this.perk.power), wp.ammo / (def.ammo * this.perk.power))) });
     if (wp.t <= 0 || wp.ammo <= 0) {
       this.weapon = null;
       this.events.emit('power', null);
@@ -707,6 +776,7 @@ export const RunnerFeatures = {
         this.burst(b.x - 6, b.y, 0xcfe0ff, 14, 40, 420);
         for (let i = 0; i < 2; i++) this.addCandle(b.x - 10 + i * 16, b.y);
         b.x = -1e5;
+        this.tracker?.add('popped', 1); this.kills++;
         Audio.sfx('ghoul');
         this.addCombo('ghoul', PLAYER_X + 60, this.py - 30);
       } else {
@@ -729,6 +799,7 @@ export const RunnerFeatures = {
       this.addCandle(tg.cx, FLOOR - 30);
       this.addCombo('splat', tg.cx, tg.cy - 30);
       this.popup('BURNED!', '#ffb060', tg.cy - 30);
+      this.tracker?.add('burns', 1); this.kills++; this.tracker?.add('kills', 1);
       this.dropTrap(t);
       return;
     }
@@ -741,7 +812,9 @@ export const RunnerFeatures = {
     const cx = x + t.w / 2, cy = t.kind === 'eye' ? t.y : FLOOR - t.h / 2;
     this.burst(cx, cy, t.kind === 'ghoul' ? 0xc8ffc0 : t.kind === 'eye' ? 0xd8b0ff : 0xb07a3a, 12, 36, 420);
     this.kills++;
-    this.gap = Math.min(RUN.MAX_GAP, this.gap + RUN.KILL);
+    this.tracker?.add('kills', 1);
+    if (t.kind === 'crate') this.tracker?.add('crates', 1);
+    this.gap = Math.min(RUN.MAX_GAP + this.perk.startGap, this.gap + RUN.KILL);
     // monsters go poof into candles
     const n = t.kind === 'ghoul' ? 3 : 2;
     for (let i = 0; i < n; i++) this.addCandle(cx - 14 + i * 14, cy - 10 - i * 8);

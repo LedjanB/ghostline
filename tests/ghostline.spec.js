@@ -86,7 +86,7 @@ test('the journey goes through all 8 zones in order, never looping', async ({ pa
 });
 
 test('dying shows the results screen and retry starts a fresh run', async ({ page }) => {
-  const errors = await boot(page, { key: 'ghostline-save', value: { version: 5, storySeen: true } });
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 5, storySeen: true, runs: 5 } });
   await page.keyboard.press('Enter');
   await page.waitForTimeout(1500);
   await simulate(page, 200);
@@ -121,7 +121,7 @@ test('creative mode never dies and continues where you left off', async ({ page 
 });
 
 test('missions complete and pay out', async ({ page }) => {
-  await boot(page, { key: 'ghostline-save', value: { version: 5, storySeen: true } });
+  await boot(page, { key: 'ghostline-save', value: { version: 5, storySeen: true, runs: 5 } });
   await page.keyboard.press('Enter');
   await page.waitForTimeout(1500);
   await simulate(page, 160);
@@ -160,11 +160,11 @@ test('score = meters x mission multiplier + combo points, and a hit drops the co
 });
 
 test('every run unlocks something, new hats and trails go straight on Boo', async ({ page }) => {
-  const errors = await boot(page, { key: 'ghostline-save', value: { version: 6, storySeen: true } });
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 6, storySeen: true, runs: 5 } });
   await page.keyboard.press('Enter');
   await page.waitForTimeout(1500);
   await simulate(page, 50);
-  await play(page, (s) => { s.invuln = 0; s.rush = null; s.shield = false; s.souls = 0; s.hit('beam'); });
+  await play(page, (s) => { s.invuln = 0; s.rush = null; s.shield = false; s.souls = 0; s.hit('beam'); s.invuln = 0; s.hit('beam'); });
   await page.waitForFunction(() => window.__game.scene.isActive('over'), null, { timeout: 15000 });
   const save = await page.evaluate(() => JSON.parse(localStorage.getItem('ghostline-save')));
   expect(save.unlocks.got).toBeGreaterThanOrEqual(1);
@@ -201,7 +201,7 @@ test('every character has its own world look', async ({ page }) => {
 
 // ---------------- v6 runner ----------------
 test('runner: a stumble lets THE STRETCH closer, a second one in a row gets you caught', async ({ page }) => {
-  const errors = await boot(page, { key: 'ghostline-save', value: { version: 6, storySeen: true } });
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 6, storySeen: true, runs: 5 } });
   await page.keyboard.press('Enter');
   await page.waitForTimeout(1500);
   await simulate(page, 60);
@@ -222,7 +222,7 @@ test('runner: a stumble lets THE STRETCH closer, a second one in a row gets you 
 });
 
 test('runner: Boo carries you over the chasm, and it waits where you land', async ({ page }) => {
-  const errors = await boot(page, { key: 'ghostline-save', value: { version: 6, storySeen: true } });
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 6, storySeen: true, runs: 5 } });
   await page.keyboard.press('Enter');
   await page.waitForTimeout(1500);
   const r = await play(page, (s) => {
@@ -264,5 +264,19 @@ test('runner: the salt shotgun fires on its own and smashes a crate into candles
   expect(r.kills).toBe(1);
   expect(r.candles).toBeGreaterThanOrEqual(2);
   expect(r.ammo).toBeLessThan(24);
+  expect(errors).toEqual([]);
+});
+
+test('runner: on a first run, Boo saves you until 300 m', async ({ page }) => {
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 6, storySeen: true } });
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(1500);
+  await simulate(page, 80);
+  const r = await play(page, (s) => {
+    s.shield = false;
+    s.invuln = 0; s.hit('grave'); s.invuln = 0; s.hit('grave');
+    return { safe: s.safeRun, dead: s.dead, rescues: s.rescues };
+  });
+  expect(r).toEqual({ safe: true, dead: false, rescues: 1 });
   expect(errors).toEqual([]);
 });

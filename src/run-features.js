@@ -224,6 +224,8 @@ export const Features = {
       start: ['RUN, ' + hero + '!', "DON'T LOOK BACK!", 'IT SAW US. RUN!'],
       grab: ['I GOT YOU!', 'UP WE GO!', 'HOLD ON!'],
       landed: ['RUN! RUN!', "IT'S STILL COMING!"],
+      dark: ["DON'T LOOK BACK!", 'FASTER, ' + hero + '!'], near: ['WHOA!', 'TOO CLOSE!', 'NICE ONE!'],
+      shield: ['GOT YOU!', 'NOT TODAY, STRETCH!'], death: ['NOOO!', 'IT GOT YOU!', 'I LOOKED AWAY!'],
     });
     const opts = LINES[kind];
     if (!opts) return;
