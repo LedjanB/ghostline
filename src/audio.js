@@ -23,38 +23,108 @@ const N = {};
 const seq = (s) => s.split(' ').map((t) => (t === '.' ? null : N[t]));
 const sliderGain = (s) => s * s; // squared so the slider feels even over its travel
 
-// Each song: base layer (bass + lead), drive layer (drums + arp, fades in with speed),
-// danger layer (low pulse while a banshee warning is up).
-const SONGS = {
-  menu: {
-    bpm: 84,
-    bass: seq('A2 . . . . . . . F2 . . . . . . . D2 . . . . . . . E2 . . . . . . .'),
-    lead: seq('A5 . E5 . C5 . E5 . A5 . E5 . C5 . B4 . F5 . C5 . A4 . C5 . F5 . E5 . D5 . G#4 . B4 . E5 . G#5 . E5 . B4 . D5 . C5 . B4 .'),
-    arp: null,
-    leadWave: 'triangle', leadVol: 0.07, bassVol: 0.09, root: 'A3',
-  },
-  hospital: {
-    bpm: 112,
-    bass: seq('A2 . A2 . E2 . A2 . F2 . F2 . E2 . E2 .'),
-    lead: seq('A4 C5 E5 . D5 C5 B4 . A4 . E4 . G#4 . . . A4 C5 E5 . F5 E5 D5 . C5 B4 A4 . G#4 . . .'),
-    arp: seq('A5 E5 C6 E5 A5 E5 C6 E5 F5 C5 A5 C5 E5 B4 G#5 B4'),
-    leadWave: 'square', leadVol: 0.035, bassVol: 0.11, root: 'A2',
-  },
-  forest: {
-    bpm: 98,
-    bass: seq('D2 . . . A1 . . . A#1 . . . A1 . . .'),
-    lead: seq('D5 . F5 . A5 . G5 F5 E5 . C#5 . D5 . . . A4 . D5 . F5 . E5 D5 C#5 . E5 . A4 . . .'),
-    arp: seq('D6 A5 F5 A5 D6 A5 F5 A5 A#5 F5 D5 F5 A5 E5 C#5 E5'),
-    leadWave: 'triangle', leadVol: 0.07, bassVol: 0.12, root: 'D2',
-  },
-  sewer: {
-    bpm: 128,
-    bass: seq('E2 E2 . E2 F2 . E2 . E2 E2 . G2 F2 . E2 .'),
-    lead: seq('E5 . F5 E5 . B4 . . E5 . G5 F5 E5 . . . B4 . C5 B4 . A4 . G4 F4 . . E4 . . . .'),
-    arp: seq('E6 B5 G5 B5 F6 C6 A5 C6 E6 B5 G5 B5 D6 A5 F5 A5'),
-    leadWave: 'square', leadVol: 0.03, bassVol: 0.12, root: 'E2',
-  },
+// ---- music: a small seeded composer (audio-design: adaptive layers) ----
+// Each song is a spec (key, scale, chord progression, styles). It is expanded once into
+// 8 bars of 16th-note steps: bass + pad + lead in the base layer, arp + drums in the drive
+// layer (fades in with speed), and a low throb in the danger layer.
+const SCALES = {
+  minor: [0, 2, 3, 5, 7, 8, 10], harmonic: [0, 2, 3, 5, 7, 8, 11], dorian: [0, 2, 3, 5, 7, 9, 10],
+  phrygian: [0, 1, 3, 5, 7, 8, 10], lydian: [0, 2, 4, 6, 7, 9, 11], major: [0, 2, 4, 5, 7, 9, 11],
 };
+const SPECS = {
+  menu: { bpm: 76, root: 57, scale: 'harmonic', prog: [0, 5, 3, 4], bass: 'drone', arp: 'music', lead: 'triangle', drums: null, seed: 1, leadOct: 1 },
+  ward: { bpm: 108, root: 57, scale: 'harmonic', prog: [0, 5, 3, 4], bass: 'pulse', arp: 'up', lead: 'square', drums: 'basic', seed: 2 },
+  morgue: { bpm: 90, root: 52, scale: 'phrygian', prog: [0, 1, 0, 6], bass: 'drone', arp: 'sparse', lead: 'triangle', drums: 'tick', seed: 3 },
+  woods: { bpm: 100, root: 50, scale: 'dorian', prog: [0, 3, 0, 6], bass: 'walk', arp: 'updown', lead: 'triangle', drums: 'basic', seed: 4 },
+  graveyard: { bpm: 118, root: 48, scale: 'minor', prog: [0, 3, 5, 4], bass: 'pulse', arp: 'broken', lead: 'square', drums: 'shuffle', seed: 5 },
+  sewer: { bpm: 128, root: 52, scale: 'phrygian', prog: [0, 0, 1, 6], bass: 'drive', arp: 'up', lead: 'square', drums: 'drive', seed: 6 },
+  catacombs: { bpm: 96, root: 59, scale: 'minor', prog: [0, 5, 2, 6], bass: 'drone', arp: 'organ', lead: 'triangle', drums: 'tick', seed: 7 },
+  carnival: { bpm: 136, root: 50, scale: 'harmonic', prog: [0, 3, 4, 0], bass: 'oompah', arp: 'calliope', lead: 'square', drums: 'oompah', seed: 8 },
+  otherside: { bpm: 110, root: 54, scale: 'lydian', prog: [0, 1, 5, 4], bass: 'drone', arp: 'shimmer', lead: 'triangle', drums: 'basic', seed: 9, leadOct: 1 },
+};
+const DRUMS = {
+  basic: { k: 'x.......x.......', s: '....x.......x...', h: 'x.x.x.x.x.x.x.x.' },
+  tick: { k: 'x...............', s: '............x...', h: '..x...x...x...x.' },
+  shuffle: { k: 'x.....x...x.....', s: '....x.......x..x', h: 'x..x.xx..x.xx..x' },
+  drive: { k: 'x...x...x...x...', s: '....x.......x...', h: 'xxxxxxxxxxxxxxxx' },
+  oompah: { k: 'x.......x.......', s: '....x.......x...', h: '..x...x...x...x.' },
+};
+const RHYTHMS = ['x.x.x...x.xx....', 'x...x.x.x...x...', 'x.xx..x.x...x.x.', 'x..x..x.x.x.....', 'x...x...xx.x....'];
+
+function makeRand(seed) {
+  let s = seed * 9301 + 49297;
+  return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+}
+
+function compose(spec) {
+  const r = makeRand(spec.seed);
+  const sc = SCALES[spec.scale];
+  const note = (deg, oct = 0) => spec.root + sc[((deg % 7) + 7) % 7] + 12 * (oct + Math.floor(deg / 7));
+  const bars = 8;
+  const steps = bars * 16;
+  const bass = new Array(steps).fill(null), pad = new Array(steps).fill(null), lead = new Array(steps).fill(null), arp = new Array(steps).fill(null);
+  const chordOf = (bar) => spec.prog[bar % spec.prog.length];
+  for (let bar = 0; bar < bars; bar++) {
+    const c = chordOf(bar);
+    const tones = [note(c, -1), note(c + 2, -1), note(c + 4, -1)];
+    const o = bar * 16;
+    pad[o] = [note(c), note(c + 2), note(c + 4)];
+    for (let i = 0; i < 16; i++) {
+      const st = o + i;
+      switch (spec.bass) {
+        case 'pulse': if (i % 2 === 0) bass[st] = i % 8 === 6 ? tones[2] : tones[0]; break;
+        case 'drive': bass[st] = i % 4 === 3 ? tones[0] + 12 : tones[0]; break;
+        case 'walk': if (i % 4 === 0) bass[st] = [tones[0], tones[1], tones[2], note(c + 5, -1)][i / 4]; break;
+        case 'oompah': if (i % 4 === 0) bass[st] = i % 8 === 0 ? tones[0] : tones[2] - 12; break;
+        default: if (i === 0) bass[st] = tones[0]; if (i === 8) bass[st] = tones[2] - 12;
+      }
+      const up = [note(c, 1), note(c + 2, 1), note(c + 4, 1), note(c + 7, 1)];
+      switch (spec.arp) {
+        case 'up': if (i % 2 === 0) arp[st] = up[(i / 2) % 4]; break;
+        case 'updown': if (i % 2 === 0) arp[st] = [0, 1, 2, 3, 2, 1, 0, 1].map((k) => up[k])[(i / 2) % 8]; break;
+        case 'broken': if (i % 2 === 0) arp[st] = [0, 2, 1, 3][(i / 2) % 4] !== undefined ? up[[0, 2, 1, 3][(i / 2) % 4]] : null; break;
+        case 'sparse': if (i % 6 === 0) arp[st] = up[(i / 6) % 4]; break;
+        case 'organ': if (i % 4 === 0) arp[st] = up[(i / 4) % 3]; break;
+        case 'calliope': arp[st] = up[[0, 1, 2, 1][i % 4]] + (i >= 8 ? 12 : 0); break;
+        case 'shimmer': arp[st] = up[i % 4] + 12; break;
+        case 'music': if (i % 4 === 0) arp[st] = up[(i / 4) % 4] + 12; break;
+        default: break;
+      }
+    }
+  }
+  // lead: a 2-bar motif, played A A' B A (variation on bar 4, new motif in bars 5-6)
+  const motif = (seedOffset) => {
+    const rr = makeRand(spec.seed * 31 + seedOffset);
+    const rhythm = RHYTHMS[Math.floor(rr() * RHYTHMS.length)] + RHYTHMS[Math.floor(rr() * RHYTHMS.length)];
+    let deg = Math.floor(rr() * 3) * 2;
+    return rhythm.split('').map((ch) => {
+      if (ch !== 'x') return null;
+      deg += [-2, -1, -1, 1, 1, 2, 0, 3][Math.floor(rr() * 8)];
+      deg = Math.max(-2, Math.min(9, deg));
+      return deg;
+    });
+  };
+  const A = motif(1), B = motif(2);
+  const plan = [A, A, B, A];
+  const lo = spec.leadOct ?? 0;
+  plan.forEach((m, p) => {
+    for (let i = 0; i < 32; i++) {
+      const d = m[i];
+      if (d === null) continue;
+      const bar = p * 2 + Math.floor(i / 16);
+      const c = chordOf(bar);
+      // strong beats snap to a chord tone so the melody sits on the harmony
+      let deg = d;
+      if (i % 8 === 0) { const ct = [c, c + 2, c + 4, c + 7]; deg = ct.reduce((a, b) => (Math.abs(b - d) < Math.abs(a - d) ? b : a)); }
+      if (p === 1 && i >= 24) deg += 1; // A' ends higher, like a question
+      lead[p * 32 + i] = note(deg, lo);
+    }
+  });
+  return { bassN: bass, padN: pad, leadN: lead, arpN: arp, steps, drumN: spec.drums ? DRUMS[spec.drums] : null };
+}
+
+const SONGS = {};
+for (const [k, spec] of Object.entries(SPECS)) SONGS[k] = { ...spec, ...compose(spec) };
 
 function init() {
   if (ctx) return;
@@ -135,24 +205,27 @@ function schedule() {
   if (!ctx) return;
   scheduleAmbience();
   if (!songName) return;
-  const song = SONGS[songName];
+  const song = SONGS[songName] || SONGS.menu;
   const sixteenth = 60 / song.bpm / 4;
   if (nextTime < ctx.currentTime) nextTime = ctx.currentTime + 0.05;
   while (nextTime < ctx.currentTime + 0.12) {
     const t = nextTime;
-    const b = song.bass[step % song.bass.length];
-    if (b) tone(t, midi(b), sixteenth * 1.8, 'triangle', song.bassVol, layerBase);
-    const l = song.lead[step % song.lead.length];
-    if (l) tone(t, midi(l), sixteenth * 1.6, song.leadWave, song.leadVol, layerBase);
-    if (song.arp) {
-      const a = song.arp[step % song.arp.length];
-      if (a && step % 2 === 0) tone(t, midi(a), sixteenth * 0.9, 'square', 0.018, layerDrive);
-      if (step % 2 === 0) noise(t, 0.03, step % 4 === 0 ? 0.05 : 0.025, layerDrive, 7000);
-      if (step % 8 === 4) noise(t, 0.12, 0.06, layerDrive, 1200, 'bandpass');
-      if (step % 8 === 0) tone(t, 90, 0.12, 'sine', 0.16, layerDrive, 45);
-      // danger: low throbbing root on every beat
-      if (step % 4 === 0) tone(t, midi(N[song.root] - 12) || 55, sixteenth * 3, 'sawtooth', 0.05, layerDanger);
+    const i = step % song.steps;
+    const j = i % 16;
+    const b = song.bassN[i];
+    if (b) tone(t, midi(b), sixteenth * (song.bass === 'drone' ? 7 : 1.8), 'triangle', 0.11, layerBase);
+    if (song.padN[i]) song.padN[i].forEach((n) => tone(t, midi(n), sixteenth * 15, 'sine', 0.018, layerBase));
+    const l = song.leadN[i];
+    if (l) tone(t, midi(l + 12), sixteenth * 1.7, song.lead, song.lead === 'square' ? 0.03 : 0.06, layerBase);
+    const a = song.arpN[i];
+    if (a) tone(t, midi(a), sixteenth * 0.9, song.arp === 'organ' ? 'triangle' : 'square', 0.016, layerDrive);
+    const d = song.drumN;
+    if (d) {
+      if (d.k[j] === 'x') tone(t, 95, 0.13, 'sine', 0.17, layerDrive, 42);
+      if (d.s[j] === 'x') noise(t, 0.11, 0.06, layerDrive, 1300, 'bandpass');
+      if (d.h[j] === 'x') noise(t, 0.03, j % 4 === 0 ? 0.04 : 0.022, layerDrive, 7000);
     }
+    if (j % 4 === 0) tone(t, midi(song.root - 24), sixteenth * 3, 'sawtooth', 0.05, layerDanger);
     nextTime += sixteenth;
     step++;
   }
@@ -182,23 +255,31 @@ function setAmbience(name) {
   ambNodes.forEach((n) => { try { n.stop && n.stop(); } catch (e) { /* already stopped */ } n.disconnect && n.disconnect(); });
   ambNodes = [];
   ambience = name;
-  if (name === 'hospital') ambNodes = loopNoise(2500, 'highpass', 0.05, 0.5); // rain on windows
-  if (name === 'forest') ambNodes = loopNoise(420, 'bandpass', 0.09, 0.8, 0.13, 0.06); // wind gusts
-  if (name === 'sewer') ambNodes = loopNoise(140, 'lowpass', 0.16, 1, 0.07, 0.05); // low rumble
+  const AMB = {
+    ward: () => loopNoise(2500, 'highpass', 0.05, 0.5), // rain on windows
+    morgue: () => loopNoise(90, 'lowpass', 0.12, 1, 0.05, 0.03), // fridge hum
+    woods: () => loopNoise(420, 'bandpass', 0.09, 0.8, 0.13, 0.06), // wind gusts
+    graveyard: () => loopNoise(600, 'bandpass', 0.07, 0.6, 0.09, 0.05), // cold wind
+    sewer: () => loopNoise(140, 'lowpass', 0.16, 1, 0.07, 0.05), // low rumble
+    catacombs: () => loopNoise(200, 'lowpass', 0.08, 1, 0.04, 0.03), // deep room tone
+    carnival: () => loopNoise(1200, 'bandpass', 0.03, 0.4, 0.2, 0.02), // distant crowd hiss
+    otherside: () => loopNoise(3000, 'bandpass', 0.03, 2, 0.05, 0.02), // glassy shimmer
+  };
+  if (AMB[name]) ambNodes = AMB[name]();
   ambBus.gain.setTargetAtTime(name ? 1 : 0, ctx.currentTime, 0.6);
   nextAmbEvent = ctx.currentTime + 1;
 }
 function scheduleAmbience() {
   if (!ambience || ctx.currentTime < nextAmbEvent) return;
   const t = ctx.currentTime + 0.02;
-  if (ambience === 'hospital') { // distant heart monitor
+  if (ambience === 'ward') { // distant heart monitor
     tone(t, 1000, 0.08, 'sine', 0.015, ambBus);
     nextAmbEvent = t + 1.4;
-  } else if (ambience === 'forest') { // crickets + the odd owl
+  } else if (ambience === 'woods' || ambience === 'graveyard') { // crickets + the odd owl or crow
     if (Math.random() < 0.15) { tone(t, 420, 0.25, 'sine', 0.03, ambBus, 380); tone(t + 0.35, 400, 0.4, 'sine', 0.03, ambBus, 350); }
     else for (let i = 0; i < 3; i++) tone(t + i * 0.06, 4200, 0.03, 'square', 0.006, ambBus);
     nextAmbEvent = t + rand(0.6, 1.6);
-  } else if (ambience === 'sewer') { // water drips
+  } else if (ambience === 'sewer' || ambience === 'catacombs') { // water drips
     tone(t, rand(900, 1400), 0.12, 'sine', 0.03, ambBus, 500);
     nextAmbEvent = t + rand(0.4, 1.8);
   }
@@ -279,6 +360,10 @@ export const Audio = {
       case 'rebirth':
         [0, 7, 12, 19].forEach((st, i) => tone(t + i * 0.08, midi(64 + st), 0.25, 'triangle', 0.08, sfxBus));
         noise(t, 0.4, 0.05, sfxBus, 3000);
+        break;
+      case 'rush':
+        [0, 3, 7, 12, 15, 19, 24].forEach((st, i) => tone(t + i * 0.04, midi(60 + st), 0.14, 'sawtooth', 0.04, sfxBus));
+        noise(t, 0.5, 0.08, sfxBus, 2000, 'bandpass');
         break;
       case 'soul':
         tone(t, 660, 0.2, 'sine', 0.07, sfxBus, 1320);

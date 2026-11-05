@@ -2,7 +2,7 @@
 // physics-tuning: the simulation runs on a fixed 120 Hz step (step()); drawing happens once
 // per frame (render()), offset by the leftover time so motion stays smooth at any refresh rate.
 import {
-  W, H, CEIL, FLOOR, PLAYER_X, PX_PER_METER, ZONE_LENGTH_M, CHARACTERS, ZONES,
+  W, H, CEIL, FLOOR, PLAYER_X, PX_PER_METER, ZONE_LENGTH_M, CHARACTERS, ZONES, zoneAt,
 } from '../data.js';
 import { Save } from '../save.js';
 import { Audio } from '../audio.js';
@@ -12,6 +12,7 @@ import {
   UNLOCK, difficulty, spawnTable, gapAfter, bansheeDelay, createIntroTracker, speedAt,
 } from '../pacing.js';
 import { Features, dailySeed } from '../run-features.js';
+import { ZoneLayers } from '../zones.js';
 
 const STEP = 1 / 120;
 const MAX_STEPS = 12;
@@ -105,7 +106,6 @@ export class PlayScene extends Phaser.Scene {
     this.clock = 0;
     this.nextSpawn = 520;
     this.nextBanshee = 4;
-    this.transitioning = false;
     this.flickerUntil = 0;
     this.nextFlicker = 5;
     this.nextDrip = 0;
@@ -136,7 +136,7 @@ export class PlayScene extends Phaser.Scene {
     if (this.creative) {
       this.worldX = save.creative.x;
       this.rebirths = save.creative.rebirths;
-      this.zoneIndex = Math.floor(this.worldX / PX_PER_METER / ZONE_LENGTH_M);
+      this.zoneIndex = Math.min(ZONES.length - 1, Math.floor(this.worldX / PX_PER_METER / ZONE_LENGTH_M));
       this.nextSpawn = this.worldX + 520;
       this.bestPx = 0; // records only count in normal mode
       if (this.worldX > 0) this.nextBanshee = 8;
@@ -145,10 +145,9 @@ export class PlayScene extends Phaser.Scene {
   }
 
   create() {
-    const zone = ZONES[this.zoneIndex % ZONES.length];
-    this.far = this.add.tileSprite(0, 0, 320, 180, `${zone.id}_far`).setOrigin(0).setScale(2).setDepth(0);
-    this.mid = this.add.tileSprite(0, 0, 320, 180, `${zone.id}_mid`).setOrigin(0).setScale(2).setDepth(1);
-    this.edge = this.add.tileSprite(0, 0, 320, 180, `${zone.id}_edge`).setOrigin(0).setScale(2).setDepth(15);
+    const zone = zoneAt(this.zoneIndex);
+    this.layers = new ZoneLayers(this, zone.id);
+    this.gate = null;
 
     this.chainGfx = this.add.graphics().setDepth(6);
     this.beamGfx = this.add.graphics().setDepth(7);
@@ -163,8 +162,8 @@ export class PlayScene extends Phaser.Scene {
     this.shieldGlow = this.add.image(PLAYER_X, this.py, 'glow').setScale(1.3).setDepth(21)
       .setBlendMode(Phaser.BlendModes.ADD).setTint(0x4fa8ff).setAlpha(0.5).setVisible(this.shield);
 
-    this.dark = this.add.image(PLAYER_X + 110, this.py, 'dark').setScale(2).setDepth(20);
-    this.fader = this.add.rectangle(0, 0, W, H, 0x000000).setOrigin(0).setDepth(26).setAlpha(0);
+    // darkness only covers the backgrounds; hazards always draw above it, so nothing kills you unseen
+    this.dark = this.add.image(PLAYER_X + 110, this.py, 'dark').setScale(2).setDepth(4.5);
 
     // pools for the objects spawned most often
     this.particlePool = new Pool(() => this.add.rectangle(0, 0, 3, 3, 0xffffff).setDepth(22));
@@ -181,7 +180,7 @@ export class PlayScene extends Phaser.Scene {
     this.tweens.add({ targets: [this.tutorial, this.tutorial2], alpha: 0.35, duration: 500, yoyo: true, repeat: -1 });
     this.offDevice = Device.onChange(() => { if (!this.started && this.tutorial.active) this.tutorial.setText(prompt('float')); });
 
-    this.banner(zone.name);
+    this.banner(zone.name, zone.flavor);
     Audio.music(zone.song);
     Audio.duck(false);
     Audio.danger(false);
@@ -252,7 +251,7 @@ export class PlayScene extends Phaser.Scene {
     if (this.dead) this.stepDeath(dt);
     else this.stepPlayer(dt, holding);
     this.stepGhost(dt, holding);
-    this.stepZones(meters);
+    this.stepZones();
     if (!this.dead) {
       this.spawner(meters, pace);
       this.bansheeTimer(dt, meters, pace.diff);
@@ -313,19 +312,19 @@ export class PlayScene extends Phaser.Scene {
   spawner(meters, pace) {
     if (this.worldX < this.nextSpawn) return;
     const toBoundary = ZONE_LENGTH_M - (meters % ZONE_LENGTH_M);
-    const sinceBoundary = meters % ZONE_LENGTH_M;
-    if (toBoundary < 28 || (meters > 100 && sinceBoundary < 10)) {
+    const more = this.zoneIndex < ZONES.length - 1;
+    if ((more && toBoundary < 28) || this.gate) {
       this.nextSpawn = this.worldX + 120;
       return;
     }
     const r = this.rand;
-    const kind = r.weighted(spawnTable(meters, pace.diff, pace.breather));
+    const kind = this.chase ? 'candles' : r.weighted(spawnTable(meters, pace.diff, pace.breather));
     const x0 = W + 60;
     const d = pace.diff;
     let length = 0;
     switch (kind) {
-      case 'candles': length = this.spawnCandles(x0, pace.breather); break;
-      case 'beam': length = this.intro.first('beam') ? this.introBeam(x0) : this.spawnBeam(x0, d); break;
+      case 'candles': length = this.spawnCandles(x0, pace.breather); this.tip('candle'); break;
+      case 'beam': length = this.intro.first('beam') ? this.introBeam(x0) : this.spawnBeam(x0, d); this.tip('beam'); break;
       case 'beamPair': {
         const first = this.intro.first('beamPair');
         this.spawnBeam(x0, d, 0);
@@ -344,8 +343,8 @@ export class PlayScene extends Phaser.Scene {
         length = 9 * 22;
         break;
       }
-      case 'hands': length = this.spawnHands(x0, d, this.intro.first('hands')); break;
-      case 'laser': length = this.spawnLaser(d); break;
+      case 'hands': length = this.spawnHands(x0, d, this.intro.first('hands')); this.tip('hands'); break;
+      case 'laser': length = this.spawnLaser(d); this.tip('laser'); break;
       case 'movingBeam': {
         const first = this.intro.first('movingBeam');
         const amp = first ? 40 : r.range(45, 75);
@@ -359,9 +358,9 @@ export class PlayScene extends Phaser.Scene {
         b.osc = { amp, w: first ? 1.4 : r.range(1.6, 2.4), ph: r.range(0, 6.28) };
         break;
       }
-      case 'swing': length = this.spawnSwing(x0, this.intro.first('swing')); break;
+      case 'swing': length = this.spawnSwing(x0, this.intro.first('swing')); this.tip('swing'); break;
     }
-    this.nextSpawn = this.worldX + length + gapAfter(d, r);
+    this.nextSpawn = this.worldX + length + (this.chase ? 90 : gapAfter(d, r));
   }
 
   spawnCandles(x0, breather) {
@@ -423,7 +422,7 @@ export class PlayScene extends Phaser.Scene {
     // validate: both ends stay inside the play area so a path always exists
     const hh = rotor ? len / 2 : (Math.abs(Math.sin(ang)) * len) / 2;
     const y = forcedY ?? r.range(TOP + 4 + hh, BOTTOM - 4 - hh);
-    const nodes = [0, 1].map(() => this.add.image(0, 0, 'spirit').setScale(2).setDepth(7.5));
+    const nodes = [0, 1].map(() => this.add.image(0, 0, 'spirit').setScale(2).setDepth(7.5).setTint(this.hz.node));
     const glows = [0, 1].map(() => this.add.image(0, 0, 'glow').setScale(1.1).setDepth(21)
       .setBlendMode(Phaser.BlendModes.ADD).setTint(0x4fe38a).setAlpha(0.45));
     const rot = rotor ? (r.chance(0.5) ? 1 : -1) * (rotSpeed ?? r.range(1.1, 1.6)) : 0;
@@ -453,7 +452,7 @@ export class PlayScene extends Phaser.Scene {
 
   spawnSwing(x0, first) {
     const r = this.rand;
-    const type = ZONES[this.zoneIndex % ZONES.length].swing;
+    const type = zoneAt(this.zoneIndex).swing;
     const len = first ? 110 : r.range(110, 165);
     const s = this.add.image(x0, CEIL, type).setScale(2).setOrigin(0.5, 0).setDepth(6);
     const info = SWING_INFO[type];
@@ -469,7 +468,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   bansheeTimer(dt, meters, diff) {
-    if (this.transitioning || meters < UNLOCK.banshee) return;
+    if (this.gate || meters < UNLOCK.banshee) return;
     this.nextBanshee -= dt;
     if (this.nextBanshee > 0) return;
     const first = this.intro.first('banshee');
@@ -486,6 +485,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   addWarning(offset, trackTime, fixedY = null) {
+    this.tip('banshee');
     const g = this.add.graphics().setDepth(29);
     const t = text(this, W - 26, 0, '!', 16, '#ffffff').setDepth(30);
     const y = fixedY ?? Phaser.Math.Clamp(this.py + offset, TOP, BOTTOM);
@@ -498,7 +498,7 @@ export class PlayScene extends Phaser.Scene {
     const eyes = this.add.image(W + 50, y, 'glow').setScale(0.7).setDepth(21)
       .setBlendMode(Phaser.BlendModes.ADD).setTint(0xff2244).setAlpha(0.8);
     const diffNow = difficulty(this.worldX / PX_PER_METER).diff;
-    this.banshees.push({ x: W + 50, y, s, eyes, vx: 650 + 350 * diffNow });
+    this.banshees.push({ x: W + 50, y, s, eyes, vx: (650 + 350 * diffNow) * (this.char.bansheeMul || 1) });
     Audio.sfx('scream');
   }
 
@@ -594,10 +594,12 @@ export class PlayScene extends Phaser.Scene {
       if (!c.dead && Math.hypot(c.x - px, c.y - py) < 22) this.collect(c);
     }
     if (this.invuln > 0) return;
-    if (this.laserHits(py)) { this.hit(); return; }
+    if (this.rush) return;
+    if (this.laserHits(py)) { this.hit('laser'); return; }
     // each check returns clearance in px (<= 0 means a hit)
+    let kind = 'beam';
     const test = (obj, clearance) => {
-      if (clearance <= 0) { this.hit(); return true; }
+      if (clearance <= 0) { this.hit(kind); return true; }
       if (clearance < CLOSE_MARGIN && !obj.close) { obj.close = true; this.nearMiss(); }
       return false;
     };
@@ -609,6 +611,7 @@ export class PlayScene extends Phaser.Scene {
       );
       if (test(b, c)) return;
     }
+    kind = 'hand';
     for (const h of this.hands) {
       if (h.state === 'wait') continue;
       const c = h.fromFloor
@@ -616,9 +619,11 @@ export class PlayScene extends Phaser.Scene {
         : distToRect(px, py, h.x - 12, CEIL, h.x + 12, h.y - 6) - PLAYER_R;
       if (test(h, c)) return;
     }
+    kind = 'swing';
     for (const s of this.swings) {
       if (s.hx !== undefined && test(s, Math.hypot(px - s.hx, py - s.hy) - (PLAYER_R + s.info.r))) return;
     }
+    kind = 'banshee';
     for (const b of this.banshees) {
       if (test(b, Math.hypot(px - (b.x - 6), py - b.y) - (PLAYER_R + 16))) return;
     }
@@ -628,6 +633,7 @@ export class PlayScene extends Phaser.Scene {
     // small-tier feedback: popup + sound + a sliver of light
     this.nearMisses++;
     this.tracker?.add('near', 1);
+    this.quip('near');
     this.light = Math.min(1, this.light + 0.03);
     Audio.sfx('close');
     const t = text(this, PLAYER_X + 30, this.py - 34, 'CLOSE!', 16, '#9ff0ff').setDepth(31).setStroke('#07060d', 4);
@@ -640,6 +646,8 @@ export class PlayScene extends Phaser.Scene {
     this.runCandles += this.char.candleMul;
     this.lastCandleX = this.worldX;
     this.tracker?.add('candles', this.char.candleMul);
+    if (this.chase) this.chase.wall = Math.max(-40, this.chase.wall - 20);
+    this.buzz(8);
     this.light = Math.min(1, this.light + 0.07);
     Audio.sfx('candle', { combo: this.combo });
     this.events.emit('candles', this.runCandles);
@@ -679,9 +687,12 @@ export class PlayScene extends Phaser.Scene {
     this.saveCheckpoint();
   }
 
-  hit() {
+  hit(kind = 'beam') {
+    if (this.rush) return; // Spirit Rush smashes through everything
+    this.buzz(kind === 'dark' ? 200 : 120);
     if (this.creative && !this.shield) { this.rebirth(); return; }
     if (this.shield) {
+      this.quip('shield');
       this.shield = false;
       this.invuln = 1.4;
       this.events.emit('shield', false);
@@ -691,11 +702,14 @@ export class PlayScene extends Phaser.Scene {
       this.burst(PLAYER_X, this.py, 0x4fa8ff, 14, 60, 450);
       return;
     }
+    this.deathCause = kind;
     this.die();
   }
 
   die() {
     this.dead = true;
+    this.quip('death', true);
+    if (this.chase) this.endChase(false);
     this.deathSpeed = this.speed;
     this.deathM = Math.floor(this.worldX / PX_PER_METER);
     this.tracker?.death(this.deathM);
@@ -748,12 +762,12 @@ export class PlayScene extends Phaser.Scene {
   }
 
   stepZoneFx(dt) {
-    const zone = ZONES[this.zoneIndex % ZONES.length].id;
-    if (zone === 'hospital' && this.settings.flicker) {
+    const zone = zoneAt(this.zoneIndex).id;
+    if (zone === 'ward' && this.settings.flicker) {
       this.nextFlicker -= dt;
       if (this.nextFlicker <= 0) { this.flickerUntil = this.clock + 0.3; this.nextFlicker = 4 + Math.random() * 6; }
     }
-    if (zone === 'sewer') {
+    if (zoneAt(this.zoneIndex).weather === 'drips') {
       this.nextDrip -= dt;
       if (this.nextDrip <= 0) {
         this.nextDrip = 0.15 + Math.random() * 0.35;
@@ -776,26 +790,39 @@ export class PlayScene extends Phaser.Scene {
     this.drips = this.drips.filter((d) => !d.dead);
   }
 
-  stepZones(meters) {
-    const idx = Math.floor(meters / ZONE_LENGTH_M);
-    if (idx === this.zoneIndex || this.transitioning || this.dead) return;
-    this.transitioning = true;
-    const zone = ZONES[idx % ZONES.length];
-    Audio.sfx('zone');
-    this.tweens.add({
-      targets: this.fader, alpha: 1, duration: 260, ease: 'Quad.easeIn',
-      onComplete: () => {
-        this.zoneIndex = idx;
-        this.saveCheckpoint();
-        this.far.setTexture(`${zone.id}_far`);
-        this.mid.setTexture(`${zone.id}_mid`);
-        this.edge.setTexture(`${zone.id}_edge`);
-        Audio.music(zone.song);
-        this.setWeather(zone.id);
-        this.banner(zone.name);
-        this.tweens.add({ targets: this.fader, alpha: 0, duration: 450, ease: 'Quad.easeOut', onComplete: () => { this.transitioning = false; } });
-      },
-    });
+  // One-way journey: a gate set piece scrolls in, the next zone is painted behind its seam,
+  // and the zone officially changes when you fly through it. Never a fade, never a loop.
+  stepZones() {
+    if (this.dead) return;
+    const next = this.gate ? this.gate.next : this.zoneIndex + 1;
+    if (next >= ZONES.length) return;
+    const gateWorld = this.gate ? this.gate.world : next * ZONE_LENGTH_M * PX_PER_METER;
+    const sx = PLAYER_X + (gateWorld - this.worldX);
+    if (!this.gate && sx < W + 120) {
+      const key = `gate_${next - 1}`;
+      const body = this.add.image(sx, 0, key).setOrigin(0.5, 0).setScale(2).setDepth(8);
+      const top = this.add.image(sx, 0, key).setOrigin(0.5, 0).setScale(2).setDepth(15.5).setCrop(0, 0, 80, 18);
+      const bot = this.add.image(sx, 0, key).setOrigin(0.5, 0).setScale(2).setDepth(15.5).setCrop(0, 162, 80, 18);
+      this.gate = { world: gateWorld, parts: [body, top, bot], passed: false, next };
+      this.layers.beginSwap(zoneAt(next).id);
+    }
+    if (!this.gate) return;
+    if (!this.gate.passed && sx <= PLAYER_X) {
+      this.gate.passed = true;
+      this.zoneIndex = next;
+      const zone = zoneAt(next);
+      Audio.sfx('zone');
+      Audio.music(zone.song);
+      this.setWeather(zone.id);
+      this.banner(zone.name, zone.flavor);
+      this.saveCheckpoint();
+      this.onZoneEnter?.(zone);
+    }
+    if (sx < -100) {
+      this.gate.parts.forEach((p) => p.destroy());
+      this.gate = null;
+      this.layers.endSwap();
+    }
   }
 
   emitHud(meters) {
@@ -807,9 +834,10 @@ export class PlayScene extends Phaser.Scene {
     if (blink !== this.lastBlink) { this.lastBlink = blink; this.events.emit('lightLow', blink); }
   }
 
-  banner(name) {
-    const t = text(this, W / 2, H / 2 + 40, name, 16, '#cfe0ff').setDepth(31).setStroke('#07060d', 4).setAlpha(0);
-    this.tweens.add({ targets: t, alpha: 1, duration: 300, yoyo: true, hold: 1200, onComplete: () => t.destroy() });
+  banner(name, flavor = '') {
+    const t = text(this, W / 2, H / 2 + 30, name, 24, '#cfe0ff').setDepth(31).setStroke('#07060d', 6).setAlpha(0);
+    const f = text(this, W / 2, H / 2 + 60, flavor, 16, '#a99fd0').setDepth(31).setStroke('#07060d', 4).setAlpha(0);
+    this.tweens.add({ targets: [t, f], alpha: 1, duration: 300, yoyo: true, hold: 1800, onComplete: () => { t.destroy(); f.destroy(); } });
   }
 
   // ---------------- drawing (once per frame) ----------------
@@ -818,9 +846,13 @@ export class PlayScene extends Phaser.Scene {
     const a = acc / STEP;
     const py = this.prevPy + (this.py - this.prevPy) * Math.min(1, a);
     const s = this.scroll + lead;
-    this.far.tilePositionX = (s / 2) * 0.2;
-    this.mid.tilePositionX = (s / 2) * 0.55;
-    this.edge.tilePositionX = s / 2;
+    let seam = null;
+    if (this.gate) {
+      seam = PLAYER_X + (this.gate.world - this.worldX) - lead;
+      this.gate.parts.forEach((p) => { p.x = seam; });
+    }
+    const dk = Math.round(255 - (1 - this.light) * 120);
+    this.layers.render(s, seam, (dk << 16) | (dk << 8) | dk);
 
     // player
     if (!this.dead) {
@@ -857,9 +889,9 @@ export class PlayScene extends Phaser.Scene {
     for (const b of this.beams) {
       const ax = b.ax - lead, bx = b.bx - lead;
       const flick = Math.random() < 0.5 ? 0 : 2;
-      this.beamGfx.lineStyle(14 + flick, 0x4fe38a, 0.25);
+      this.beamGfx.lineStyle(14 + flick, this.hz.glow, 0.25);
       this.beamGfx.lineBetween(ax, b.ay, bx, b.by);
-      this.beamGfx.lineStyle(6, 0xb8ffd2, 0.9);
+      this.beamGfx.lineStyle(6, this.hz.core, 0.9);
       this.beamGfx.lineBetween(ax, b.ay, bx, b.by);
       b.nodes[0].setPosition(ax, b.ay); b.nodes[1].setPosition(bx, b.by);
       b.glows[0].setPosition(ax, b.ay); b.glows[1].setPosition(bx, b.by);
@@ -882,7 +914,7 @@ export class PlayScene extends Phaser.Scene {
     for (const w of this.warnings) {
       const blink = w.phase === 'lock' ? Math.floor(w.t * 16) % 2 : Math.floor(w.t * 5) % 2;
       w.g.clear();
-      w.g.fillStyle(0xff2244, blink ? 1 : 0.55);
+      w.g.fillStyle(this.hz.warn, blink ? 1 : 0.55);
       w.g.fillCircle(W - 26, w.y, 13);
       w.g.lineStyle(2, 0x07060d, 1);
       w.g.strokeCircle(W - 26, w.y, 13);

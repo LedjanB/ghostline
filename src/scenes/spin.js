@@ -2,6 +2,7 @@
 // Prizes: candles, another soul, a blast of extra meters, or a second chance.
 import { W, H } from '../data.js';
 import { Audio } from '../audio.js';
+import { Save } from '../save.js';
 import { text, button, focusGroup } from '../ui.js';
 import { createInput } from '../input.js';
 
@@ -57,12 +58,16 @@ export class SpinScene extends Phaser.Scene {
     this.souls--;
     this.play.souls = this.souls;
     this.play.tracker?.add('spins', 1);
+    Save.update((d) => { d.stats.spins += 1; });
     this.refresh();
     Audio.sfx('click');
-    const total = PRIZES.reduce((t, p) => t + p[1], 0);
+    // WRAPS and the Lucky Spin charm shift odds away from 'nothing'
+    const lucky = this.play.char.spinLuck || this.play.charm.luckyspin;
+    const table = PRIZES.map(([p, w]) => [p, lucky ? (p === 'nothing' ? 12 : p === 'revive' ? 13 : w + 3) : w]);
+    const total = table.reduce((t, p) => t + p[1], 0);
     let roll = Math.random() * total;
     let prize = 'nothing';
-    for (const [p, w] of PRIZES) { roll -= w; if (roll <= 0) { prize = p; break; } }
+    for (const [p, w] of table) { roll -= w; if (roll <= 0) { prize = p; break; } }
     let final = [SYMBOL[prize], SYMBOL[prize], SYMBOL[prize]];
     if (prize === 'nothing') {
       final = Phaser.Utils.Array.Shuffle(ALL.slice()).slice(0, 3); // a miss never shows three of a kind

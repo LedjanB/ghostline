@@ -1,6 +1,6 @@
 // Run features added in the "best of every runner" pass. Mixed into PlayScene.
 // Sources of each idea are noted inline (Jetpack Joyride, Subway Surfers, Canabalt, Alto's...).
-import { W, H, CEIL, FLOOR, PLAYER_X, PX_PER_METER, ZONES } from './data.js';
+import { W, H, CEIL, FLOOR, PLAYER_X, PX_PER_METER, ZONES, zoneAt, ZONE_LENGTH_M } from './data.js';
 import { Save } from './save.js';
 import { Audio } from './audio.js';
 import { text } from './ui.js';
@@ -34,8 +34,20 @@ export const Features = {
     this.mode = save.mode;
     this.daily = save.mode === 'daily';
     const eq = save.charms.equipped;
-    this.charm = Object.fromEntries(['magnet', 'nightlight', 'lucky', 'headstart', 'bouncy', 'graverobber'].map((k) => [k, eq.includes(k)]));
+    this.charm = Object.fromEntries(['magnet', 'nightlight', 'lucky', 'headstart', 'bouncy', 'graverobber', 'ironlung', 'soulmagnet', 'longrush', 'luckyspin'].map((k) => [k, eq.includes(k)]));
     this.souls = this.charm.lucky ? 1 : 0;
+    if (this.charm.ironlung) this.shield = true;
+    this.tipsSeen = new Set(save.tips);
+    this.rush = null;
+    this.chase = null;
+    this.chaseDone = new Set();
+    this.nextRushX = this.worldX + 350 * PX_PER_METER;
+    this.quipCooldown = 0;
+    this.deathCause = null;
+    // high-contrast hazard colors (settings) for colorblind players
+    this.hz = save.settings.contrast
+      ? { glow: 0xff40ff, core: 0xffffff, warn: 0xffe000, node: 0xff80ff, laser: 0xff40ff }
+      : { glow: 0x4fe38a, core: 0xb8ffd2, warn: 0xff2244, node: 0xffffff, laser: 0x4fe38a };
     this.blastM = 0;
     this.booIndex = 0;
     this.nextLetterX = 0;
@@ -75,6 +87,8 @@ export const Features = {
     this.rainLayer = this.add.tileSprite(0, 0, W, H, 'rain').setOrigin(0).setDepth(2).setAlpha(0);
     this.fogLayer = this.add.tileSprite(0, 0, W, 180, 'fog').setOrigin(0).setScale(1, 2).setDepth(13).setAlpha(0);
     this.flashRect = this.add.rectangle(0, 0, W, H, 0xdfe8ff).setOrigin(0).setDepth(19).setAlpha(0);
+    this.rushTint = this.add.rectangle(0, 0, W, H, 0x9b5de5).setOrigin(0).setDepth(19).setAlpha(0).setBlendMode(Phaser.BlendModes.ADD);
+    this.darkWall = this.add.image(-260, 0, 'darkwall').setOrigin(1, 0).setScale(2).setDepth(25).setVisible(false);
     this.fireflies = [];
     this.giant = null;
     this.laserGfx = this.add.graphics().setDepth(16);
@@ -82,7 +96,7 @@ export const Features = {
     this.pickups = []; // souls, letters, power orbs
     this.ghostSprite = this.add.image(PLAYER_X, BOTTOM, `${this.char.id}_fly`).setScale(2).setDepth(8.6)
       .setTint(0x9fb8e8).setAlpha(0).setBlendMode(Phaser.BlendModes.ADD);
-    this.setWeather(ZONES[this.zoneIndex % ZONES.length].id);
+    this.setWeather(zoneAt(this.zoneIndex).id);
 
     // Opening (Canabalt-style dramatic start): the ghost swoops in and grabs you.
     this.ghostX = W + 40; this.ghostY = -40;
@@ -95,6 +109,7 @@ export const Features = {
         const t = text(this, PLAYER_X, BOTTOM - 34, '!', 16, '#ffd75e').setDepth(31).setStroke('#07060d', 4);
         this.tweens.add({ targets: t, y: '-=18', alpha: 0, duration: 600, onComplete: () => t.destroy() });
         if (this.headStart) this.popup('HEAD START!', '#ffd75e');
+        this.quip('start', true);
       },
     });
     if (this.tracker) this.tracker.add('runs', 1);
@@ -103,6 +118,151 @@ export const Features = {
   popup(str, color = '#e6f0ff', y = null) {
     const t = text(this, PLAYER_X + 50, y ?? this.py - 40, str, 16, color).setDepth(31).setStroke('#07060d', 4);
     this.tweens.add({ targets: t, y: '-=36', alpha: 0, duration: 1000, ease: 'Quad.easeOut', onComplete: () => t.destroy() });
+  },
+
+  onZoneEnter(zone) {
+    this.time.delayedCall(900, () => this.quip(`zone_${zone.id}`, true));
+    Save.update((s) => { s.stats.maxZone = Math.max(s.stats.maxZone, this.zoneIndex); });
+  },
+
+  // vibration on phones that support it (Android; iPhone Safari has no vibration API)
+  buzz(ms) {
+    if (!this.settings.vibrate || !navigator.vibrate) return;
+    try { navigator.vibrate(ms); } catch (e) { /* not allowed */ }
+  },
+
+  // ---------- Spirit Rush: a pace breaker (Jetpack Joyride's vehicles, without a vehicle) ----------
+  startRush() {
+    const dur = (6 + (this.charm.longrush ? 3 : 0)) * (this.char.rushMul || 1);
+    this.rush = { t: dur, dur };
+    Audio.sfx('rush');
+    Audio.intensity(1);
+    this.flash(200, 180, 120, 255);
+    this.shake(200, 0.008);
+    this.quip('rush', true);
+    this.tracker?.add('rushes', 1);
+    this.rushTint.setAlpha(0.18);
+    this.events.emit('power', { kind: 'rush', left: 1 });
+  },
+  stepRush(dt) {
+    if (!this.rush) return;
+    this.rush.t -= dt;
+    this.events.emit('power', { kind: 'rush', left: Math.max(0, this.rush.t / this.rush.dur) });
+    this.clearAround(90); // smash whatever is right in front
+    if (this.rush.t <= 0) {
+      this.rush = null;
+      this.clearAround(420); // shockwave on landing, no cheap deaths
+      this.invuln = 1.5;
+      this.rushTint.setAlpha(0);
+      this.events.emit('power', null);
+      Audio.sfx('powerdown');
+    }
+  },
+
+  // ---------- The Dark: a chase in the woods, sewers and carnival (Temple Run's pursuer) ----------
+  stepChase(dt, meters) {
+    const zone = zoneAt(this.zoneIndex);
+    const into = (meters % ZONE_LENGTH_M) / ZONE_LENGTH_M;
+    if (!this.chase && !this.dead && !this.creative && ['woods', 'sewer', 'carnival'].includes(zone.id)
+      && !this.chaseDone.has(zone.id) && into > 0.4 && into < 0.6 && !this.gate) {
+      this.chaseDone.add(zone.id);
+      this.chase = { t: 0, dur: 15, wall: 30 };
+      this.darkWall.setVisible(true).setX(-260);
+      Audio.hush(0.8);
+      Audio.sfx('scream');
+      this.time.delayedCall(800, () => Audio.danger(true));
+      this.shake(400, 0.006);
+      this.banner('THE DARK IS COMING', 'GRAB CANDLES TO PUSH IT BACK');
+      this.quip('dark', true);
+    }
+    const c = this.chase;
+    if (!c) return;
+    c.t += dt;
+    c.wall += (14 + c.t * 0.8) * dt;
+    if (c.wall >= PLAYER_X - 30 && this.invuln <= 0 && !this.dead) {
+      if (this.creative || this.shield) { c.wall = -60; this.hit('dark'); } else { this.hit('dark'); return; }
+    }
+    if (c.t >= c.dur) this.endChase(true);
+  },
+  endChase(won) {
+    const c = this.chase;
+    this.chase = null;
+    Audio.danger(false);
+    this.tweens.add({ targets: this.darkWall, x: -300, duration: 900, ease: 'Quad.easeIn', onComplete: () => this.darkWall.setVisible(false) });
+    if (!won || !c) return;
+    this.souls++;
+    this.runCandles += 25;
+    this.events.emit('souls', this.souls);
+    this.events.emit('candles', this.runCandles);
+    Audio.sfx('boo');
+    this.popup('YOU OUTRAN THE DARK! +25', '#ffd75e');
+    this.quip('escaped', true);
+    this.tracker?.add('chases', 1);
+  },
+
+  // ---------- Boo talks (identity + humor) ----------
+  quip(kind, force = false) {
+    if (this.dead && kind !== 'death') return;
+    if (!force && this.quipCooldown > 0) return;
+    const hero = this.char.name.split(' ').pop();
+    const LINES = {
+      start: ['HOLD ON TIGHT!', "DON'T LET GO!", 'OUT, OUT, OUT!'],
+      near: ['TOO CLOSE!', 'WHOA!', 'MY HEART! WAIT...', 'NICE ONE!'],
+      soul: ['OOH, SHINY!', 'A SOUL! MINE!', 'KEEP THAT ONE.'],
+      rush: ['SPIIIRIT RUSH!', 'SMASH IT ALL!'],
+      dark: ["IT'S THE DARK! GO!", 'FASTER, ' + hero + '!'],
+      escaped: ['WE MADE IT!', 'BYE, DARKNESS!'],
+      death: ['NOOO!', 'OOPS. MY BAD.', 'I SLIPPED!'],
+      shield: ['THAT WAS CLOSE!', 'SHIELD SAVED US!'],
+      floor: ['FLY, ' + hero + '!', 'HOLD TO FLOAT!'],
+      zone_morgue: ["DON'T WAKE THEM."], zone_woods: ['FRESH AIR! KIND OF.'], zone_graveyard: ['I KNOW SOME OF THESE.'],
+      zone_sewer: ['EW. EW. EW.'], zone_catacombs: ['NICE SKULLS.'], zone_carnival: ['I HATE CLOWNS.'], zone_otherside: ['WHERE ARE WE?!'],
+    };
+    const opts = LINES[kind];
+    if (!opts) return;
+    this.quipCooldown = 4;
+    const str = opts[Math.floor(Math.random() * opts.length)];
+    if (this.bubble) this.bubble.forEach((o) => o.destroy());
+    const t = text(this, 0, 0, str, 16, '#1b1630').setDepth(33);
+    const bg = this.add.rectangle(0, 0, t.width + 16, 28, 0xe6f0ff).setDepth(32).setStrokeStyle(2, 0x1b1630);
+    const tail = this.add.triangle(0, 0, 0, 0, 8, 0, 0, 8, 0xe6f0ff).setDepth(32);
+    this.bubble = [bg, t, tail];
+    this.bubbleUntil = this.clock + 1.8;
+  },
+  renderBubble() {
+    if (!this.bubble) return;
+    const half = this.bubble[0].width / 2 + 8;
+    const x = Math.min(W - half, Math.max(half, this.ghost.x + 40)), y = Math.max(60, this.ghost.y - 34);
+    this.bubble[0].setPosition(x, y); this.bubble[1].setPosition(x, y + 1); this.bubble[2].setPosition(x - 26, y + 16);
+    if (this.clock > this.bubbleUntil) { this.bubble.forEach((o) => o.destroy()); this.bubble = null; }
+  },
+
+  // ---------- one-time tutorial tips ----------
+  tip(id) {
+    if (this.creative || this.tipsSeen.has(id)) return;
+    const TIPS = {
+      candle: 'CANDLES = LIGHT. GRAB THEM!', beam: "DON'T TOUCH THE SPIRITS!", hands: 'HANDS COME OUT OF THE FLOOR!',
+      swing: 'WATCH THE SWINGING THINGS!', banshee: 'RED ! MEANS A BANSHEE. DODGE!', laser: 'LASERS FIRE ACROSS. FIND A GAP!',
+      soul: 'SOULS = SPINS WHEN YOU DIE', letter: 'SPELL B-O-O FOR A PRIZE', power: 'POWER-UP! IT LASTS A FEW SECONDS',
+      rush: 'SPIRIT RUSH! SMASH THROUGH IT ALL!', light: 'LIGHT IS LOW! GRAB CANDLES!',
+    };
+    if (!TIPS[id]) return;
+    this.tipsSeen.add(id);
+    Save.update((s) => { if (!s.tips.includes(id)) s.tips.push(id); });
+    this.tipQueue = this.tipQueue || [];
+    this.tipQueue.push(TIPS[id]);
+    if (this.tipQueue.length === 1) this.showNextTip();
+  },
+  showNextTip() {
+    const msg = this.tipQueue && this.tipQueue[0];
+    if (!msg) return;
+    const bg = this.add.rectangle(W / 2, 142, 560, 40, 0x07060d).setDepth(34).setAlpha(0).setStrokeStyle(2, 0x9fb8e8);
+    const icon = this.add.image(W / 2 - 262, 142, 'ghost0').setDepth(35).setAlpha(0);
+    const t = text(this, W / 2 + 10, 143, msg, 16, '#e6f0ff').setDepth(35).setAlpha(0);
+    this.tweens.add({
+      targets: [bg, icon, t], alpha: 1, duration: 200, yoyo: true, hold: 2600,
+      onComplete: () => { bg.destroy(); icon.destroy(); t.destroy(); this.tipQueue.shift(); this.showNextTip(); },
+    });
   },
 
   missionDone(def) {
@@ -126,7 +286,12 @@ export const Features = {
       }
     }
     const slow = this.power && this.power.kind === 'slow';
-    this.speedMul += ((slow ? 0.6 : 1) - this.speedMul) * Math.min(1, dt * 4);
+    this.speedMul += ((this.rush ? 1.8 : slow ? 0.6 : 1) - this.speedMul) * Math.min(1, dt * 4);
+    this.stepRush(dt);
+    this.stepChase(dt, meters);
+    this.quipCooldown -= dt;
+    if (!this.dead && this.light < 0.3) this.tip('light');
+    if (!this.dead && this.groundStreak > 4 && this.openingDone) { this.quip('floor'); this.groundStreak = -6; }
 
     // magnets pull candles in (charm = small radius, power-up = big)
     const pull = this.power && this.power.kind === 'magnet' ? 230 : this.charm.magnet ? 110 : 0;
@@ -186,6 +351,10 @@ export const Features = {
       p.letter = this.booIndex;
       this.nextLetterX = this.worldX + this.rand.range(180, 320) * PX_PER_METER;
     }
+    if (this.worldX >= this.nextRushX && !this.rush && !this.chase) {
+      spawnAt('power', 'orb_rush', safeY()).power = 'rush';
+      this.nextRushX = this.worldX + this.rand.range(700, 1100) * PX_PER_METER;
+    }
     if (this.worldX >= this.nextPowerX && !this.power) {
       const kinds = this.shield ? ['magnet', 'slow'] : ['magnet', 'slow', 'shield'];
       const kind = this.rand.pick(kinds);
@@ -200,6 +369,10 @@ export const Features = {
       p.x -= move;
       p.t += dt;
       p.y = p.baseY + Math.sin(p.t * 3) * 8;
+      if ((this.charm.soulmagnet || this.rush) && p.kind !== 'power' && !this.dead) {
+        const dx = PLAYER_X - p.x, dy = this.py - p.y;
+        if (dx * dx + dy * dy < 200 * 200) { p.x += dx * Math.min(1, dt * 6); p.baseY += dy * Math.min(1, dt * 6); }
+      }
       if (!this.dead && Math.hypot(p.x - PLAYER_X, p.y - this.py) < 26) this.grabPickup(p);
       if (p.x < -40) p.dead = true;
       if (p.dead) { p.s.destroy(); p.glow.destroy(); }
@@ -210,7 +383,10 @@ export const Features = {
   grabPickup(p) {
     p.dead = true;
     this.burst(p.x, p.y, p.kind === 'soul' ? 0x6fb7ff : 0xffd75e, 12, 40, 400);
+    this.tip(p.kind === 'power' ? (p.power === 'rush' ? 'rush' : 'power') : p.kind);
+    if (p.kind === 'power' && p.power === 'rush') { this.startRush(); return; }
     if (p.kind === 'soul') {
+      this.quip('soul');
       this.souls++;
       Audio.sfx('soul');
       this.events.emit('souls', this.souls);
@@ -242,7 +418,7 @@ export const Features = {
         this.events.emit('shield', true);
         this.popup('SPIRIT SHIELD', '#9fc8ff');
       } else {
-        const dur = p.power === 'magnet' ? 8 : 5;
+        const dur = (p.power === 'magnet' ? 8 : 5) * (this.char.powerMul || 1);
         this.power = { kind: p.power, t: dur, dur };
         this.popup(p.power === 'magnet' ? 'CANDLE MAGNET' : 'SLOW-MO', '#ffb0d0');
       }
@@ -291,7 +467,7 @@ export const Features = {
     this.nextGhoul -= dt;
     if (this.nextGhoul <= 0 && this.openingDone) {
       this.nextGhoul = 2.5 + Math.random() * 4;
-      const s = this.add.sprite(W + 30, FLOOR - 15, 'ghoul0').setScale(2).setDepth(8.8);
+      const s = this.add.sprite(W + 30, FLOOR - 15, 'ghoul0').setScale(2).setDepth(8.8).setTint(zoneAt(this.zoneIndex).ghoul);
       s.play('ghoul_walk');
       this.ghouls.push({ x: W + 30, y: FLOOR - 15, vy: 0, s, state: 'walk', walk: 30 + Math.random() * 30 });
     }
@@ -327,14 +503,14 @@ export const Features = {
     this.nextGiant -= dt;
     if (this.nextGiant <= 0 && !this.giant && !this.dead) {
       this.nextGiant = 30 + Math.random() * 25;
-      const zone = ZONES[this.zoneIndex % ZONES.length].id;
-      if (zone === 'hospital') {
+      const zone = zoneAt(this.zoneIndex).giant;
+      if (zone === 'shadow') {
         const s = this.add.image(W + 140, 200, 'giant_shadow').setScale(2).setDepth(0.5).setAlpha(0.9);
         const eyes = [0, 1].map((i) => this.add.image(0, 0, 'glow').setScale(0.35).setDepth(0.6).setTint(0xff3355).setBlendMode(Phaser.BlendModes.ADD));
         this.giant = { kind: 'shadow', x: W + 140, s, eyes, t: 0 };
-      } else if (zone === 'forest') {
+      } else if (zone === 'eyes') {
         const y = 120 + Math.random() * 60;
-        const eyes = [0, 1].map(() => this.add.image(0, y, 'glow').setScale(0.6, 0.3).setDepth(1.5).setTint(0xffe066).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0));
+        const eyes = [0, 1].map(() => this.add.image(0, y, 'glow').setScale(0.6, 0.3).setDepth(1.5).setTint(zoneAt(this.zoneIndex).accent).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0));
         this.giant = { kind: 'eyes', x: W - 60 - Math.random() * 200, y, eyes, t: 0 };
       } else {
         const s = this.add.image(W - 120 - Math.random() * 200, H + 160, 'giant_tentacle').setScale(2).setDepth(0.5).setOrigin(0.5, 0);
@@ -368,24 +544,39 @@ export const Features = {
   },
 
   // ---------- weather per zone (Alto's Adventure) ----------
-  setWeather(zone) {
-    this.weather = zone;
+  setWeather(zoneId) {
+    const zone = ZONES.find((z) => z.id === zoneId) || ZONES[0];
+    this.weather = zone.weather;
     if (this.giant) { // a background event never carries into the next zone
       if (this.giant.s) this.giant.s.destroy();
       if (this.giant.eyes) this.giant.eyes.forEach((e) => e.destroy());
       this.giant = null;
     }
-    Audio.ambience(zone);
-    this.tweens.add({ targets: this.rainLayer, alpha: zone === 'hospital' ? 0.35 : 0, duration: 600 });
-    this.fogLayer.setTint(zone === 'sewer' ? 0x9fd8a0 : 0xd0c8f0);
-    this.tweens.add({ targets: this.fogLayer, alpha: zone === 'hospital' ? 0 : zone === 'forest' ? 0.55 : 0.35, duration: 600 });
+    Audio.ambience(zone.id);
+    const FOG = { ward: [0, 0], morgue: [0.35, 0xdff0ff], woods: [0.55, 0xd0c8f0], graveyard: [0.4, 0xff9aa0], sewer: [0.35, 0x9fd8a0], catacombs: [0.25, 0xffd0a0], carnival: [0.15, 0xffb0e0], otherside: [0.3, 0x9ff0ff] };
+    const [fa, ft] = FOG[zone.id] || [0, 0xffffff];
+    this.tweens.add({ targets: this.rainLayer, alpha: zone.weather === 'rain' ? 0.35 : 0, duration: 600 });
+    this.fogLayer.setTint(ft);
+    this.tweens.add({ targets: this.fogLayer, alpha: fa, duration: 600 });
     this.fireflies.forEach((f) => f.destroy());
     this.fireflies = [];
-    if (zone === 'forest') {
-      for (let i = 0; i < 9; i++) {
-        const f = this.add.image(Math.random() * W, 80 + Math.random() * 220, 'glow').setScale(0.18).setDepth(21)
-          .setTint(0xd8ff7a).setBlendMode(Phaser.BlendModes.ADD);
-        f.vx = -10 - Math.random() * 20; f.ph = Math.random() * 6;
+    // particle fields: [count, color(s), glow?, vx, vy, size, alpha]
+    const P = {
+      frost: [26, [0xdff6ff], false, -15, 18, 2, 0.7],
+      fireflies: [10, [0xd8ff7a], true, -15, 0, 0.18, 0.8],
+      leaves: [18, [0xb0402a, 0xd8803a, 0x7a2a1a], false, -40, 30, 3, 0.9],
+      embers: [22, [0xffb040, 0xff7020], true, -10, -30, 0.12, 0.9],
+      confetti: [24, [0xffd75e, 0xff6bb5, 0x7ff0ff], false, -20, 22, 2, 0.9],
+      sparkles: [24, [0x7ff0ff, 0xff7ff0, 0xffffff], true, -10, -18, 0.12, 0.9],
+    }[zone.weather];
+    if (P) {
+      const [n, cols, glow, vx, vy, size, alpha] = P;
+      for (let i = 0; i < n; i++) {
+        const col = cols[i % cols.length];
+        const f = glow
+          ? this.add.image(Math.random() * W, 50 + Math.random() * 260, 'glow').setScale(size).setTint(col).setBlendMode(Phaser.BlendModes.ADD).setDepth(21)
+          : this.add.rectangle(Math.random() * W, 40 + Math.random() * 280, size, size, col).setDepth(13).setAlpha(alpha);
+        f.vx = vx * (0.6 + Math.random() * 0.8); f.vy = vy * (0.6 + Math.random() * 0.8); f.ph = Math.random() * 6; f.glowy = glow; f.baseA = alpha;
         this.fireflies.push(f);
       }
     }
@@ -397,12 +588,15 @@ export const Features = {
     this.fogLayer.tilePositionX += (this.speed * 0.6 + 12) * dt;
     for (const f of this.fireflies) {
       f.ph += dt;
-      f.x += (f.vx - this.speed * 0.2) * dt;
-      f.y += Math.sin(f.ph * 2) * 12 * dt;
-      f.setAlpha(0.4 + Math.sin(f.ph * 3) * 0.4);
+      f.x += (f.vx - this.speed * 0.25) * dt + Math.sin(f.ph * 1.7) * 10 * dt;
+      f.y += f.vy * dt + Math.sin(f.ph * 2) * 8 * dt;
+      if (f.glowy) f.setAlpha(f.baseA * (0.5 + Math.sin(f.ph * 3) * 0.5));
+      else if (this.weather === 'leaves' || this.weather === 'confetti') f.rotation += dt * 3;
       if (f.x < -10) f.x = W + 10;
+      if (f.y > FLOOR) f.y = CEIL + 2;
+      if (f.y < CEIL) f.y = FLOOR - 2;
     }
-    if (this.weather === 'hospital' && this.settings.flicker) {
+    if (this.weather === 'rain' && this.settings.flicker) {
       this.nextLightning -= dt;
       if (this.nextLightning <= 0) {
         this.nextLightning = 9 + Math.random() * 10;
@@ -457,6 +651,8 @@ export const Features = {
   },
 
   renderFeatures(lead, py) {
+    this.renderBubble();
+    if (this.chase) this.darkWall.x = this.chase.wall + Math.sin(this.clock * 7) * 3;
     // lasers
     const g = this.laserGfx;
     g.clear();
@@ -468,15 +664,15 @@ export const Features = {
         L.emitters[i * 2 + 1].setPosition(right, y);
         if (L.phase === 'warn') {
           const blink = Math.floor(L.t * (L.t > L.warn - 0.5 ? 16 : 6)) % 2;
-          g.lineStyle(2, 0xb8ffd2, blink ? 0.7 : 0.25);
+          g.lineStyle(2, this.hz.core, blink ? 0.7 : 0.25);
           for (let x = left + 12; x < right - 12; x += 16) g.lineBetween(x, y, x + 8, y);
-          g.fillStyle(0x4fe38a, 0.3 + (L.t / L.warn) * 0.5);
+          g.fillStyle(this.hz.laser, 0.3 + (L.t / L.warn) * 0.5);
           g.fillCircle(left + 10, y, 4 + (L.t / L.warn) * 6);
           g.fillCircle(right - 10, y, 4 + (L.t / L.warn) * 6);
         } else if (L.phase === 'fire') {
           const w = 18 + Math.sin(this.clock * 60) * 3;
-          g.fillStyle(0x4fe38a, 0.35); g.fillRect(left, y - w / 2, right - left, w);
-          g.fillStyle(0xb8ffd2, 0.95); g.fillRect(left, y - 4, right - left, 8);
+          g.fillStyle(this.hz.laser, 0.35); g.fillRect(left, y - w / 2, right - left, w);
+          g.fillStyle(this.hz.core, 0.95); g.fillRect(left, y - 4, right - left, 8);
         }
       });
     }
@@ -540,6 +736,7 @@ export const Features = {
     this.flash(200, 160, 200, 255);
     this.popup('SECOND CHANCE!', '#ffd75e');
     this.tracker?.add('revives', 1);
+    Save.update((s) => { s.stats.revives += 1; });
   },
 
   finalize() {
@@ -553,6 +750,12 @@ export const Features = {
       s.candles += this.runCandles;
       s.best = Math.max(s.best, meters);
       s.runs += 1;
+      s.stats.runs += 1;
+      s.stats.meters += meters;
+      s.stats.candles += this.runCandles;
+      s.stats.nearMisses += this.nearMisses;
+      s.stats.maxZone = Math.max(s.stats.maxZone, this.zoneIndex);
+      if (this.deathCause) s.stats.deaths[this.deathCause] = (s.stats.deaths[this.deathCause] || 0) + 1;
       if (daily && meters >= todays) {
         s.daily = { date: todayKey(), best: meters, ghost: this.ghostRec.slice() };
       }

@@ -1,12 +1,18 @@
 {
   "name": "ghostline",
-  "version": "2.0.0",
+  "version": "4.0.0",
   "private": true,
   "description": "Spooky pixel runner in the style of Jetpack Joyride, built with Phaser 4.",
   "scripts": {
-    "start": "python -m http.server 8000"
+    "start": "python -m http.server 8000",
+    "test": "playwright test",
+    "build:itch": "node scripts/build-itch.mjs"
   },
   "dependencies": {
     "phaser": "4.2.1"
+  },
+  "type": "module",
+  "devDependencies": {
+    "@playwright/test": "1.48.2"
   }
 }

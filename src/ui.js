@@ -27,11 +27,13 @@ export function button(scene, x, y, label, onClick, opts = {}) {
   const bg = scene.add.rectangle(x, y, w, h, fill).setStrokeStyle(2, edge);
   const lbl = text(scene, x, y + 1, label, size, opts.color ?? '#e6f0ff');
   const ring = scene.add.rectangle(x, y, w + 10, h + 10).setStrokeStyle(3, FOCUS).setVisible(false);
+  const icon = opts.icon ? scene.add.image(x - w / 2 + 18, y, opts.icon).setScale(opts.iconScale ?? 2) : null;
+  if (icon) lbl.x += 10;
   let focused = false;
   let enabled = true;
   bg.setInteractive({ useHandCursor: true });
   const api = {
-    bg, lbl, ring, onClick, onLeft: opts.onLeft, onRight: opts.onRight,
+    bg, lbl, ring, icon, onClick, onLeft: opts.onLeft, onRight: opts.onRight,
     press() {
       if (!enabled) return;
       if (!opts.silent) Audio.sfx('click');
@@ -45,10 +47,10 @@ export function button(scene, x, y, label, onClick, opts = {}) {
       return api;
     },
     setLabel(s) { lbl.setText(s); return api; },
-    setVisible(v) { bg.setVisible(v); lbl.setVisible(v); if (!v) ring.setVisible(false); else ring.setVisible(focused); enabled = v; return api; },
-    setDepth(d) { bg.setDepth(d); lbl.setDepth(d + 1); ring.setDepth(d + 1); return api; },
+    setVisible(v) { bg.setVisible(v); lbl.setVisible(v); if (icon) icon.setVisible(v); if (!v) ring.setVisible(false); else ring.setVisible(focused); enabled = v; return api; },
+    setDepth(d) { bg.setDepth(d); lbl.setDepth(d + 1); ring.setDepth(d + 1); if (icon) icon.setDepth(d + 1); return api; },
     setColors(f, e) { fill = f; edge = e; bg.setFillStyle(focused ? lighter(f) : f); bg.setStrokeStyle(2, e); return api; },
-    destroy() { bg.destroy(); lbl.destroy(); ring.destroy(); },
+    destroy() { bg.destroy(); lbl.destroy(); ring.destroy(); if (icon) icon.destroy(); },
   };
   bg.on('pointerdown', (p) => { p.__ui = true; api.press(); });
   bg.on('pointerover', () => { if (api.group) api.group.set(api.group.items.indexOf(api)); else api.focus(true); });
@@ -84,4 +86,42 @@ export function focusGroup(scene, items, { horizontal = false, start = 0 } = {})
   items.forEach((b) => { b.group = g; });
   g.set(start);
   return g;
+}
+
+// A small HTML box over the game for pasting/copying text (backup codes).
+// Canvas games can't take a paste on phones, a real input can.
+export function domPrompt(title, value, onSubmit) {
+  const old = document.getElementById('gl-prompt');
+  if (old) old.remove();
+  // the game captures keys like Backspace; hand the keyboard to the text box while it is open
+  const kb = window.__game && window.__game.input.keyboard;
+  if (kb) kb.enabled = false;
+  const close = () => { wrap.remove(); if (kb) kb.enabled = true; };
+  const wrap = document.createElement('div');
+  wrap.id = 'gl-prompt';
+  wrap.style.cssText = 'position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;background:rgba(7,6,13,0.85);font-family:"Press Start 2P",monospace;';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#140f24;border:3px solid #8f7fbf;padding:16px;width:min(90vw,520px);color:#e6f0ff;font-size:12px;line-height:1.8;';
+  const h = document.createElement('div');
+  h.textContent = title;
+  const input = document.createElement('textarea');
+  input.value = value;
+  input.rows = 4;
+  input.style.cssText = 'width:100%;box-sizing:border-box;margin:12px 0;background:#07060d;color:#ffd75e;border:2px solid #3a2f5a;font-family:monospace;font-size:12px;user-select:text;-webkit-user-select:text;touch-action:auto;';
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:12px;justify-content:flex-end;';
+  const mkBtn = (label, fn) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.style.cssText = 'font-family:inherit;font-size:12px;padding:10px 14px;background:#2a1f4a;color:#e6f0ff;border:2px solid #8f7fbf;';
+    b.onclick = fn;
+    return b;
+  };
+  row.appendChild(mkBtn(onSubmit ? 'CANCEL' : 'CLOSE', close));
+  if (onSubmit) row.appendChild(mkBtn('LOAD', () => { const v = input.value; close(); onSubmit(v); }));
+  box.append(h, input, row);
+  wrap.appendChild(box);
+  document.body.appendChild(wrap);
+  input.focus();
+  if (value) input.select();
 }

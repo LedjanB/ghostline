@@ -1,5 +1,6 @@
 // Title screen + character shop. Works with mouse, touch, keyboard and gamepad.
-import { W, H, CHARACTERS, PX_PER_METER, GIFT_HOURS } from '../data.js';
+import { W, H, CHARACTERS, PX_PER_METER, GIFT_HOURS, ZONES } from '../data.js';
+import { ZoneLayers } from '../zones.js';
 import { todayKey } from '../run-features.js';
 import { Save } from '../save.js';
 import { Audio } from '../audio.js';
@@ -13,14 +14,15 @@ export class MenuScene extends Phaser.Scene {
     const save = Save.get();
     this.index = Math.max(0, CHARACTERS.findIndex((c) => c.id === save.selected));
 
-    this.far = this.add.tileSprite(0, 0, 320, 180, 'hospital_far').setOrigin(0).setScale(2);
-    this.mid = this.add.tileSprite(0, 0, 320, 180, 'hospital_mid').setOrigin(0).setScale(2);
-    this.edge = this.add.tileSprite(0, 0, 320, 180, 'hospital_edge').setOrigin(0).setScale(2);
+    // the menu shows the deepest place you have reached
+    const deepest = ZONES[Math.min(ZONES.length - 1, save.stats?.maxZone || 0)];
+    this.layers = new ZoneLayers(this, deepest.id, -100);
+    this.menuScroll = 0;
     this.add.image(W / 2, H / 2 + 20, 'dark').setScale(2).setAlpha(0.78);
 
     this.add.image(W / 2, 48, 'glow').setScale(5, 1.6).setBlendMode(Phaser.BlendModes.ADD).setTint(0x6f8fff).setAlpha(0.35);
     this.title = text(this, W / 2, 48, 'GHOSTLINE', 32, '#cfe0ff').setStroke('#07060d', 6);
-    this.subtitle = text(this, W / 2, 76, '', 8, '#8f7fbf');
+    this.subtitle = text(this, W / 2, 78, '', 16, '#8f7fbf').setStroke('#07060d', 4);
     this.ghost = this.add.sprite(W / 2 + 196, 44, 'ghost0').setScale(2).setAlpha(0.9);
     this.ghost.play('ghost_float');
     this.tweens.add({ targets: this.ghost, y: 56, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
@@ -43,17 +45,17 @@ export class MenuScene extends Phaser.Scene {
     button(this, W / 2 + 140, 140, '>', () => this.browse(1), { w: 44, h: 44 });
 
     this.mainBtn = button(this, W / 2, 258, 'PLAY', () => this.mainAction(), { w: 300, h: 38, silent: true });
-    this.missionsBtn = button(this, 112, 302, 'MISSIONS', () => this.overlay('missions'), { w: 196, h: 30 });
-    this.charmsBtn = button(this, 320, 302, 'CHARMS', () => this.overlay('charms'), { w: 196, h: 30 });
+    this.missionsBtn = button(this, 112, 302, 'MISSIONS', () => this.overlay('missions'), { w: 196, h: 30, icon: 'icon_star' });
+    this.charmsBtn = button(this, 320, 302, 'CHARMS', () => this.overlay('charms'), { w: 196, h: 30, icon: 'icon_charm' });
     this.giftBtn = button(this, 528, 302, 'GIFT', () => this.claimGift(), { w: 196, h: 30, silent: true });
-    this.modeBtn = button(this, 112, 340, '', () => this.toggleMode(), { w: 196, h: 30 });
-    this.settingsBtn = button(this, 320, 340, 'SETTINGS', () => this.openSettings(), { w: 196, h: 30 });
+    this.modeBtn = button(this, 112, 340, '', () => this.toggleMode(), { w: 196, h: 30, icon: 'ghost0', iconScale: 1 });
+    this.settingsBtn = button(this, 320, 340, 'SETTINGS', () => this.openSettings(), { w: 196, h: 30, icon: 'icon_gear' });
     this.fullBtn = button(this, 528, 340, 'FULLSCREEN', () => this.fullscreen(), { w: 196, h: 30 });
     this.group = focusGroup(this, [this.mainBtn, this.missionsBtn, this.charmsBtn, this.giftBtn, this.modeBtn, this.settingsBtn, this.fullBtn]);
     this.time.addEvent({ delay: 1000, loop: true, callback: () => this.refreshGift() });
 
     this.inputMap = createInput(this);
-    this.hint = text(this, W / 2, 92, '', 8, '#6f6590');
+    this.hint = text(this, W / 2, 98, '', 8, '#6f6590');
     this.offDevice = Device.onChange(() => this.refreshHint());
     this.events.once('shutdown', () => this.offDevice());
     this.events.on('resume', () => { this.inputMap.update(); this.inputMap.update(); this.refresh(); });
@@ -74,9 +76,8 @@ export class MenuScene extends Phaser.Scene {
 
   update(time, delta) {
     const m = delta / 1000;
-    this.far.tilePositionX += 6 * m;
-    this.mid.tilePositionX += 14 * m;
-    this.edge.tilePositionX += 26 * m;
+    this.menuScroll += 60 * m;
+    this.layers.render(this.menuScroll, null);
     this.inputMap.update();
     if (this.modal) {
       if (this.inputMap.pressed('confirm') || this.inputMap.pressed('back')) this.closeModal();
@@ -111,7 +112,7 @@ export class MenuScene extends Phaser.Scene {
     } else {
       const mins = Math.ceil(left / 60e3);
       const h = Math.floor(mins / 60), m = mins % 60;
-      this.giftBtn.setLabel(`GIFT ${h}H ${m}M`).setColors(0x1d1a26, 0x4a4560);
+      this.giftBtn.setLabel(`${h}H ${m}M`).setColors(0x1d1a26, 0x4a4560);
       if (this.giftPulse) { this.giftPulse.stop(); this.giftPulse = null; this.giftBtn.lbl.setScale(1); }
     }
   }
@@ -200,12 +201,12 @@ export class MenuScene extends Phaser.Scene {
     if (creative) this.modeBtn.setColors(0x1d3a3a, 0x7fe0c0);
     else if (daily) this.modeBtn.setColors(0x1f2a4a, 0x6fb7ff);
     else this.modeBtn.setColors(0x2a1f4a, 0x8f7fbf);
-    this.subtitle.setText(creative ? "CREATIVE MODE: YOU CAN'T LOSE"
-      : daily ? 'DAILY HAUNT: SAME LEVEL ALL DAY, RACE YOUR GHOST' : "DON'T LET GO");
+    this.subtitle.setText(creative ? "CREATIVE: YOU CAN'T LOSE"
+      : daily ? 'DAILY: RACE TODAY\'S GHOST' : "DON'T LET GO");
     const todayBest = save.daily.date === todayKey() ? save.daily.best : 0;
     if (daily) this.bestText.setText(`TODAY ${todayBest}M`);
     this.missionsBtn.setLabel('MISSIONS');
-    this.charmsBtn.setLabel(`CHARMS ${save.charms.equipped.length}/2`);
+    this.charmsBtn.setLabel('CHARMS');
     this.refreshGift();
     const cx = Math.floor(save.creative.x / PX_PER_METER);
     const playLabel = creative && cx > 0 ? `CONTINUE ${cx}M` : daily ? 'PLAY DAILY' : 'PLAY';

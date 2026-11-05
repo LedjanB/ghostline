@@ -1,6 +1,6 @@
 # Ghostline art direction
 
-Made with the `create-game-assets` skill's brief. All art is drawn in code in `src/art.js`.
+Made with the `create-game-assets` skill's brief. All art is drawn in code: actors in `src/art.js`, worlds in `src/zones.js`.
 
 ## Game frame
 - Player fantasy: a nobody being dragged through haunted places by a friendly-ish ghost
@@ -21,7 +21,7 @@ Made with the `create-game-assets` skill's brief. All art is drawn in code in `s
   - Ghost `#e6f0ff` / shade `#9fb8e8`
   - Candle light `#ffd75e` / `#ff8a2a`
   - Spirit danger `#4fe38a`, banshee `#cfe0ff` with `#ff3355` eyes, warning `#ff2244`
-  - Zones: hospital teal-grey `#22323a`, forest purple `#120b24` to `#2a1840`, sewer brick `#2d2a24` with slime `#3f6b2a`
+  - Zones: each zone has its own sky gradient and exactly one accent color (see `ZONES[].accent` in `src/zones.js`)
 - Edge treatment: every actor and icon has a 1px `#0b0918` outline; backgrounds have none
 - Lighting: light comes from candles and the player; darkness grows as the LIGHT meter drains
 - Motion character: bouncy and quick (Back ease on pops, squash on landing), hazards telegraph before they act
@@ -30,6 +30,15 @@ Made with the `create-game-assets` skill's brief. All art is drawn in code in `s
 ## Technical contract
 - Actor sprites: text-row pixel maps, 1 char = 1 px, `.` = transparent, +1 px outline on each side
 - Characters: 12x16 base (14x18 with outline), frames `run0`, `run1`, `fly`
-- Backgrounds: 320x180 tiles (forest far layer 640x180), seamless horizontally, 3 layers per zone: far, mid, edge (ceiling + floor band, opaque)
+- Backgrounds: painted per zone into a `Buf` pixel buffer, seamless horizontally, 5 layers: sky, far, mid, near, edge (ceiling + floor band, opaque). Scroll factors .03 / .1 / .3 / .6 / 1
+- Zone gates: 80x180 opaque set pieces (`gate_<i>`) that hide the seam where one zone's layers end and the next begin
 - Max 16 colors per sprite (checked with `asset_report.py`)
-- Naming: `<thing>` or `<character>_<frame>`, zone layers `<zone>_<far|mid|edge>`
+- Naming: `<thing>` or `<character>_<frame>`, zone layers `<zone>_<sky|far|mid|near|edge>`
+
+## World painting rules (v4)
+- Indie storybook look: Bayer-dithered gradients, no smooth blends, no anti-aliasing
+- Atmospheric perspective: farther layers are lower contrast and pushed toward the sky color; nearest layers are darkest silhouettes
+- One accent color per zone, used for lights only (windows, lanterns, eyes, bulbs). Never on hazards
+- Backgrounds never use the hazard colors (`#4fe38a`, `#ff2244`) so dangers always read
+- Each zone gets: a sky event (moon, aurora, lightning), a landmark silhouette, a weather particle set and one background giant
+- The 8 worlds go from real to unreal: hospital, morgue, woods, cemetery, sewer, catacombs, carnival, the other side

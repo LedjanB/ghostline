@@ -2,7 +2,7 @@
 import { W, H } from '../data.js';
 import { Save } from '../save.js';
 import { Audio } from '../audio.js';
-import { text, button, focusGroup } from '../ui.js';
+import { text, button, focusGroup, domPrompt } from '../ui.js';
 import { createInput } from '../input.js';
 
 export class SettingsScene extends Phaser.Scene {
@@ -11,54 +11,76 @@ export class SettingsScene extends Phaser.Scene {
   init(data) { this.from = data.from; }
 
   create() {
-    this.add.rectangle(0, 0, W, H, 0x07060d).setOrigin(0).setAlpha(0.92).setInteractive();
-    text(this, W / 2, 40, 'SETTINGS', 24, '#cfe0ff');
+    this.add.rectangle(0, 0, W, H, 0x07060d).setOrigin(0).setAlpha(0.94).setInteractive();
+    text(this, W / 2, 30, 'SETTINGS', 24, '#cfe0ff');
     this.inputMap = createInput(this);
-
-    const rowW = 420;
-    const mk = (y, onLeft, onRight, onClick) => button(this, W / 2, y, '', onClick, { w: rowW, h: 36, onLeft, onRight });
     const vol = (key, d) => () => {
       Save.update((s) => { s.settings[key] = Math.round(Math.min(1, Math.max(0, s.settings[key] + d)) * 10) / 10; });
-      Audio.applySettings();
-      Audio.sfx('click');
-      this.refresh();
+      Audio.applySettings(); Audio.sfx('click'); this.refresh();
     };
-    const toggle = (key) => () => {
-      Save.update((s) => { s.settings[key] = !s.settings[key]; });
-      Audio.applySettings();
-      this.refresh();
+    const toggle = (key) => () => { Save.update((s) => { s.settings[key] = !s.settings[key]; }); Audio.applySettings(); this.refresh(); };
+    const L = 168, R = 472, row = (i) => 76 + i * 42;
+    const mk = (x, i, onClick, opts = {}) => button(this, x, row(i), '', onClick, { w: 296, h: 34, ...opts });
+    this.b = {
+      music: mk(L, 0, vol('music', 0.1), { onLeft: vol('music', -0.1), onRight: vol('music', 0.1) }),
+      sfx: mk(L, 1, vol('sfx', 0.1), { onLeft: vol('sfx', -0.1), onRight: vol('sfx', 0.1) }),
+      muted: mk(L, 2, toggle('muted')),
+      shake: mk(L, 3, toggle('shake')),
+      flicker: mk(L, 4, toggle('flicker')),
+      vibrate: mk(R, 0, toggle('vibrate')),
+      contrast: mk(R, 1, toggle('contrast')),
+      backup: mk(R, 2, () => this.backup()),
+      restore: mk(R, 3, () => this.restore()),
+      stats: mk(R, 4, () => { this.scene.pause(); this.scene.launch('stats', { from: 'settings' }); }),
     };
-
-    this.rows = [
-      mk(96, vol('music', -0.1), vol('music', 0.1), vol('music', 0.1)),
-      mk(140, vol('sfx', -0.1), vol('sfx', 0.1), vol('sfx', 0.1)),
-      mk(184, toggle('muted'), toggle('muted'), toggle('muted')),
-      mk(228, toggle('shake'), toggle('shake'), toggle('shake')),
-      mk(272, toggle('flicker'), toggle('flicker'), toggle('flicker')),
-      button(this, W / 2, 324, 'BACK', () => this.close(), { w: 200, h: 36 }),
-    ];
     // tap the left / right half of a volume row to lower / raise it
-    this.rows.slice(0, 2).forEach((b) => {
-      b.bg.removeAllListeners('pointerdown');
-      b.bg.on('pointerdown', (p) => { p.__ui = true; (p.x < W / 2 ? b.onLeft : b.onRight)(); });
-    });
-    this.group = focusGroup(this, this.rows);
-    this.hint = text(this, W / 2, 352, 'LEFT / RIGHT TO CHANGE', 8, '#6f6590');
+    for (const k of ['music', 'sfx']) {
+      const btn = this.b[k];
+      btn.bg.removeAllListeners('pointerdown');
+      btn.bg.on('pointerdown', (p) => { p.__ui = true; (p.x < L ? btn.onLeft : btn.onRight)(); });
+    }
+    this.b.back = button(this, W / 2, 316, 'BACK', () => this.close(), { w: 200, h: 34 });
+    const order = ['music', 'sfx', 'muted', 'shake', 'flicker', 'vibrate', 'contrast', 'backup', 'restore', 'stats', 'back'];
+    this.group = focusGroup(this, order.map((k) => this.b[k]));
+    this.msg = text(this, W / 2, 346, 'LEFT / RIGHT CHANGES VOLUME', 8, '#6f6590');
+    this.events.on('resume', () => { this.inputMap.update(); this.inputMap.update(); });
     this.refresh();
   }
 
-  bar(v) {
-    const n = Math.round(v * 10);
-    return '#'.repeat(n) + '-'.repeat(10 - n);
-  }
+  bar(v) { const n = Math.round(v * 10); return '#'.repeat(n) + '-'.repeat(10 - n); }
 
   refresh() {
     const s = Save.get().settings;
-    this.rows[0].setLabel(`MUSIC  < ${this.bar(s.music)} >`);
-    this.rows[1].setLabel(`SOUND  < ${this.bar(s.sfx)} >`);
-    this.rows[2].setLabel(`ALL AUDIO: ${s.muted ? 'MUTED' : 'ON'}`);
-    this.rows[3].setLabel(`SCREEN SHAKE: ${s.shake ? 'ON' : 'OFF'}`);
-    this.rows[4].setLabel(`LIGHT FLICKER: ${s.flicker ? 'ON' : 'OFF'}`);
+    const on = (v) => (v ? 'ON' : 'OFF');
+    this.b.music.setLabel(`MUSIC ${this.bar(s.music)}`);
+    this.b.sfx.setLabel(`SOUND ${this.bar(s.sfx)}`);
+    this.b.muted.setLabel(s.muted ? 'AUDIO: MUTED' : 'AUDIO: ON');
+    this.b.shake.setLabel(`SHAKE: ${on(s.shake)}`);
+    this.b.flicker.setLabel(`FLASHES: ${on(s.flicker)}`);
+    this.b.vibrate.setLabel(`VIBRATION: ${on(s.vibrate)}`);
+    this.b.contrast.setLabel(`HIGH CONTRAST: ${on(s.contrast)}`);
+    this.b.backup.setLabel('BACKUP SAVE');
+    this.b.restore.setLabel('RESTORE SAVE');
+    this.b.stats.setLabel('STATS');
+  }
+
+  // cloud save without a server: a code you can keep anywhere
+  backup() {
+    const code = Save.exportCode();
+    const done = (ok) => this.msg.setText(ok ? 'BACKUP CODE COPIED. PASTE IT SOMEWHERE SAFE.' : 'COPY THE CODE FROM THE BOX');
+    try {
+      navigator.clipboard.writeText(code).then(() => done(true), () => { done(false); domPrompt('YOUR BACKUP CODE', code, null); });
+    } catch (e) { done(false); domPrompt('YOUR BACKUP CODE', code, null); }
+  }
+
+  restore() {
+    domPrompt('PASTE YOUR BACKUP CODE', '', (val) => {
+      const ok = Save.importCode(val);
+      this.msg.setText(ok ? 'SAVE RESTORED!' : "THAT CODE DIDN'T WORK");
+      Audio.sfx(ok ? 'buy' : 'deny');
+      Audio.applySettings();
+      this.refresh();
+    });
   }
 
   update() {

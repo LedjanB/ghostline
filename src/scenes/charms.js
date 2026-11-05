@@ -13,17 +13,18 @@ export class CharmsScene extends Phaser.Scene {
   create() {
     this.add.rectangle(0, 0, W, H, 0x07060d).setOrigin(0).setAlpha(0.94).setInteractive();
     text(this, W / 2, 30, 'CHARMS', 24, '#ffd75e');
-    this.sub = text(this, W / 2, 58, '', 8, '#a99fd0');
-    this.candleText = text(this, W / 2, 76, '', 16, '#ffd75e');
+    this.sub = text(this, W / 2, 54, '', 8, '#a99fd0');
+    this.candleText = text(this, W / 2, 72, '', 16, '#ffd75e');
     this.buttons = CHARMS.map((c, i) => {
       const col = i % 2, row = Math.floor(i / 2);
-      const b = button(this, W / 2 - 150 + col * 300, 118 + row * 52, '', () => this.choose(c), { w: 284, h: 42, size: 8 });
+      const b = button(this, W / 2 - 150 + col * 300, 100 + row * 38, '', () => this.choose(c), { w: 284, h: 32 });
       b.charm = c;
       b.bg.on('pointerover', () => this.describe(c));
       return b;
     });
-    this.desc = text(this, W / 2, 276, '', 16, '#e6f0ff');
-    const back = button(this, W / 2, 326, 'BACK', () => this.close(), { w: 180, h: 32 });
+    this.desc = text(this, W / 2, 292, '', 16, '#e6f0ff');
+    this.price = text(this, W / 2, 274, '', 8, '#ffd75e');
+    const back = button(this, W / 2, 330, 'BACK', () => this.close(), { w: 180, h: 30 });
     // grid order for keyboard / gamepad: left/right move within a row
     this.group = focusGroup(this, [...this.buttons, back]);
     this.buttons.forEach((b, i) => {
@@ -35,17 +36,22 @@ export class CharmsScene extends Phaser.Scene {
     this.describe(CHARMS[0]);
   }
 
-  describe(c) { this.desc.setText(c.desc); }
+  describe(c) {
+    const s = Save.get();
+    this.desc.setText(c.desc);
+    this.price.setText(s.charms.equipped.includes(c.id) ? 'EQUIPPED. TAP TO REMOVE'
+      : s.charms.owned.includes(c.id) ? 'OWNED. TAP TO EQUIP' : `COSTS ${c.price} CANDLES`);
+  }
 
   refresh() {
     const s = Save.get();
     this.candleText.setText(`${s.candles} CANDLES`);
-    this.sub.setText(`EQUIPPED ${s.charms.equipped.length}/${MAX_CHARMS}  TAP TO BUY, EQUIP OR REMOVE`);
+    this.sub.setText(`EQUIPPED ${s.charms.equipped.length}/${MAX_CHARMS}. GREEN = ON, PURPLE = OWNED, GOLD = CAN BUY`);
     for (const b of this.buttons) {
       const c = b.charm;
       const owned = s.charms.owned.includes(c.id);
       const on = s.charms.equipped.includes(c.id);
-      b.setLabel(`${c.name}\n${on ? 'EQUIPPED' : owned ? 'OWNED' : `${c.price} CANDLES`}`);
+      b.setLabel(c.name);
       if (on) b.setColors(0x1d3a3a, 0x7fe0c0);
       else if (owned) b.setColors(0x2a1f4a, 0x8f7fbf);
       else if (s.candles >= c.price) b.setColors(0x4a3510, 0xffd75e);
@@ -67,6 +73,7 @@ export class CharmsScene extends Phaser.Scene {
       else { if (eq.length >= MAX_CHARMS) eq.shift(); eq.push(c.id); }
     });
     this.refresh();
+    this.describe(c);
   }
 
   update() {

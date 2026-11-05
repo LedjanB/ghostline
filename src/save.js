@@ -1,11 +1,11 @@
 // Versioned save (save-systems skill): plain data only, version stamp,
 // migrate old saves, validate on load, keep a backup of the last good save.
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 const KEY = 'ghostline-save';
 const BACKUP_KEY = 'ghostline-save.bak';
 const LEGACY_KEY = 'ghostline-save-v1'; // v1 of the game stored here, without a version field
 
-const CHARACTER_IDS = ['survivor', 'nurse', 'hunter', 'kid'];
+const CHARACTER_IDS = ['survivor', 'nurse', 'hunter', 'kid', 'mummy', 'vampire', 'skeleton', 'wolf'];
 
 function defaults() {
   return {
@@ -23,7 +23,11 @@ function defaults() {
     charms: { owned: [], equipped: [] },
     daily: { date: '', best: 0, ghost: [] },
     giftAt: 0,
-    settings: { music: 0.8, sfx: 0.9, muted: false, shake: true, flicker: true },
+    // v5: tutorial tips seen, lifetime stats, story intro
+    tips: [],
+    storySeen: false,
+    stats: { runs: 0, meters: 0, candles: 0, maxZone: 0, deaths: {}, nearMisses: 0, souls: 0, spins: 0, revives: 0 },
+    settings: { music: 0.8, sfx: 0.9, muted: false, shake: true, flicker: true, vibrate: true, contrast: false },
   };
 }
 
@@ -42,13 +46,14 @@ const MIGRATIONS = {
     };
   },
   2: (old) => ({ ...old, version: 3, mode: 'normal', creative: { x: 0, rebirths: 0 } }),
+  4: (old) => ({ ...old, version: 5, tips: [], storySeen: (old.runs || 0) > 0, stats: { runs: old.runs || 0, meters: 0, candles: 0, maxZone: 0, deaths: {}, nearMisses: 0, souls: 0, spins: 0, revives: 0 } }),
   3: (old) => {
     const d = defaults();
     return { ...old, version: 4, missions: d.missions, charms: d.charms, daily: d.daily, giftAt: 0 };
   },
 };
 
-const CHARM_IDS = ['magnet', 'nightlight', 'lucky', 'headstart', 'bouncy', 'graverobber'];
+const CHARM_IDS = ['magnet', 'nightlight', 'lucky', 'headstart', 'bouncy', 'graverobber', 'ironlung', 'soulmagnet', 'longrush', 'luckyspin'];
 const strArr = (a) => (Array.isArray(a) ? a.filter((x) => typeof x === 'string') : []);
 const numMap = (o) => {
   const out = {};
@@ -95,6 +100,19 @@ function validate(raw) {
       ghost: Array.isArray(s.daily?.ghost) ? s.daily.ghost.filter(Number.isFinite).slice(0, 4000) : [],
     },
     giftAt: Number.isFinite(s.giftAt) ? s.giftAt : 0,
+    tips: strArr(s.tips),
+    storySeen: !!s.storySeen,
+    stats: {
+      runs: isInt(s.stats?.runs) ? s.stats.runs : 0,
+      meters: isInt(s.stats?.meters) ? s.stats.meters : 0,
+      candles: isInt(s.stats?.candles) ? s.stats.candles : 0,
+      maxZone: isInt(s.stats?.maxZone) ? Math.min(7, s.stats.maxZone) : 0,
+      deaths: numMap(s.stats?.deaths),
+      nearMisses: isInt(s.stats?.nearMisses) ? s.stats.nearMisses : 0,
+      souls: isInt(s.stats?.souls) ? s.stats.souls : 0,
+      spins: isInt(s.stats?.spins) ? s.stats.spins : 0,
+      revives: isInt(s.stats?.revives) ? s.stats.revives : 0,
+    },
     creative: {
       x: Number.isFinite(s.creative?.x) && s.creative.x >= 0 ? s.creative.x : 0,
       rebirths: isInt(s.creative?.rebirths) ? s.creative.rebirths : 0,
@@ -105,6 +123,8 @@ function validate(raw) {
       muted: typeof s.settings?.muted === 'boolean' ? s.settings.muted : false,
       shake: typeof s.settings?.shake === 'boolean' ? s.settings.shake : true,
       flicker: typeof s.settings?.flicker === 'boolean' ? s.settings.flicker : true,
+      vibrate: typeof s.settings?.vibrate === 'boolean' ? s.settings.vibrate : true,
+      contrast: typeof s.settings?.contrast === 'boolean' ? s.settings.contrast : false,
     },
   };
   if (!out.owned.includes('survivor')) out.owned.unshift('survivor');
@@ -153,8 +173,24 @@ function write() {
   } catch (e) { /* storage blocked (private mode): play without saving */ }
 }
 
+// Backup code: the whole save as a copy-pasteable string (cloud save without a server).
+function encode(obj) { return 'GL1-' + btoa(unescape(encodeURIComponent(JSON.stringify(obj)))); }
+function decode(str) {
+  const t = String(str || '').trim();
+  if (!t.startsWith('GL1-')) return null;
+  try { return JSON.parse(decodeURIComponent(escape(atob(t.slice(4))))); } catch (e) { return null; }
+}
+
 export const Save = {
   get: () => data,
+  exportCode: () => encode(data),
+  // returns true if the code was valid and loaded
+  importCode(code) {
+    const v = validate(decode(code));
+    if (!v) return false;
+    data = v; write();
+    return true;
+  },
   update(fn) {
     const draft = JSON.parse(JSON.stringify(data));
     fn(draft);

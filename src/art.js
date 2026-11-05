@@ -108,6 +108,22 @@ const CHAR_LOOKS = {
     pal: { H: '#3a2a1a', S: '#d9a77c', E: '#1a1010', T: '#8a7a4a', P: '#4a4030', B: '#2a2018', K: '#5b4026', G: '#6b7280' },
     rows: { 0: '....KKKK....', 1: '..KKKKKKKKK.', 7: '.GGTTTTTTT..', 8: '.GSTTTTTTTS.', 9: '.GS.TTTTT.S.' },
   },
+  mummy: {
+    pal: { H: '#e6dcc2', S: '#d8cca8', E: '#ffd75e', T: '#e6dcc2', P: '#c8bb98', B: '#b8ab8a', D: '#8a7e60' },
+    rows: { 0: '....HHHH....', 1: '...HDHHDH...', 2: '...HHSSSSS..', 3: '...HSDSESE..', 4: '...HSSSSDS..', 5: '....SDSSS...', 6: '....TDTTT...', 7: '...TTTDTTT..', 8: '..STDTTTDTS.' },
+  },
+  vampire: {
+    pal: { H: '#0b0b12', S: '#e8e0e8', E: '#c0102a', T: '#1a1020', P: '#120a14', B: '#0b0b12', R: '#a01028', W: '#f4f4f4' },
+    rows: { 0: '....HHHH....', 1: '...HHHHHH...', 2: '...HHSHSHS..', 3: '...HSSSESE..', 4: '...RSSSWSW..', 5: '..RR.SSSS...', 6: '..RRTWWTT...', 7: '.RRTTTTTTT..', 8: '.RSTTTTTTTS.', 9: '.RS.TTTTT.S.' },
+  },
+  skeleton: {
+    pal: { H: '#e8e4d8', S: '#e8e4d8', E: '#0b0918', T: '#d8d4c8', P: '#b8b4a8', B: '#e8e4d8', K: '#0b0918' },
+    rows: { 0: '....HHHH....', 1: '...HHHHHH...', 2: '...HHSSSSS..', 3: '...HSSKEKE..', 4: '...HSSSSSS..', 5: '....SKSKS...', 6: '.....TTT....', 7: '...TKTKTKT..', 8: '..S.TKTKT.S.', 9: '..S..TTT..S.' },
+  },
+  wolf: {
+    pal: { H: '#6a4a2a', S: '#8a6a40', E: '#ffd75e', T: '#5a3a20', P: '#4a3018', B: '#3a2410', K: '#1a1010', W: '#e8d8b8' },
+    rows: { 0: '...H..H.....', 1: '...HHHHHH...', 2: '...HHSSSSS..', 3: '...HSSSESE..', 4: '...HSSSSSSK.', 5: '....SWWWS...' },
+  },
   kid: {
     pal: { H: '#0b0b12', S: '#d9dde3', E: '#ff3b3b', T: '#e9e4da', P: '#e9e4da', B: '#d9dde3' },
     rows: { 2: '..HHHSSSSS..', 3: '..HHSSSESE..', 4: '..HHSSSSSS..', 5: '..HH.SSSS...', 6: '..H.TTTTT...' },
@@ -480,15 +496,6 @@ export function makeArt(scene) {
   canvas(scene, 'dark', 700, 500, darkness);
   canvas(scene, 'pixel', 2, 2, (c) => R(c, 0, 0, 2, 2, '#ffffff'));
 
-  canvas(scene, 'hospital_far', 320, 180, hospitalFar);
-  canvas(scene, 'hospital_mid', 320, 180, hospitalMid);
-  canvas(scene, 'hospital_edge', 320, 180, hospitalEdge);
-  canvas(scene, 'forest_far', 640, 180, forestFar);
-  canvas(scene, 'forest_mid', 320, 180, forestMid);
-  canvas(scene, 'forest_edge', 320, 180, forestEdge);
-  canvas(scene, 'sewer_far', 320, 180, sewerFar);
-  canvas(scene, 'sewer_mid', 320, 180, sewerMid);
-  canvas(scene, 'sewer_edge', 320, 180, sewerEdge);
 }
 
 export function makeAnims(scene) {
@@ -532,6 +539,7 @@ const ORB = (icon) => {
 };
 const ICON_MAGNET = ['.........', '.XX...XX.', '.XX...XX.', '.XX...XX.', '.XX...XX.', '.XXX.XXX.', '..XXXXX..', '...XXX...', '.........'];
 const ICON_SLOW = ['.XXXXXXX.', '..X...X..', '...X.X...', '....X....', '...X.X...', '..X.X.X..', '.XXXXXXX.', '.........', '.........'];
+const ICON_RUSH = ['....XX...', '...XX....', '..XX.....', '.XXXXXX..', '....XX...', '...XX....', '..XX.....', '.XX......', '.........'];
 const ICON_SHIELD = ['..XXXXX..', '.XXXXXXX.', '.XXWXXXX.', '.XXXXXXX.', '.XXXXXXX.', '..XXXXX..', '...XXX...', '....X....', '.........'];
 const EMITTER = ['..KKKKKK..', '.KWWWWWWK.', 'KWWKWWKWWK', 'KWKKWWKKWK', 'KWWWWWWWWK', '.KWKWKWKK.', '..KKKKKK..', '...KKKK...'];
 const MEDAL = ['..RR..RR..', '..RR..RR..', '...RRRR...', '..CCCCCC..', '.CCLCCCCC.', 'CCLCCCCCCC', 'CCCCCCCCCC', 'CCCCCCCCDC', '.CCCCCCDC.', '..CCCCCC..'];
@@ -543,6 +551,22 @@ const SYM = {
   gift: ['...R.R....', '....R.....', 'PPPPRPPPPP', 'PPPPRPPPPP', 'QQQQRQQQQQ', 'QQQQRQQQQQ', 'QQQQRQQQQQ', 'QQQQRQQQQQ'],
 };
 const SYM_PAL = { Y: '#ffd75e', O: '#ff8a2a', K: '#1d1a26', C: '#f3e6c4', D: '#c9b48a', W: '#e8e2d0', R: '#e0303a', P: '#9b5de5', Q: '#6a3fb0' };
+
+function darkWall(ctx, w, h) {
+  // a wall of living darkness: solid on the left, ragged and toothy on the right, with eyes
+  const g = ctx.createLinearGradient(0, 0, w, 0);
+  g.addColorStop(0, 'rgba(3,2,8,1)'); g.addColorStop(0.75, 'rgba(3,2,8,0.95)'); g.addColorStop(1, 'rgba(3,2,8,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = 'rgba(3,2,8,1)';
+  for (let y = 0; y < h; y += 6) { const d = 8 + Math.sin(y * 0.4) * 6 + (y % 18 === 0 ? 10 : 0); ctx.fillRect(w - 30, y, d, 6); }
+  const eye = (x, y, r) => {
+    ctx.fillStyle = '#ff2244'; ctx.beginPath(); ctx.ellipse(x, y, r, r * 0.45, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffe0a0'; ctx.fillRect(x - 1, y - 1, 2, 2);
+  };
+  eye(w - 50, 50, 6); eye(w - 34, 54, 6); eye(w - 60, 120, 4); eye(w - 48, 122, 4);
+  ctx.fillStyle = '#e8e2d0';
+  for (let k = 0; k < 6; k++) { ctx.fillRect(w - 56 + k * 5, 80, 3, 5); ctx.fillRect(w - 54 + k * 5, 92, 3, -5); }
+}
 
 function giantShadow(ctx, w, h) {
   ctx.fillStyle = 'rgba(3,2,8,0.92)';
@@ -582,7 +606,15 @@ function fog(ctx, w, h) {
   }
 }
 
+const ICONS = {
+  icon_star: ['...Y...', '..YYY..', 'YYYYYYY', '.YYYYY.', '..YYY..', '.YY.YY.', 'YY...YY'],
+  icon_gear: ['..W.W..', '.WWWWW.', 'WWW.WWW', 'WW...WW', 'WWW.WWW', '.WWWWW.', '..W.W..'],
+  icon_full: ['WW...WW', 'W.....W', '.......', '.......', '.......', 'W.....W', 'WW...WW'],
+  icon_charm: ['..YYY..', '.Y...Y.', '..Y.Y..', '...Y...', '..RRR..', '.RRRRR.', '..RRR..'],
+};
+
 export function makeArt2(scene) {
+  for (const [k, rows] of Object.entries(ICONS)) px(scene, k, rows, { Y: '#ffd75e', W: '#cfe0ff', R: '#ff6bb5' });
   px(scene, 'ghoul0', GHOUL.walk0, GHOUL_PAL);
   px(scene, 'ghoul1', GHOUL.walk1, GHOUL_PAL);
   px(scene, 'ghoul_panic', GHOUL.panic, GHOUL_PAL);
@@ -593,6 +625,8 @@ export function makeArt2(scene) {
   px(scene, 'orb_magnet', ORB(ICON_MAGNET), { R: '#ff6b9a', X: '#ff6b9a' });
   px(scene, 'orb_slow', ORB(ICON_SLOW), { R: '#9ff0ff', X: '#9ff0ff' });
   px(scene, 'orb_shield', ORB(ICON_SHIELD), { R: '#4fa8ff', X: '#4fa8ff', W: '#dff0ff' });
+  px(scene, 'orb_rush', ORB(ICON_RUSH), { R: '#c08aff', X: '#ffe066' });
+  canvas(scene, 'darkwall', 130, 180, darkWall);
   px(scene, 'emitter', EMITTER, { K: '#1d1a26', W: '#b8ffd2' });
   for (const [name, col] of [['BRONZE', '#c98a4a'], ['SILVER', '#c8d0dc'], ['GOLD', '#ffd75e'], ['PLATINUM', '#dff6ff']]) {
     px(scene, `medal_${name}`, MEDAL, { R: '#b0303a', C: col, L: '#ffffff', D: '#00000055' });
