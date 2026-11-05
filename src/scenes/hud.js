@@ -1,6 +1,6 @@
 // HUD scene, launched once on top of the run. It never reads game state each frame;
 // it listens for events the run emits (game-ui-ux skill: drive the HUD from events).
-import { W } from '../data.js';
+import { W, H } from '../data.js';
 import { fmt } from '../unlocks.js';
 import { text, button } from '../ui.js';
 
@@ -35,16 +35,20 @@ export class HudScene extends Phaser.Scene {
       .setVisible(play.creative);
 
     // souls (spin tokens), B-O-O letters, active power-up, mission toasts
-    this.soulIcon = this.add.sprite(250, 18, 'soul0').setScale(1.4);
-    this.soulText = text(this, 262, 18, `${play.souls}`, 16, '#9fc8ff', 0).setStroke('#07060d', 4);
+    // v6: further right so a 3-digit candle count never runs into it
+    this.soulIcon = this.add.sprite(play.runner ? 272 : 250, 18, 'soul0').setScale(1.4);
+    this.soulText = text(this, play.runner ? 284 : 262, 18, `${play.souls}`, 16, '#9fc8ff', 0).setStroke('#07060d', 4);
     const showMeta = !play.creative;
     this.soulIcon.setVisible(showMeta); this.soulText.setVisible(showMeta);
     this.letters = ['B', 'O', 'O'].map((l, i) => this.add.image(24 + i * 24, 50, `letter_${l}`).setScale(1.6).setAlpha(0.25).setVisible(showMeta));
     this.powerIcon = this.add.image(540, 18, 'orb_magnet').setScale(1.4).setVisible(false);
     this.powerBar = this.add.graphics();
-    this.toastBg = this.add.rectangle(W / 2, 90, 470, 46, 0x140f24).setStrokeStyle(2, 0xffd75e).setAlpha(0);
-    this.toastTitle = text(this, W / 2, 78, '', 8, '#ffd75e').setAlpha(0);
-    this.toastText = text(this, W / 2, 98, '', 16, '#e6f0ff').setAlpha(0);
+    // v6: tips and mission toasts share ONE strip at the bottom (over the floor band), one at a time
+    const ty = this.runner ? 84 : 90; // v6: top band, never over the ground lane where traps come from
+    this.toastBg = this.add.rectangle(W / 2, ty, 560, 42, 0x140f24).setStrokeStyle(2, 0xffd75e).setAlpha(0);
+    this.toastTitle = text(this, W / 2, ty - 11, '', 8, '#ffd75e').setAlpha(0);
+    this.toastText = text(this, W / 2, ty + 8, '', 16, '#e6f0ff').setAlpha(0);
+    this.toastIcon = this.add.image(W / 2 - 262, ty, 'ghost0').setAlpha(0);
     this.toasts = [];
 
     const ev = play.events;
@@ -89,7 +93,27 @@ export class HudScene extends Phaser.Scene {
       this.powerBar.fillStyle(0x07060d, 1); this.powerBar.fillRect(526, 30, 28, 4);
       this.powerBar.fillStyle(0xffb0d0, 1); this.powerBar.fillRect(526, 30, Math.round(28 * p.left), 4);
     });
-    on('toast', (msg) => { this.toasts.push(msg); if (this.toasts.length === 1) this.showToast(); });
+    on('toast', (msg) => { this.toasts.push({ kind: 'mission', msg }); if (this.toasts.length === 1) this.showToast(); });
+    on('tip', (msg) => { if (this.toasts.some((t) => t.msg === msg)) return; this.toasts.push({ kind: 'tip', msg }); if (this.toasts.length === 1) this.showToast(); });
+    on('hush', () => { // caught: nothing new pops up over the death
+      this.toasts = [];
+      [this.toastBg, this.toastTitle, this.toastText, this.toastIcon].forEach((o) => { this.tweens.killTweensOf(o); o.setAlpha(0); });
+    });
+    // v6: one more stumble and it gets you. Shown on the danger meter itself.
+    this.strike = null;
+    this.strikeText = text(this, 398, 38, 'ONE MORE!', 8, '#ff6a5a').setVisible(false).setStroke('#07060d', 3);
+    on('strike', (left) => { this.strike = left; this.strikeText.setVisible(left !== null); this.drawLight(false); });
+    // hide what hasn't mattered yet: souls and B-O-O letters show once you have one; x1 isn't worth a box
+    if (this.runner) {
+      const showSouls = play.souls > 0;
+      this.soulIcon.setVisible(showSouls && showMeta); this.soulText.setVisible(showSouls && showMeta);
+      this.letters.forEach((l) => l.setVisible(false));
+      const showMult = play.mult > 1 && showScore;
+      this.multBg.setVisible(showMult); this.multText.setVisible(showMult);
+      this.scoreText.setX(showMult ? 242 : 206);
+      on('souls', (n) => { this.soulIcon.setVisible(n > 0 && showMeta); this.soulText.setVisible(n > 0 && showMeta); });
+      on('letters', (n) => { if (n > 0) this.letters.forEach((l) => l.setVisible(showMeta)); });
+    }
     on('rebirths', (n) => {
       this.rebirthText.setText(reborn(n));
       this.tweens.add({ targets: this.rebirthText, scaleX: 1.3, scaleY: 1.3, duration: 90, yoyo: true });
@@ -98,13 +122,16 @@ export class HudScene extends Phaser.Scene {
 
   // one mission toast at a time, like Jetpack Joyride's mission popups
   showToast() {
-    const msg = this.toasts[0];
-    if (!msg) return;
-    this.toastTitle.setText('MISSION COMPLETE!');
-    this.toastText.setText(msg);
+    const item = this.toasts[0];
+    if (!item) return;
+    const tip = item.kind === 'tip';
+    this.toastTitle.setText(tip ? '' : 'MISSION COMPLETE!');
+    this.toastText.setText(item.msg).setY(this.toastBg.y + (tip ? 1 : 8)).setX(W / 2 + (tip ? 12 : 0));
+    this.toastBg.setStrokeStyle(2, tip ? 0x9fb8e8 : 0xffd75e);
     const items = [this.toastBg, this.toastTitle, this.toastText];
+    if (tip) items.push(this.toastIcon);
     this.tweens.add({
-      targets: items, alpha: 1, duration: 200, yoyo: true, hold: 1600,
+      targets: items, alpha: 1, duration: 200, yoyo: true, hold: tip ? 2400 : 1600,
       onComplete: () => { this.toasts.shift(); this.showToast(); },
     });
   }
@@ -117,6 +144,11 @@ export class HudScene extends Phaser.Scene {
     g.fillStyle(0x3a2a1a, 1); g.fillRect(334, 13, 128, 10);
     // v6 runner: the bar is how far back THE STRETCH is (full = safe), and it turns red as it closes in
     const col = !this.runner ? (blink ? 0xff4040 : 0xffb040) : blink ? 0xff4040 : v > 0.6 ? 0x9fd0ff : v > 0.3 ? 0xffb040 : 0xff6a5a;
+    if (this.runner && this.strike !== null && this.strike !== undefined) { // red frame + a shrinking timer: the next stumble is fatal
+      g.fillStyle(0xff4040, 1); g.fillRect(330, 9, 136, 18);
+      g.fillStyle(0x07060d, 1); g.fillRect(332, 11, 132, 14);
+      g.fillStyle(0xff6a5a, 1); g.fillRect(334, 27, Math.round(128 * this.strike), 3);
+    }
     const hi = !this.runner ? 0xffe0a0 : v > 0.6 ? 0xdff0ff : 0xffe0a0;
     g.fillStyle(col, 1); g.fillRect(334, 13, Math.round(128 * v), 10);
     g.fillStyle(hi, 1); g.fillRect(334, 13, Math.round(128 * v), 2);

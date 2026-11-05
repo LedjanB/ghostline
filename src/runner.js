@@ -42,6 +42,7 @@ export const WEAPONS = {
   bone: { name: 'BONE BOOMERANG', icon: 'bone', ammo: 8, time: 18, cd: 0.25, range: 270 },         // comes back, hits twice
 };
 const ECTO = { cd: 0.28, range: 300 }; // Boo's ectoplasm while flying: pops banshees and hands
+const STRETCH_SCALE = 2.4; // about 2.5x Milo's height
 const BEAM_END = FLOOR - 32; // a ceiling beam's tip: just above Milo's head, so sliding clearly fits under
 // one trap of its own per world
 export const WORLD_TRAPS = {
@@ -101,6 +102,7 @@ export const RunnerFeatures = {
     // a player's first few runs are gentle: Boo saves you until 300 m
     this.safeRun = !this.creative && !this.daily && (Save.get().runs || 0) < RUN.SAFE_RUNS;
     this.rescues = 0;
+    this.heads = []; this.headUntil = 0; this.quietUntil = 0; this.lastStrike = undefined; this.lungeT = 9; this.lastHitKind = '';
     this.nextWeaponX = this.worldX + 90 * PX_PER_METER;
     this.crFlyT = 0; this.crFlyX = 0; this.crEnter = 1; this.catchUpT = 0;
     this.caughtBy = false;
@@ -113,7 +115,8 @@ export const RunnerFeatures = {
     this.pitGfx = this.add.graphics().setDepth(15.2);  // over the floor band: pits are holes in it
     this.trapGfx = this.add.graphics().setDepth(7);
     this.shotGfx = this.add.graphics().setDepth(21.7);
-    this.stretch = this.add.sprite(PLAYER_X - this.gap, FLOOR + 2, 'stretch_walk0').setScale(2).setOrigin(0.5, 1).setDepth(9.4);
+    this.stretch = this.add.sprite(PLAYER_X - this.gap, FLOOR + 2, 'stretch_walk0').setScale(STRETCH_SCALE).setOrigin(0.5, 1).setDepth(9.4);
+    this.edgeGfx = this.add.graphics().setDepth(4.45); // the dark it brings with it: backgrounds only, under every hazard
     this.stretch.play('stretch_walk');
     this.gunImg = this.add.image(PLAYER_X, BOTTOM, 'salt_gun').setScale(1.5).setDepth(9.1).setVisible(false);
     this.tutorial.setText(`${prompt2('jump')} TO JUMP`);
@@ -208,6 +211,12 @@ export const RunnerFeatures = {
     this.light = Phaser.Math.Clamp((g - RUN.CAUGHT) / (RUN.START_GAP - RUN.CAUGHT), 0, 1);
     this.tracker?.max('clean', Math.floor((this.worldX - this.cleanFromX) / PX_PER_METER));
     this.stretchSounds(dt);
+    this.nextHeadline();
+    // one more stumble inside the window and it gets you: tell the HUD (rounded, so it's only sent when it changes)
+    const win = comboWindow(this.runDiff), since = this.clock - this.lastStumble;
+    const strike = !this.flying && since < win && this.stumbles > 0 ? Math.round((1 - since / win) * 20) / 20 : null;
+    if (strike !== this.lastStrike) { this.lastStrike = strike; this.events.emit('strike', strike); }
+    this.lungeT += dt;
   },
 
   // audio-design: it is heard before it is seen. Steps get louder and faster as it closes in;
@@ -236,8 +245,10 @@ export const RunnerFeatures = {
       this.burst(PLAYER_X, this.py, 0x4fa8ff, 14, 60, 450);
       return;
     }
-    if (this.clock - this.lastStumble < comboWindow(this.runDiff)) { this.caught('caught'); return; }
+    this.lastHitKind = kind; // the results screen names the trap that got you
+    if (this.clock - this.lastStumble < comboWindow(this.runDiff)) { this.caught('2nd'); return; }
     this.lastStumble = this.clock; this.stumbles++;
+    this.lungeT = 0; this.lastHitKind = kind;
     this.cleanFromX = this.worldX;
     this.tracker?.add('stumbles', 1);
     this.gap -= stumbleCost(this.runDiff) * this.perk.stumble;
@@ -265,13 +276,24 @@ export const RunnerFeatures = {
       return;
     }
     this.deathCause = cause === 'pit' ? 'pit' : 'caught';
-    this.caughtBy = cause !== 'pit';
-    if (this.caughtBy) {
+    if (cause === 'pit') this.lastHitKind = 'pit';
+    this.events.emit('hush'); this.events.emit('strike', null);
+    this.heads = [];
+    this.caughtBy = true; // pit or not, it comes for you
+    if (cause !== 'pit') {
       this.stretch.play('stretch_crawl');
       this.tweens.add({ targets: this, gapVis: 6, duration: 160, ease: 'Quad.easeIn' });
       Audio.sfx('scream');
+    } else { // it crawls up to the edge of the pit and looks down
+      this.stretch.play('stretch_crawl');
+      this.tweens.add({ targets: this, gapVis: 26, duration: 900, ease: 'Sine.easeOut' });
     }
     this.die();
+    this.hitStop = 0.14;
+    const why = cause === 'pit' ? 'YOU FELL IN!' : cause === '2nd' ? '2ND STUMBLE!' : 'IT CAUGHT UP!';
+    const t = text(this, PLAYER_X + 70, this.py - 50, why, 16, '#ff6a5a').setDepth(32).setStroke('#07060d', 5).setScale(1.4);
+    this.tweens.add({ targets: t, scaleX: 1, scaleY: 1, duration: 240, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: t, alpha: 0, delay: 1400, duration: 400, onComplete: () => t.destroy() });
   },
 
   rescue(cause) {
@@ -360,6 +382,7 @@ export const RunnerFeatures = {
     this.buzz(120);
     if (this.shield) { this.stumble(kind); return; } // the shield code path is shared
     this.airHits++;
+    this.lastHitKind = 'air:' + kind;
     this.landingGap -= RUN.AIR_HIT;
     this.flyT -= 1;
     this.invuln = 1.0;
@@ -377,10 +400,24 @@ export const RunnerFeatures = {
     if (this.flying) this.airHit(kind); else this.stumble(kind);
   },
 
-  flyPop(str) {
-    const t = text(this, W / 2, 110, str, 24, '#e6f0ff').setDepth(31).setStroke('#07060d', 6).setScale(0.6);
-    this.tweens.add({ targets: t, scaleX: 1, scaleY: 1, duration: 220, ease: 'Back.easeOut' });
-    this.tweens.add({ targets: t, alpha: 0, delay: 650, duration: 300, onComplete: () => t.destroy() });
+  flyPop(str) { this.headline(str, '', 0.9, true); },
+
+  // ONE headline slot up top. Queued; urgent ones (flight moments) jump the queue.
+  headline(main, sub = '', hold = 2.0, urgent = false) {
+    const h = { main, sub, hold };
+    if (urgent) this.heads.unshift(h); else this.heads.push(h);
+    this.nextHeadline();
+  },
+  nextHeadline() {
+    if (this.clock < this.headUntil || !this.heads.length || !this.started || this.dead) return;
+    const h = this.heads.shift();
+    this.headUntil = this.clock + h.hold + 0.3;
+    this.quietUntil = this.headUntil;
+    const a = text(this, W / 2, 132, h.main, 24, '#e6f0ff').setDepth(31).setStroke('#07060d', 6).setScale(0.7).setAlpha(0);
+    const b = h.sub ? text(this, W / 2, 156, h.sub, 8, '#a99fd0').setDepth(31).setStroke('#07060d', 3).setAlpha(0) : null;
+    const objs = b ? [a, b] : [a];
+    this.tweens.add({ targets: a, scaleX: 1, scaleY: 1, duration: 220, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: objs, alpha: 1, duration: 180, yoyo: true, hold: h.hold * 1000, onComplete: () => objs.forEach((o) => o.destroy()) });
   },
 
   // ---------------- ground spawning ----------------
@@ -438,7 +475,6 @@ export const RunnerFeatures = {
     if (kind === 'swing') { this.spawnGroundSwing(W + 60); w = 60; }
     else {
       const t = this.addTrap(kind, spawnWX + this.walkLead(kind, v), kind === 'pit' ? { w: this.pitWidth(v) } : {});
-      if (t.tip) this.tip(t.tip);
       w = t.w;
       // candles arc over jump traps and line up under beams
       if ((kind === 'grave' || kind === 'pit' || kind === 'crate') && this.rand.chance(0.35)) {
@@ -466,13 +502,14 @@ export const RunnerFeatures = {
   // a follow-up right after the trap that was just placed; returns the extra length it adds
   spawnCombo(wx, v, d) {
     const prev = this.lastKinds[this.lastKinds.length - 1];
-    const step = v * (0.62 - 0.08 * d);
     const jumpy = prev === 'grave' || prev === 'crate' || prev === 'pit' || prev === 'hand';
     let kind;
     if (jumpy) kind = this.rand.pick(['beam', 'grave', prev === 'pit' ? 'grave' : 'pit']); // jump then slide, or jump-jump
     else kind = this.rand.pick(['grave', 'hand']);                                         // slide then jump
+    // jump after a jump needs room to land and jump again (a full jump is ~0.64 s in the air); a slide can follow closer
+    const step = kind === 'beam' ? v * (0.62 - 0.08 * d) : v * (0.86 - 0.06 * d);
     const t = this.addTrap(kind, wx + step, kind === 'pit' ? { w: this.pitWidth(v) } : {});
-    if (prev === 'hand' && kind !== 'beam' && this.rand.chance(0.5)) { // three hands in a row
+    if (prev === 'hand' && kind !== 'beam' && this.rand.chance(0.5)) { // three hands in a row, each one landable
       this.addTrap('hand', wx + step * 2);
       return step * 2 + 24;
     }
@@ -481,7 +518,10 @@ export const RunnerFeatures = {
 
   addTrap(kind, wx, opts = {}) {
     const t = { kind, wx, w: 28, h: 0, hit: false, gone: false, passed: false, ...opts };
-    if (kind === 'grave') { t.w = 28; t.h = 36; t.s = this.add.image(0, FLOOR, 'grave').setScale(2).setOrigin(0, 1).setDepth(8); }
+    if (kind === 'grave') { // a tombstone outside; indoors (hospital, morgue) a wet floor sign
+      const indoor = this.zoneIndex <= 1;
+      t.w = 28; t.h = 36; t.s = this.add.image(0, FLOOR, indoor ? 'wetfloor' : 'grave').setScale(2).setOrigin(0, 1).setDepth(8);
+    }
     if (kind === 'crate') { t.w = 32; t.h = 32; t.hp = 2; t.s = this.add.image(0, FLOOR, 'crate').setScale(2).setOrigin(0, 1).setDepth(8); }
     if (kind === 'hand') {
       t.w = 24; t.reach = 46; t.y = FLOOR + 6; t.state = 'wait'; t.t = 0;
@@ -538,7 +578,7 @@ export const RunnerFeatures = {
     const info = { lamp: { off: 9, r: 14, glow: 0xfff2b0 }, axe: { off: 17, r: 14, glow: null }, hook: { off: 18, r: 10, glow: null } }[type];
     const glow = info.glow ? this.add.image(x0, CEIL, 'glow').setScale(1.4).setDepth(21).setBlendMode(Phaser.BlendModes.ADD).setTint(info.glow).setAlpha(0.4) : null;
     const len = FLOOR - CEIL - 20 - info.off - info.r; // lowest swing: through standing height, over a slide
-    this.swings.push({ x: x0, len, type, s, glow, info, th: 0, amp: this.rand.range(0.55, 0.75), w: this.rand.range(2.2, 2.8), phase: this.rand.range(0, Math.PI * 2), lastSign: 0, ground: true });
+    this.swings.push({ x: x0, len, type, s, glow, info, th: 0, amp: this.rand.range(0.32, 0.45), w: this.rand.range(2.2, 2.8), phase: this.rand.range(0, Math.PI * 2), lastSign: 0, ground: true });
   },
 
   makePickup(kind, wx, y) {
@@ -556,14 +596,19 @@ export const RunnerFeatures = {
       if (t.gone) continue;
       if (t.walk) t.wx -= t.walk * dt;
       const x = this.sx(t.wx);
+      if (t.tip && !t.tipped && x < W - 90) { t.tipped = true; this.tip(t.tip); } // the tip shows when you can see the thing
       this.stepWorldTrap(t, x, dt);
       if (t.kind === 'hand') {
         const near = x - PLAYER_X;
         if (t.state === 'wait') {
-          if (x < W - 10) t.y = FLOOR - (8 + Math.sin(this.clock * 20) * 2); // fingertips twitch: a tell
-          if (near < 190) { t.state = 'rise'; t.t = 0; t.from = t.y; Audio.sfx('hand'); this.burst(x, FLOOR, 0x6a6a72, 8, 36, 350); }
+          // the tell: fingertips poke out and scrabble as soon as it's on screen, with dirt kicking up
+          if (x < W - 10) {
+            t.y = FLOOR - (14 + Math.sin(this.clock * 22) * 3);
+            if (Math.floor(this.clock * 8) !== t.dustTick) { t.dustTick = Math.floor(this.clock * 8); this.burst(x, FLOOR - 2, 0x6a6a72, 2, 14, 200, 2); }
+          }
+          if (near < 250) { t.state = 'rise'; t.t = 0; t.from = t.y; Audio.sfx('hand'); this.burst(x, FLOOR, 0x6a6a72, 8, 36, 350); }
         } else if (t.state === 'rise') {
-          t.t = Math.min(1, t.t + dt / 0.2);
+          t.t = Math.min(1, t.t + dt / 0.26);
           const k = t.t, c = 1.7;
           const e = 1 + (c + 1) * (k - 1) ** 3 + c * (k - 1) ** 2;
           t.y = t.from + (FLOOR - t.reach - t.from) * e;
@@ -905,14 +950,25 @@ export const RunnerFeatures = {
       if (t.gone) continue;
       const x = Math.round(this.sx(t.wx) - lead);
       if (t.kind === 'pit' || t.kind === 'chasm') {
+        // a hole with depth: lit lips, side walls going down, the dark getting deeper
         pg.fillStyle(0x07060d, 1); pg.fillRect(x, FLOOR - 1, t.w, H - FLOOR + 1);
+        pg.fillStyle(0x2a2440, 1); pg.fillRect(x, FLOOR - 1, t.w, 3);                        // far wall top edge
+        pg.fillStyle(0x1d1a2c, 1); pg.fillRect(x, FLOOR + 2, t.w, 6);
+        pg.fillStyle(0x141220, 1); pg.fillRect(x, FLOOR + 8, t.w, 8);
+        pg.fillStyle(0x3a3450, 1); pg.fillRect(x - 3, FLOOR - 3, 5, H - FLOOR + 3); pg.fillRect(x + t.w - 2, FLOOR - 3, 5, H - FLOOR + 3); // walls
+        pg.fillStyle(0x9a90b8, 1); pg.fillRect(x - 4, FLOOR - 3, 7, 2); pg.fillRect(x + t.w - 3, FLOOR - 3, 7, 2);                     // lit lips
         pg.fillStyle(0x140f24, 1);
-        for (let i = 0; i < t.w; i += 6) pg.fillRect(x + i, FLOOR - 1, 3, ((i + t.seed) % 3) + 2); // crumbling lip
-        pg.fillStyle(0x0b0918, 1); pg.fillRect(x - 2, FLOOR - 1, 2, H - FLOOR + 1); pg.fillRect(x + t.w, FLOOR - 1, 2, H - FLOOR + 1);
-        if (t.kind === 'chasm') { // a far ledge you can see, so you know Boo will get you there
-          pg.fillStyle(0x8f7fbf, 0.5); pg.fillRect(x + t.w, FLOOR - 1, 3, 10);
+        for (let i = 4; i < t.w - 4; i += 7) pg.fillRect(x + i, FLOOR - 1, 3, ((i + t.seed) % 3) + 1); // crumbs falling in
+        if (t.kind === 'chasm') { // mist down in the dark, and the far ledge, so you can see where Boo will drop you
+          pg.fillStyle(0x8f7fbf, 0.16);
+          for (let i = 0; i < t.w; i += 26) pg.fillRect(x + i + ((Math.floor(this.clock * 6) + i) % 10), FLOOR + 22 + (i % 3) * 3, 18, 3);
+          pg.fillStyle(0xcfc6ee, 0.9); pg.fillRect(x + t.w - 3, FLOOR - 4, 8, 3);
         }
         continue;
+      }
+      // every ground threat sits on a warm danger shadow, so it reads as a threat and not as scenery
+      if (t.kind !== 'drawer' && t.kind !== 'eye' && t.kind !== 'beam' && t.kind !== 'chandelier') {
+        tg.fillStyle(0xff5a3a, 0.28); tg.fillEllipse(x + (t.kind === 'hand' ? 0 : t.w / 2), FLOOR - 1, (t.kind === 'hand' ? 24 : t.w) + 10, 7);
       }
       if (t.kind === 'beam') {
         const flick = Math.random() < 0.5 ? 0 : 2;
@@ -972,6 +1028,7 @@ export const RunnerFeatures = {
         return true;
       case 'drawer':
         tg.fillStyle(0x07060d, 0.9); tg.fillRect(x - 2, FLOOR - 50, 52, 24); // the hole in the wall it comes out of
+        tg.fillStyle(0xff5a3a, 0.25 + 0.2 * Math.abs(Math.sin(this.clock * 6))); tg.fillRect(x - 4, FLOOR - 52, 56 * Math.max(0.3, t.out), 28); // warning glow
         t.s.setPosition(x + (t.state === 'in' ? Math.sin(this.clock * 40) : 0), FLOOR - 38).setScale(0.2 + 1.8 * t.out, 2).setAlpha(0.6 + 0.4 * t.out);
         return true;
       case 'roots': {
@@ -1027,9 +1084,24 @@ export const RunnerFeatures = {
     }
   },
 
+  // the dark it brings: grows in from the left as it closes in, red while one more stumble gets you
+  renderEdge(near) {
+    const g = this.edgeGfx;
+    g.clear();
+    if (this.dead && !this.caughtBy) return;
+    const strike = this.lastStrike !== null && this.lastStrike !== undefined;
+    const w = 40 + near * 200 + (strike ? 30 : 0);
+    const col = strike ? 0x3a0610 : 0x07060d;
+    for (let i = 0; i < 8; i++) {
+      const a = (strike ? 0.55 : 0.7) * near * (1 - i / 8) + (strike ? 0.12 * (1 - i / 8) : 0);
+      g.fillStyle(col, Math.min(0.9, a)); g.fillRect(i * (w / 8), CEIL, w / 8 + 1, FLOOR - CEIL);
+    }
+  },
+
   renderStretch() {
     const s = this.stretch;
     if (this.flying) {
+      this.edgeGfx.clear();
       // it can't follow: it jumps and reaches up with its long arms, then falls behind
       const t = this.crFlyT;
       const x = this.crFlyX + Math.min(t, 0.4) * 60 - Math.max(0, t - 1.1) * 220;
@@ -1038,20 +1110,28 @@ export const RunnerFeatures = {
       return;
     }
     const near = 1 - this.light;
+    this.renderEdge(near);
     const fast = this.catchUpT > 0 || this.clock - this.lastStumble < 1.2 || near > 0.6 || this.dead;
     const want = fast ? 'stretch_crawl' : 'stretch_walk';
     if (!this.dead || this.caughtBy) { if (s.anims.currentAnim?.key !== want) s.play(want); }
-    const target = PLAYER_X - this.gapVis;
+    // honest position: the creature's FRONT edge (not its centre) is where the gap says it is
+    const half = (fast ? 28 : 12) * STRETCH_SCALE / 2;
+    const target = PLAYER_X - 8 - this.gapVis * 0.72 - half; // 0.72: always on screen, still in step with the bar
     const enter = Phaser.Math.Easing.Cubic.Out(this.crEnter);
-    const x = Phaser.Math.Linear(-50, target, enter);
-    s.setVisible(true).setPosition(Math.round(fast ? x + 8 : x), FLOOR + 2 + (fast ? 0 : Math.sin(this.clock * 14) * 1.5));
-    s.setScale(2, fast ? 2 : 2 + Math.sin(this.clock * 7) * 0.04); // a slight, wrong breathing stretch
+    // never parked: it sways, and it lunges at you when you stumble
+    const lunge = this.lungeT < 0.45 ? Math.sin((this.lungeT / 0.45) * Math.PI) * 34 : 0;
+    const sway = Math.sin(this.clock * 1.7) * 6 + Math.sin(this.clock * 4.3) * 2;
+    const x = Phaser.Math.Linear(-60, target, enter) + lunge + sway;
+    s.setVisible(true).setPosition(Math.round(x), FLOOR + 2 + (fast ? 0 : Math.sin(this.clock * 14) * 1.5));
+    s.setScale(STRETCH_SCALE, fast ? STRETCH_SCALE : STRETCH_SCALE + Math.sin(this.clock * 7) * 0.05); // a slight, wrong breathing stretch
   },
 };
 
 // short prompts for the run (input.js keeps the menu prompts)
 function prompt2(action) {
-  const d = Device.get();
+  // before the first input the device is unknown: a touch screen means a phone, so say TAP, not SPACE
+  let d = Device.get();
+  if (d === 'keyboard' && typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches) d = 'touch';
   if (action === 'jump') return d === 'touch' ? 'TAP' : d === 'gamepad' ? 'A' : d === 'mouse' ? 'CLICK' : 'SPACE';
   return d === 'touch' ? 'SWIPE DOWN' : d === 'gamepad' ? 'B' : 'DOWN';
 }

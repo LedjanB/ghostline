@@ -201,6 +201,27 @@ const SALT_GUN = [
 const SALT_PAL = { G: '#5a5a6e', L: '#a8a8bc', B: '#8a5a2a', W: '#ffffff' };
 
 
+// hospital and morgue: a wet floor sign instead of a tombstone (tombstones in a ward read wrong)
+const WET_FLOOR = [
+  '.....KK.....',
+  '....KYYK....',
+  '...KYYYYK...',
+  '...KYKKYK...',
+  '..KYYKKYYK..',
+  '..KYYKKYYK..',
+  '.KYYYKKYYYK.',
+  '.KYYYYYYYYK.',
+  '.KYYYKKYYYK.',
+  'KYYYYKKYYYYK',
+  'KYYYYYYYYYYK',
+  'KKKKKKKKKKKK',
+  'K..........K',
+  'K..........K',
+  'K..........K',
+  'KK........KK',
+];
+const WET_PAL = { Y: '#f0c030', K: '#2a2418' };
+
 // ---------------- v6 world traps (one per zone) ----------------
 const GURNEY = [ // ward: a hospital bed rolling at you, something under the sheet
   '......WWWWW.........',
@@ -327,6 +348,7 @@ export function makeRunnerArt(scene) {
   px(scene, 'crate', CRATE, CRATE_PAL);
   px(scene, 'salt_gun', SALT_GUN, SALT_PAL);
   px(scene, 'gurney', GURNEY, GURNEY_PAL);
+  px(scene, 'wetfloor', WET_FLOOR, WET_PAL);
   px(scene, 'drawer', DRAWER, DRAWER_PAL);
   px(scene, 'chandelier', CHANDELIER, CHANDELIER_PAL);
   px(scene, 'cart', CART, CART_PAL);
@@ -352,6 +374,6 @@ export const RUNNER_SPRITES = {
   walk0: [...HEAD, ...TORSO, ...LEGS0], walk1: [...HEAD, ...TORSO, ...LEGS1],
   reach: [...REACH_ARMS, ...HEAD, ...TORSO_UP, ...LEGS0], crawl0: CRAWL0, crawl1: CRAWL1,
   grave: GRAVE, crate: CRATE, salt: SALT_GUN,
-  gurney: GURNEY, drawer: DRAWER, chandelier: CHANDELIER, cart: CART, eye: EYE, vent: VENT,
+  gurney: GURNEY, wetfloor: WET_FLOOR, drawer: DRAWER, chandelier: CHANDELIER, cart: CART, eye: EYE, vent: VENT,
   flame: FLAME_GUN, sling: SLING, bone: BONE, icon: STRETCH_ICON,
 };

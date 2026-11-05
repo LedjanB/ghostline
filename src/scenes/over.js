@@ -1,6 +1,6 @@
 // Results: distance, score, medal, candles, missions, the unlock bar (Downwell), then a card for
 // every level-up and every new unlock. One tap to go again.
-import { W, H, DEATH_LINES, medalFor } from '../data.js';
+import { W, H, DEATH_LINES, CAUSE_LINES, medalFor } from '../data.js';
 import { Save } from '../save.js';
 import { Audio } from '../audio.js';
 import { text, button, focusGroup } from '../ui.js';
@@ -20,7 +20,8 @@ export class OverScene extends Phaser.Scene {
     const panel = this.add.container(W / 2, H / 2 + 30).setAlpha(0);
     const bg = this.add.rectangle(0, 0, 560, 336, 0x140f24).setStrokeStyle(3, 0x8f7fbf);
     const items = [bg];
-    items.push(text(this, 0, -146, Phaser.Utils.Array.GetRandom(DEATH_LINES), 16, '#ff5577'));
+    const cause = r.cause && r.cause.startsWith('air:') ? 'IT WAS WAITING WHERE YOU LANDED.' : CAUSE_LINES[r.cause];
+    items.push(text(this, 0, -146, (r.runner && cause) || Phaser.Utils.Array.GetRandom(DEATH_LINES), 16, '#ff5577'));
     items.push(text(this, 0, -114, `${r.meters}M`, 32, '#e6f0ff'));
     const medal = medalFor(r.meters);
     if (medal) {
@@ -34,11 +35,12 @@ export class OverScene extends Phaser.Scene {
     } else {
       best = text(this, 0, -82, r.isBestScore ? `NEW BEST SCORE ${fmt(r.score)}!` : `SCORE ${fmt(r.score)}`, 16, r.isBestScore ? '#ffd75e' : '#e6f0ff');
       items.push(best);
-      const bestLine = r.daily ? `TODAY'S BEST ${r.dailyBest}M` : `${r.isBest ? 'NEW BEST DISTANCE!' : `BEST ${r.best}M`}   BEST SCORE ${fmt(r.bestScore)}`;
-      items.push(text(this, 0, -62, `x${r.mult} MULTIPLIER   ${bestLine}`, 8, r.isBest ? '#ffd75e' : '#a99fd0'));
+      // say each thing once: no 'best score' twice, no x1 multiplier
+      const bestLine = r.daily ? `TODAY'S BEST ${r.dailyBest}M` : `${r.isBest ? 'NEW BEST DISTANCE!' : `BEST ${r.best}M`}${r.isBestScore ? '' : `   BEST SCORE ${fmt(r.bestScore)}`}`;
+      items.push(text(this, 0, -62, `${r.mult > 1 ? `x${r.mult} MULTIPLIER   ` : ''}${bestLine}`, 8, r.isBest ? '#ffd75e' : '#a99fd0'));
     }
     const mc = r.missions.reward;
-    items.push(text(this, 0, -40, `+${r.candles} CANDLES${mc ? `  +${mc} MISSIONS` : ''}`, 16, '#ffd75e'));
+    items.push(text(this, 0, -40, `+${r.candles} CANDLES${mc ? `  +${mc} FROM MISSIONS` : ''}`, 16, '#ffd75e'));
     if (r.blast) items.push(text(this, 0, -22, `INCLUDES +${r.blast}M GRAVE BLAST`, 8, '#9fc8ff'));
     let y = -2;
     if (r.missions.completed.length) {
@@ -56,12 +58,12 @@ export class OverScene extends Phaser.Scene {
       g.fillStyle(0x3a2f5a, 1); g.fillRect(bx, by, bw, 10);
       const fill = this.add.rectangle(bx, by, 1, 10, 0xff9fd0).setOrigin(0);
       items.push(g, fill);
-      const label = u.cost ? `NEXT UNLOCK ${u.points}/${u.cost}   +${u.earned} THIS RUN` : u.bonus ? `ALL UNLOCKED! +${u.bonus} CANDLES` : 'ALL UNLOCKED!';
+      const label = u.cost ? `+${u.earned} TOWARD THE NEXT UNLOCK  (${u.points}/${u.cost})` : u.bonus ? `ALL UNLOCKED! +${u.bonus} CANDLES` : 'ALL UNLOCKED!';
       items.push(text(this, 0, 92, label, 8, '#ffb0d8'));
       const target = u.cost ? Math.max(0.02, u.points / u.cost) : 1;
       this.tweens.add({ targets: fill, width: Math.round(bw * target), duration: 600, delay: 450, ease: 'Cubic.easeOut' });
     }
-    items.push(text(this, 0, 112, `TOTAL ${Save.get().candles} CANDLES`, 8, '#a99fd0'));
+    items.push(text(this, 0, 112, `YOU HAVE ${Save.get().candles} CANDLES`, 8, '#a99fd0'));
     panel.add(items);
     this.tweens.add({ targets: panel, alpha: 1, y: H / 2, duration: 350, ease: 'Back.easeOut' });
 
@@ -133,9 +135,9 @@ export class OverScene extends Phaser.Scene {
   showButtons() {
     this.ready = true;
     this.group = focusGroup(this, [
-      button(this, W / 2 - 180, H / 2 + 138, 'RETRY', () => this.retry(), { w: 170, h: 36 }),
-      button(this, W / 2, H / 2 + 138, 'MENU', () => this.menu(), { w: 170, h: 36 }),
-      button(this, W / 2 + 180, H / 2 + 138, 'SHARE', () => this.share(), { w: 170, h: 36 }),
+      button(this, W / 2 - 150, H / 2 + 138, 'RUN AGAIN', () => this.retry(), { w: 230, h: 40 }),
+      button(this, W / 2 + 60, H / 2 + 138, 'MENU', () => this.menu(), { w: 150, h: 36 }),
+      button(this, W / 2 + 220, H / 2 + 138, 'SHARE', () => this.share(), { w: 150, h: 36 }),
     ], { horizontal: true });
   }
 

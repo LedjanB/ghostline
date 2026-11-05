@@ -29,9 +29,13 @@ export class SpinScene extends Phaser.Scene {
       this.add.rectangle(W / 2 + dx, 160, 90, 84, 0x07060d).setStrokeStyle(2, 0x3a2f5a);
       return this.add.image(W / 2 + dx, 160, 'sym_bone').setScale(4);
     });
-    this.result = text(this, W / 2, 222, 'SPEND A SOUL TO SPIN', 16, '#a99fd0');
-    this.btn = button(this, W / 2, 274, 'SPIN', () => this.onButton(), { w: 220, h: 40, silent: true });
-    this.group = focusGroup(this, [this.btn]);
+    this.result = text(this, W / 2, 222, 'A SOUL FOR A PRIZE, OR A 2ND CHANCE', 16, '#a99fd0');
+    this.btn = button(this, W / 2 - 90, 274, 'SPIN', () => this.onButton(), { w: 170, h: 40, silent: true });
+    // v6: always a way to the results; untouched, it moves on by itself
+    this.noBtn = button(this, W / 2 + 100, 274, 'NO THANKS', () => { if (!this.spinning) this.finish(); }, { w: 170, h: 40 });
+    this.group = focusGroup(this, [this.btn, this.noBtn], { horizontal: true });
+    this.touched = false;
+    this.idle = this.time.delayedCall(8000, () => { if (!this.touched && !this.spinning) this.finish(); });
     this.inputMap = createInput(this);
     this.spinning = false;
     this.refresh();
@@ -40,6 +44,7 @@ export class SpinScene extends Phaser.Scene {
   refresh() {
     this.soulText.setText(`SOULS x${this.souls}`);
     this.btn.setLabel(this.souls > 0 ? 'SPIN' : 'CONTINUE');
+    if (this.noBtn) this.noBtn.setVisible(this.souls > 0);
   }
 
   update() {
@@ -49,6 +54,7 @@ export class SpinScene extends Phaser.Scene {
 
   onButton() {
     if (this.spinning) return;
+    this.touched = true;
     if (this.souls <= 0) { this.finish(); return; }
     this.spin();
   }
@@ -112,6 +118,8 @@ export class SpinScene extends Phaser.Scene {
   }
 
   finish() {
+    if (this.finished) return;
+    this.finished = true;
     this.scene.stop();
     this.play.finalize();
   }

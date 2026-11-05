@@ -27,10 +27,17 @@ export const DEATH_LINES = [
   'IT CAUGHT YOU.',
   'YOU ARE ONE OF US NOW.',
   'SPOOKED.',
-  'DRAGGED UNDER.',
+  'IT SAYS THANK YOU.',
   'SHOULD HAVE STAYED HOME.',
-  'THE DARK SAYS HI.',
+  'YOU LOOKED BACK.',
 ];
+// v6: the results screen names what got you (the last thing you stumbled on, or the pit)
+export const CAUSE_LINES = {
+  grave: 'TRIPPED OVER IT.', beam: 'A SPIRIT BEAM GOT YOU.', hand: 'A HAND GRABBED YOUR FOOT.',
+  crate: 'TRIPPED ON A CRATE.', ghoul: 'A GHOUL GOT IN THE WAY.', swing: 'THE SWING GOT YOU.', pit: 'YOU FELL IN A PIT.',
+  gurney: 'RUN OVER BY A BED.', drawer: 'A DRAWER GOT YOU.', roots: 'TRIPPED ON THE ROOTS.', sinkhole: 'THE GROUND GAVE WAY.',
+  vent: 'STEAMED.', chandelier: 'THE CHANDELIER GOT YOU.', cart: 'RUN OVER BY A CART.', eye: 'THE EYE SAW YOU.',
+};
 
 // Charms (Jetpack Joyride "gadgets"): permanent perks, equip up to 2 before a run.
 export const CHARMS = [

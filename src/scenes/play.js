@@ -172,7 +172,7 @@ export class PlayScene extends Phaser.Scene {
     this.candlePool = new Pool(() => ({
       s: this.add.sprite(0, 0, 'candle0').setScale(2).setDepth(21.5),
       glow: this.add.image(0, 0, 'glow').setScale(0.9).setDepth(21)
-        .setBlendMode(Phaser.BlendModes.ADD).setTint(0xffa040).setAlpha(0.55),
+        .setBlendMode(Phaser.BlendModes.ADD).setTint(0xffa040).setAlpha(0.32), // v6: dimmer, so threats read first
     }));
 
     this.inputMap = createInput(this);
@@ -656,6 +656,7 @@ export class PlayScene extends Phaser.Scene {
     this.light = Math.min(1, this.light + 0.03);
     this.addCombo('near');
     Audio.sfx('close');
+    if (this.runner) { this.popup('CLOSE!', '#9ff0ff'); return; } // v6: through the shared popup stack
     const t = text(this, PLAYER_X + 30, this.py - 34, 'CLOSE!', 16, '#9ff0ff').setDepth(31).setStroke('#07060d', 4);
     this.tweens.add({ targets: t, y: '-=26', alpha: 0, duration: 650, ease: 'Quad.easeOut', onComplete: () => t.destroy() });
   }
@@ -756,6 +757,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   stepDeath(dt) {
+    if (this.runner) { this.speed *= Math.exp(-3.5 * dt); if (this.speed < 12) this.speed = 0; } // v6: caught = it all stops, no long slide
     this.vy += GRAVITY * dt;
     this.py += this.vy * dt;
     this.player.rotation += this.spin * dt;
@@ -864,6 +866,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   banner(name, flavor = '') {
+    if (this.runner) { this.headline(name, flavor); return; } // v6: one headline at a time, up top
     const t = text(this, W / 2, H / 2 + 30, name, 24, '#cfe0ff').setDepth(31).setStroke('#07060d', 6).setAlpha(0);
     const f = text(this, W / 2, H / 2 + 60, flavor, 16, '#a99fd0').setDepth(31).setStroke('#07060d', 4).setAlpha(0);
     this.tweens.add({ targets: [t, f], alpha: 1, duration: 300, yoyo: true, hold: 1800, onComplete: () => { t.destroy(); f.destroy(); } });
@@ -978,7 +981,7 @@ export class PlayScene extends Phaser.Scene {
       const g = this.add.graphics().setDepth(14);
       g.fillStyle(0xffd75e, 0.5);
       for (let y = CEIL; y < FLOOR; y += 12) g.fillRect(-2, y, 4, 6);
-      const t = text(this, 0, CEIL + 14, 'BEST', 8, '#ffd75e').setDepth(14);
+      const t = text(this, 0, CEIL + 22, 'BEST', 8, '#ffd75e').setDepth(14); // below the HUD's distance
       this.bestMarker = { g, t };
     }
     if (!this.bestMarker) return;

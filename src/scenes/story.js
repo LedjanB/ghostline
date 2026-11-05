@@ -8,7 +8,7 @@ import { createInput } from '../input.js';
 // v6: the chase. THE STRETCH is shown on the third card (see next()).
 const CARDS = [
   ['ST. MERCY WARD', '3:33 AM'],
-  ['MILO WAKES UP.', 'EVERY LIGHT IN THE BUILDING DIES AT ONCE.'],
+  ['MILO WAKES UP.', 'EVERY LIGHT DIES AT ONCE.'],
   ['SOMETHING TALL UNFOLDS', 'AT THE END OF THE WARD. IT SMILES.'],
   ['A GHOST APPEARS.', 'HIS NAME IS BOO.'],
   ['"RUN, MILO."', '"AND DON\'T LOOK BACK."'],

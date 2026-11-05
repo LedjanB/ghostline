@@ -117,7 +117,13 @@ export const Features = {
   },
 
   popup(str, color = '#e6f0ff', y = null) {
-    const t = text(this, PLAYER_X + 50, y ?? this.py - 40, str, 16, color).setDepth(31).setStroke('#07060d', 4);
+    // v6: at most two at once, stacked instead of drawn on top of each other
+    this.popups = (this.popups || []).filter((o) => o.active);
+    while (this.popups.length >= 2) this.popups.shift().destroy();
+    const recent = this.popups.filter((o) => this.clock - o.bornAt < 0.5).length;
+    const t = text(this, PLAYER_X + 50, (y ?? this.py - 40) - recent * 20, str, 16, color).setDepth(31).setStroke('#07060d', 4);
+    t.bornAt = this.clock;
+    this.popups.push(t);
     this.tweens.add({ targets: t, y: '-=36', alpha: 0, duration: 1000, ease: 'Quad.easeOut', onComplete: () => t.destroy() });
   },
 
@@ -205,6 +211,10 @@ export const Features = {
   // ---------- Boo talks (identity + humor) ----------
   quip(kind, force = false) {
     if (this.dead && kind !== 'death') return;
+    // v6: Boo doesn't talk over a headline or the tutorial
+    if (this.runner && kind !== 'death' && (this.clock < (this.quietUntil || 0) || !this.started)) return;
+    if (this.runner && kind !== 'death' && this.popups && this.popups.some((o) => o.active && this.clock - o.bornAt < 1.2)) return; // a popup is up: don't stack a bubble on it
+    if (this.runner && kind === 'near') return;
     if (!force && this.quipCooldown > 0) return;
     const hero = this.char.name.split(' ').pop();
     const LINES = {
@@ -257,13 +267,20 @@ export const Features = {
     };
     if (this.runner) Object.assign(TIPS, { // v6 (each fits the tip banner: 32 characters max)
       candle: 'CANDLES PUSH THE STRETCH BACK!', slide: 'SLIDE UNDER THE BEAMS!', weapon: 'WEAPONS FIRE ON THEIR OWN!',
-      gurney: 'ROLLING BEDS! JUMP OR SHOOT', drawer: 'DRAWERS POP OUT. SLIDE UNDER!', roots: 'ROOTS RISE UP. JUMP THEM!',
+      gurney: 'ROLLING BEDS! JUMP THEM!', drawer: 'DRAWERS POP OUT. SLIDE UNDER!', roots: 'ROOTS RISE UP. JUMP THEM!',
       sinkhole: 'LOOSE DIRT CAVES IN. JUMP IT!', vent: 'STEAM! JUMP IT OR WAIT IT OUT', chandelier: 'WATCH THE SHADOW ON THE FLOOR',
       cart: 'CARTS ON THE RAILS! JUMP!', eye: 'THE EYE BOBS. SLIDE OR JUMP',
     });
     if (!TIPS[id]) return;
+    if (this.runner && (this.dead || this.flying)) return; // never over a death or a flight; it comes back next time
+    // v6: the bottom strip is busy? skip it (not marked seen): a tip shown late describes something already gone
+    if (this.runner && this.clock < (this.tipBusyUntil || 0)) return;
+    if (this.runner && (this.tipsThisRun || 0) >= 3) return; // the rest come in later runs
+    if (this.runner) this.tipsThisRun = (this.tipsThisRun || 0) + 1;
+    if (this.runner) this.tipBusyUntil = this.clock + 3.2;
     this.tipsSeen.add(id);
     Save.update((s) => { if (!s.tips.includes(id)) s.tips.push(id); });
+    if (this.runner) { this.events.emit('tip', TIPS[id]); return; } // v6: the HUD shows it in the bottom strip
     this.tipQueue = this.tipQueue || [];
     this.tipQueue.push(TIPS[id]);
     if (this.tipQueue.length === 1) this.showNextTip();
@@ -282,6 +299,7 @@ export const Features = {
 
   missionDone(def) {
     Audio.sfx('mission');
+    this.tipBusyUntil = this.clock + 2.4; // the strip is showing the mission
     this.events.emit('toast', def.text);
   },
 
@@ -802,7 +820,7 @@ export const Features = {
       meters, candles: this.runCandles, isBest: meters > prevBest, best: Math.max(prevBest, meters),
       close: this.nearMisses, missions, daily, dailyBest: Math.max(todays, daily ? meters : 0), blast: this.blastM,
       score, mult: this.mult, isBestScore: score > prevBestScore && score > 0, bestScore: Math.max(prevBestScore, score),
-      bestCombo: this.bestCombo, creative: this.creative,
+      bestCombo: this.bestCombo, creative: this.creative, cause: this.lastHitKind || '', runner: !!this.runner,
       unlock: { earned, unlocked, bonus, got: u.got, points: u.points, cost: u.got < TRACK.length ? costFor(u.got) : 0 },
     });
   },

@@ -9,7 +9,7 @@ export const ZONE_LENGTH_M = 400;
 export const ZONES = [
   {
     id: 'ward', name: 'ST. MERCY WARD', flavor: '3:33 AM. THE LIGHTS ARE DYING.', song: 'ward',
-    swing: 'lamp', weather: 'rain', ghoul: 0xffffff, giant: 'shadow', accent: 0x7dffb0,
+    swing: 'lamp', weather: 'rain', ghoul: 0xffffff, giant: 'shadow', accent: 0xb8d8ff, // v6: off the hazard green
   },
   {
     id: 'morgue', name: 'THE COLD ROOM', flavor: 'EVERYONE HERE IS VERY QUIET.', song: 'morgue',
@@ -181,7 +181,7 @@ const PAINT = {
       for (let i = 0; i < 18; i++) far.px(x + 15 + r() * 42, 31 + r() * 68, '#1d2b55');
       far.rect(x + 35, 30, 2, 70, '#141f24'); far.rect(x + 14, 64, 44, 2, '#141f24');
       far.rect(x + 12, 28, 48, 2, '#2e4248'); far.rect(x + 12, 100, 48, 3, '#2e4248');
-      if (x % 160 === 0) { far.rect(x + 62, 40, 17, 7, '#0c2a18'); sign(far, 'EXIT', x + 63, 41, '#7dffb0'); }
+      if (x % 160 === 0) { far.rect(x + 62, 40, 17, 7, '#0c2a18'); sign(far, 'EXIT', x + 63, 41, '#b8d8ff'); }
       for (let k = 0; k < 60; k++) far.line(x + 20 + k * 0.6, 102, x - 10 + k * 0.6, 162, '#b8d8e8', 1, 0.04);
     }
     far.circle(48, 44, 6, '#e8e4c8'); far.glow(48, 44, 16, '#c8d8e8', 0.4);
