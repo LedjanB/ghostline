@@ -9,6 +9,14 @@ It's 3:33 AM at St. Mercy Ward and every light just went out. A ghost named Boo 
 - **P**, **Esc** or gamepad **Start** to pause
 - Menus work with mouse, touch, arrows + Enter, or a gamepad d-pad + A
 
+## v5: score, combos and something new every run
+- **Score multiplier** (Subway Surfers): every mission level adds +1 to your multiplier, up to x30. Score = meters x multiplier + combo points
+- **One big combo**: candles, close calls, souls, letters, power-ups, scared ghouls and gates all feed it. Keep it going for x2 to x5, get hit and it's gone
+- **Music that grows with your combo** (Bit.Trip Runner): every combo tier adds a new layer
+- **Characters change the world** (Crossy Road): Count Vlad brings a blood moon and bats, Fang a full moon, Dex night vision, Lila bubblegum, Wraps a sandstorm, Rattles bone dust, Nurse Ivy a clean ward
+- **Stronger flying**: Boo sprays ectoplasm that splats on the floor and knocks ghouls over, a whoosh while you hold, speed lines when you're fast
+- **Something new every run** (Downwell): every run fills the unlock bar. 33 unlocks: 8 hats for Boo, 7 trail colors, 12 journal pages with the story, candle bundles. See them in **UNLOCKS** on the menu
+
 ## v4: the journey
 - **8 worlds, one way down**: St. Mercy Ward, The Cold Room, The Hollow Woods, Crowsrest Cemetery, The Dripping Dark, The Bone Halls, The Dead Carnival, The Other Side. 400M each. You fly through a gate into the next one, no fades, no loops. Each has 5 hand-painted parallax layers, its own weather, its own song and its own giant
 - **Story**: a short intro the first time you play, and Boo talks during runs
@@ -33,6 +41,8 @@ It's 3:33 AM at St. Mercy Ward and every light just went out. A ghost named Boo 
 | Count Vlad | 2500 | Spirit Rush lasts twice as long |
 | Rattles | 3500 | banshees fly slower |
 | Fang | 5000 | power-ups last 50% longer |
+
+Every character except Milo also changes how the world looks.
 
 ## Modes
 - **Normal**: one life, best distance counts

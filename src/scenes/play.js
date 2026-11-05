@@ -12,6 +12,7 @@ import {
   UNLOCK, difficulty, spawnTable, gapAfter, bansheeDelay, createIntroTracker, speedAt,
 } from '../pacing.js';
 import { Features, dailySeed } from '../run-features.js';
+import { ScoreFeatures } from '../run-score.js';
 import { ZoneLayers } from '../zones.js';
 
 const STEP = 1 / 120;
@@ -87,8 +88,6 @@ export class PlayScene extends Phaser.Scene {
     this.speed = 230;
     this.light = 1;
     this.runCandles = 0;
-    this.combo = 0;
-    this.lastCandleAt = -9;
     this.zoneIndex = 0;
     this.dead = false;
     this.ended = false;
@@ -142,6 +141,7 @@ export class PlayScene extends Phaser.Scene {
       if (this.worldX > 0) this.nextBanshee = 8;
     }
     this.featInit(save);
+    this.scoreInit(save);
   }
 
   create() {
@@ -187,6 +187,7 @@ export class PlayScene extends Phaser.Scene {
     Audio.intensity(0.2);
 
     this.featCreate();
+    this.scoreCreate();
     this.scene.launch('hud');
 
     this.onHidden = () => this.requestPause();
@@ -202,6 +203,8 @@ export class PlayScene extends Phaser.Scene {
 
   requestPause() {
     if (this.dead || !this.scene.isActive()) return;
+    this.thrustOn = false;
+    Audio.thrust(false);
     this.saveCheckpoint();
     this.scene.pause();
     this.scene.launch('pause');
@@ -261,7 +264,8 @@ export class PlayScene extends Phaser.Scene {
     if (!this.dead && this.openingDone) this.collide();
     this.stepLight(dt);
     this.stepZoneFx(dt);
-    if (this.combo > 0 && this.clock - this.lastCandleAt > 0.6) { this.combo = 0; this.events.emit('combo', 0); }
+    this.stepCombo(dt);
+    this.stepFlight(dt, holding);
     if (this.creative) {
       this.nextAutosave -= dt;
       if (this.nextAutosave <= 0) { this.nextAutosave = 10; this.saveCheckpoint(); }
@@ -635,23 +639,24 @@ export class PlayScene extends Phaser.Scene {
     this.tracker?.add('near', 1);
     this.quip('near');
     this.light = Math.min(1, this.light + 0.03);
+    this.addCombo('near');
     Audio.sfx('close');
     const t = text(this, PLAYER_X + 30, this.py - 34, 'CLOSE!', 16, '#9ff0ff').setDepth(31).setStroke('#07060d', 4);
     this.tweens.add({ targets: t, y: '-=26', alpha: 0, duration: 650, ease: 'Quad.easeOut', onComplete: () => t.destroy() });
   }
 
   collect(c) {
-    this.combo = this.clock - this.lastCandleAt < 0.45 ? this.combo + 1 : 1;
+    this.candleRun = this.clock - this.lastCandleAt < 0.45 ? this.candleRun + 1 : 1;
     this.lastCandleAt = this.clock;
+    this.addCombo('candle', c.x, c.y);
     this.runCandles += this.char.candleMul;
     this.lastCandleX = this.worldX;
     this.tracker?.add('candles', this.char.candleMul);
     if (this.chase) this.chase.wall = Math.max(-40, this.chase.wall - 20);
     this.buzz(8);
     this.light = Math.min(1, this.light + 0.07);
-    Audio.sfx('candle', { combo: this.combo });
+    Audio.sfx('candle', { combo: this.candleRun });
     this.events.emit('candles', this.runCandles);
-    this.events.emit('combo', this.combo);
     c.dead = true;
     c.glow.setVisible(false);
     this.tweens.add({
@@ -673,6 +678,7 @@ export class PlayScene extends Phaser.Scene {
 
   // creative mode: instead of dying, the ghost pulls you back and clears the way
   rebirth() {
+    this.breakCombo();
     this.rebirths++;
     this.invuln = 2;
     this.light = Math.max(this.light, 0.5);
@@ -692,6 +698,7 @@ export class PlayScene extends Phaser.Scene {
     this.buzz(kind === 'dark' ? 200 : 120);
     if (this.creative && !this.shield) { this.rebirth(); return; }
     if (this.shield) {
+      this.breakCombo();
       this.quip('shield');
       this.shield = false;
       this.invuln = 1.4;
@@ -707,7 +714,10 @@ export class PlayScene extends Phaser.Scene {
   }
 
   die() {
+    this.resetCombo();
     this.dead = true;
+    this.thrustOn = false;
+    Audio.thrust(false);
     this.quip('death', true);
     if (this.chase) this.endChase(false);
     this.deathSpeed = this.speed;
@@ -816,6 +826,7 @@ export class PlayScene extends Phaser.Scene {
       this.setWeather(zone.id);
       this.banner(zone.name, zone.flavor);
       this.saveCheckpoint();
+      this.addCombo('gate', PLAYER_X + 40, H / 2);
       this.onZoneEnter?.(zone);
     }
     if (sx < -100) {
@@ -828,6 +839,8 @@ export class PlayScene extends Phaser.Scene {
   emitHud(meters) {
     const m = Math.floor(meters);
     if (m !== this.lastMeters) { this.lastMeters = m; this.events.emit('meters', m); }
+    const sc = this.totalScore();
+    if (sc !== this.lastScore) { this.lastScore = sc; this.events.emit('score', sc); this.tracker?.max('score', sc); }
     const l = Math.round(this.light * 100) / 100;
     if (l !== this.lastLight) { this.lastLight = l; this.events.emit('light', l); }
     const blink = this.light < 0.25 && Math.floor(this.clock * 4) % 2 === 1;
@@ -849,10 +862,10 @@ export class PlayScene extends Phaser.Scene {
     let seam = null;
     if (this.gate) {
       seam = PLAYER_X + (this.gate.world - this.worldX) - lead;
-      this.gate.parts.forEach((p) => { p.x = seam; });
     }
-    const dk = Math.round(255 - (1 - this.light) * 120);
-    this.layers.render(s, seam, (dk << 16) | (dk << 8) | dk);
+    const tint = this.worldTint();
+    if (this.gate) this.gate.parts.forEach((p) => { p.x = seam; p.setTint(tint); });
+    this.layers.render(s, seam, tint);
 
     // player
     if (!this.dead) {
@@ -871,11 +884,15 @@ export class PlayScene extends Phaser.Scene {
       this.ghost.setPosition(this.ghostX, this.ghostY).setAlpha(this.invuln > 0 ? 0.5 : 0.92);
       this.ghostGlow.setPosition(this.ghostX, this.ghostY).setAlpha(this.holding ? 0.5 : 0.28);
       const ax = this.ghostX, ay = this.ghostY + 12, bx = PLAYER_X - 3, by = py - 8;
-      this.tendril.fillStyle(0xcfe0ff, this.holding ? 0.85 : 0.35);
-      for (let i = 0; i <= 9; i++) {
-        const t = i / 9;
-        const wob = Math.sin(this.clock * 12 + t * 6) * 3 * Math.sin(t * Math.PI);
-        this.tendril.fillRect(Math.round(ax + (bx - ax) * t + wob) - 2, Math.round(ay + (by - ay) * t) - 2, 4, 4);
+      const thick = this.holding ? 5 : 3;
+      for (let pass = 0; pass < 2; pass++) {
+        const size = pass === 0 ? thick + 3 : thick;
+        this.tendril.fillStyle(pass === 0 ? this.trailColor() : 0xe6f0ff, pass === 0 ? (this.holding ? 0.3 : 0.1) : (this.holding ? 0.9 : 0.4));
+        for (let i = 0; i <= 11; i++) {
+          const t = i / 11;
+          const wob = Math.sin(this.clock * (this.holding ? 18 : 10) + t * 6) * 3 * Math.sin(t * Math.PI);
+          this.tendril.fillRect(Math.round(ax + (bx - ax) * t + wob - size / 2), Math.round(ay + (by - ay) * t - size / 2), size, size);
+        }
       }
     }
 
@@ -929,6 +946,7 @@ export class PlayScene extends Phaser.Scene {
 
     this.renderBest(lead, py);
     this.renderFeatures(lead, py);
+    this.renderFlight(lead, py);
 
     let flick = 0;
     if (this.clock < this.flickerUntil) flick = (Math.floor(this.clock * 30) % 2) * 0.3;
@@ -974,4 +992,4 @@ export class PlayScene extends Phaser.Scene {
   }
 }
 
-Object.assign(PlayScene.prototype, Features);
+Object.assign(PlayScene.prototype, Features, ScoreFeatures);

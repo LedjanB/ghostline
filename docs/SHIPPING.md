@@ -40,7 +40,7 @@ C:\butler\butler login
 4. Every update:
 ```
 npm run build:itch
-C:\butler\butler push dist\itch ledjanb/ghostline:html --userversion 4.0.0
+C:\butler\butler push dist\itch ledjanb/ghostline:html --userversion 5.0.0
 ```
 Change `ledjanb` to your itch username if it's different.
 

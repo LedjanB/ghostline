@@ -46,7 +46,10 @@ Each world has its own song, its own weather, its own giant lurking in the backg
 **What's inside**
 - 8 characters to unlock, each with a perk (Nurse Ivy, Dex the Hunter, Little Lila, Count Vlad, Fang...)
 - 10 charms, equip 2 at a time
-- 56 missions, levels and titles
+- 65 missions, levels and titles. Every level raises your score multiplier
+- One big combo fed by everything you do, with music that grows as it climbs
+- Every character changes the world: blood moon, night vision, sandstorm...
+- Something new unlocks every run: hats for Boo, trail colors, journal pages
 - Spirit Rush, slow-mo, shields and candle magnets
 - Dark chases: outrun a wall of nothing
 - Grave Spin: spend souls for a second chance

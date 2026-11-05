@@ -1,6 +1,8 @@
 // Versioned save (save-systems skill): plain data only, version stamp,
 // migrate old saves, validate on load, keep a backup of the last good save.
-export const SAVE_VERSION = 5;
+import { TRACK, HAT_IDS, TRAIL_IDS, owned as ownedUnlocks } from './unlocks.js';
+
+export const SAVE_VERSION = 6;
 const KEY = 'ghostline-save';
 const BACKUP_KEY = 'ghostline-save.bak';
 const LEGACY_KEY = 'ghostline-save-v1'; // v1 of the game stored here, without a version field
@@ -27,6 +29,11 @@ function defaults() {
     tips: [],
     storySeen: false,
     stats: { runs: 0, meters: 0, candles: 0, maxZone: 0, deaths: {}, nearMisses: 0, souls: 0, spins: 0, revives: 0 },
+    // v6: score + multiplier, unlock track (Downwell), Boo's hat and trail
+    bestScore: 0,
+    bestCombo: 0,
+    unlocks: { got: 0, points: 0, fresh: 0 },
+    boo: { hat: 'none', trail: 'ecto' },
     settings: { music: 0.8, sfx: 0.9, muted: false, shake: true, flicker: true, vibrate: true, contrast: false },
   };
 }
@@ -47,6 +54,10 @@ const MIGRATIONS = {
   },
   2: (old) => ({ ...old, version: 3, mode: 'normal', creative: { x: 0, rebirths: 0 } }),
   4: (old) => ({ ...old, version: 5, tips: [], storySeen: (old.runs || 0) > 0, stats: { runs: old.runs || 0, meters: 0, candles: 0, maxZone: 0, deaths: {}, nearMisses: 0, souls: 0, spins: 0, revives: 0 } }),
+  5: (old) => {
+    const d = defaults();
+    return { ...old, version: 6, bestScore: 0, bestCombo: 0, unlocks: d.unlocks, boo: d.boo };
+  },
   3: (old) => {
     const d = defaults();
     return { ...old, version: 4, missions: d.missions, charms: d.charms, daily: d.daily, giftAt: 0 };
@@ -113,6 +124,17 @@ function validate(raw) {
       spins: isInt(s.stats?.spins) ? s.stats.spins : 0,
       revives: isInt(s.stats?.revives) ? s.stats.revives : 0,
     },
+    bestScore: isInt(s.bestScore) ? s.bestScore : 0,
+    bestCombo: isInt(s.bestCombo) ? s.bestCombo : 0,
+    unlocks: {
+      got: isInt(s.unlocks?.got) ? Math.min(TRACK.length, s.unlocks.got) : 0,
+      points: isInt(s.unlocks?.points) ? s.unlocks.points : 0,
+      fresh: isInt(s.unlocks?.fresh) ? s.unlocks.fresh : 0,
+    },
+    boo: {
+      hat: HAT_IDS.includes(s.boo?.hat) ? s.boo.hat : 'none',
+      trail: TRAIL_IDS.includes(s.boo?.trail) ? s.boo.trail : 'ecto',
+    },
     creative: {
       x: Number.isFinite(s.creative?.x) && s.creative.x >= 0 ? s.creative.x : 0,
       rebirths: isInt(s.creative?.rebirths) ? s.creative.rebirths : 0,
@@ -131,6 +153,9 @@ function validate(raw) {
   out.owned = [...new Set(out.owned)];
   if (!out.owned.includes(out.selected)) out.selected = 'survivor';
   out.charms.equipped = out.charms.equipped.filter((id) => out.charms.owned.includes(id));
+  const have = ownedUnlocks(out.unlocks.got);
+  if (!have.hats.includes(out.boo.hat)) out.boo.hat = 'none';
+  if (!have.trails.includes(out.boo.trail)) out.boo.trail = 'ecto';
   return out;
 }
 

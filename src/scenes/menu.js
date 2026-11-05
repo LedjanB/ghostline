@@ -1,6 +1,8 @@
 // Title screen + character shop. Works with mouse, touch, keyboard and gamepad.
 import { W, H, CHARACTERS, PX_PER_METER, GIFT_HOURS, ZONES } from '../data.js';
 import { ZoneLayers } from '../zones.js';
+import { WorldLook } from '../looks.js';
+import { LOOKS } from '../unlocks.js';
 import { todayKey } from '../run-features.js';
 import { Save } from '../save.js';
 import { Audio } from '../audio.js';
@@ -25,6 +27,7 @@ export class MenuScene extends Phaser.Scene {
     this.subtitle = text(this, W / 2, 78, '', 16, '#8f7fbf').setStroke('#07060d', 4);
     this.ghost = this.add.sprite(W / 2 + 196, 44, 'ghost0').setScale(2).setAlpha(0.9);
     this.ghost.play('ghost_float');
+    this.hat = this.add.image(W / 2 + 196, 44, 'ghost0').setScale(2).setOrigin(0.5, 1).setVisible(false);
     this.tweens.add({ targets: this.ghost, y: 56, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.time.addEvent({
       delay: 2600, loop: true,
@@ -33,12 +36,13 @@ export class MenuScene extends Phaser.Scene {
 
     this.add.image(24, 20, 'candle0').setScale(1.5);
     this.candleText = text(this, 40, 20, '', 16, '#ffd75e', 0).setStroke('#07060d', 4);
-    this.bestText = text(this, W - 14, 20, '', 16, '#a99fd0', 1).setStroke('#07060d', 4);
+    this.bestText = text(this, W - 50, 20, '', 16, '#a99fd0', 1).setStroke('#07060d', 4);
 
     this.add.image(W / 2, 148, 'glow').setScale(2.4).setBlendMode(Phaser.BlendModes.ADD).setTint(0xffb060).setAlpha(0.25);
     this.charSprite = this.add.sprite(W / 2, 140, 'survivor_run0').setScale(4);
     this.nameText = text(this, W / 2, 188, '', 16, '#e6f0ff').setStroke('#07060d', 4);
     this.perkText = text(this, W / 2, 208, '', 16, '#a99fd0').setStroke('#07060d', 4);
+    this.lookText = text(this, W / 2 + 140, 172, '', 8, '#ffb0d8').setStroke('#07060d', 3);
     this.dots = CHARACTERS.map((c, i) => this.add.rectangle(W / 2 - 27 + i * 18, 225, 8, 8, 0x3a2f5a));
 
     button(this, W / 2 - 140, 140, '<', () => this.browse(-1), { w: 44, h: 44 });
@@ -50,8 +54,10 @@ export class MenuScene extends Phaser.Scene {
     this.giftBtn = button(this, 528, 302, 'GIFT', () => this.claimGift(), { w: 196, h: 30, silent: true });
     this.modeBtn = button(this, 112, 340, '', () => this.toggleMode(), { w: 196, h: 30, icon: 'ghost0', iconScale: 1 });
     this.settingsBtn = button(this, 320, 340, 'SETTINGS', () => this.openSettings(), { w: 196, h: 30, icon: 'icon_gear' });
-    this.fullBtn = button(this, 528, 340, 'FULLSCREEN', () => this.fullscreen(), { w: 196, h: 30 });
-    this.group = focusGroup(this, [this.mainBtn, this.missionsBtn, this.charmsBtn, this.giftBtn, this.modeBtn, this.settingsBtn, this.fullBtn]);
+    this.unlocksBtn = button(this, 528, 340, 'UNLOCKS', () => this.overlay('unlocks'), { w: 196, h: 30, icon: 'hat_top', iconScale: 1.6 });
+    this.fullBtn = button(this, W - 22, 20, '', () => this.fullscreen(), { w: 30, h: 26, icon: 'icon_full', iconScale: 2 });
+    this.fullBtn.icon.x = W - 22;
+    this.group = focusGroup(this, [this.mainBtn, this.missionsBtn, this.charmsBtn, this.giftBtn, this.modeBtn, this.settingsBtn, this.unlocksBtn, this.fullBtn]);
     this.time.addEvent({ delay: 1000, loop: true, callback: () => this.refreshGift() });
 
     this.inputMap = createInput(this);
@@ -76,8 +82,10 @@ export class MenuScene extends Phaser.Scene {
 
   update(time, delta) {
     const m = delta / 1000;
+    this.hat.setPosition(this.ghost.x, this.ghost.y - 11);
     this.menuScroll += 60 * m;
     this.layers.render(this.menuScroll, null);
+    if (this.look) this.look.step(m, 60);
     this.inputMap.update();
     if (this.modal) {
       if (this.inputMap.pressed('confirm') || this.inputMap.pressed('back')) this.closeModal();
@@ -206,6 +214,20 @@ export class MenuScene extends Phaser.Scene {
     const todayBest = save.daily.date === todayKey() ? save.daily.best : 0;
     if (daily) this.bestText.setText(`TODAY ${todayBest}M`);
     this.missionsBtn.setLabel('MISSIONS');
+    const fresh = save.unlocks.fresh;
+    this.unlocksBtn.setLabel(fresh ? `NEW! (${fresh})` : 'UNLOCKS');
+    if (fresh) this.unlocksBtn.setColors(0x4a1f4a, 0xff9fd0); else this.unlocksBtn.setColors(0x2a1f4a, 0x8f7fbf);
+    // Crossy Road: the world takes on the look of whoever you're browsing
+    if (this.lookFor !== c.id) {
+      this.lookFor = c.id;
+      if (this.look) this.look.destroy();
+      this.look = new WorldLook(this, c.id, -100);
+      this.layers.setLook(this.look.tint);
+      const ln = LOOKS[c.id]?.name;
+      this.lookText.setText(ln ? `WORLD: ${ln}` : '');
+    }
+    const hatId = save.boo.hat;
+    if (hatId && hatId !== 'none') this.hat.setTexture(`hat_${hatId}`).setVisible(true); else this.hat.setVisible(false);
     this.charmsBtn.setLabel('CHARMS');
     this.refreshGift();
     const cx = Math.floor(save.creative.x / PX_PER_METER);

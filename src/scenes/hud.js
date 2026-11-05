@@ -1,6 +1,7 @@
 // HUD scene, launched once on top of the run. It never reads game state each frame;
 // it listens for events the run emits (game-ui-ux skill: drive the HUD from events).
 import { W } from '../data.js';
+import { fmt } from '../unlocks.js';
 import { text, button } from '../ui.js';
 
 export class HudScene extends Phaser.Scene {
@@ -16,7 +17,15 @@ export class HudScene extends Phaser.Scene {
     this.lightBar = this.add.graphics();
     this.shieldIcon = this.add.image(498, 18, 'shield_icon').setScale(2).setVisible(play.shield);
     this.pauseBtn = button(this, W - 24, 18, 'II', () => play.requestPause(), { w: 30, h: 26, size: 8 });
-    this.combo = text(this, 176, 52, '', 16, '#ffb060', 0).setStroke('#07060d', 4);
+    // score + multiplier badge (Subway Surfers), combo meter on the right
+    // (kept right of the player: x 120-180 must stay clear when you hug the ceiling)
+    this.multBg = this.add.rectangle(218, 50, 34, 20, 0x4a3510).setStrokeStyle(2, 0xffd75e);
+    this.multText = text(this, 218, 51, `x${play.mult}`, 8, '#ffd75e');
+    this.scoreText = text(this, 242, 50, fmt(play.totalScore()), 16, '#e6f0ff', 0).setStroke('#07060d', 4);
+    this.comboText = text(this, W - 14, 46, '', 16, '#ffb060', 1).setStroke('#07060d', 4);
+    this.comboBar = this.add.graphics();
+    const showScore = !play.creative;
+    [this.multBg, this.multText, this.scoreText].forEach((o) => o.setVisible(showScore));
     this.light = 1;
     this.drawLight(false);
     // creative mode: rebirth counter under the distance
@@ -29,7 +38,7 @@ export class HudScene extends Phaser.Scene {
     this.soulText = text(this, 262, 18, `${play.souls}`, 16, '#9fc8ff', 0).setStroke('#07060d', 4);
     const showMeta = !play.creative;
     this.soulIcon.setVisible(showMeta); this.soulText.setVisible(showMeta);
-    this.letters = ['B', 'O', 'O'].map((l, i) => this.add.image(W / 2 - 24 + i * 24, 52, `letter_${l}`).setScale(1.6).setAlpha(0.25).setVisible(showMeta));
+    this.letters = ['B', 'O', 'O'].map((l, i) => this.add.image(24 + i * 24, 50, `letter_${l}`).setScale(1.6).setAlpha(0.25).setVisible(showMeta));
     this.powerIcon = this.add.image(540, 18, 'orb_magnet').setScale(1.4).setVisible(false);
     this.powerBar = this.add.graphics();
     this.toastBg = this.add.rectangle(W / 2, 90, 470, 46, 0x140f24).setStrokeStyle(2, 0xffd75e).setAlpha(0);
@@ -44,7 +53,23 @@ export class HudScene extends Phaser.Scene {
       this.candleText.setText(`${n}`);
       this.tweens.add({ targets: this.candleText, scaleX: 1.3, scaleY: 1.3, duration: 60, yoyo: true });
     });
-    on('combo', (c) => this.combo.setText(c >= 5 ? `x${c} STREAK` : ''));
+    on('score', (n) => this.scoreText.setText(fmt(n)));
+    on('mult', (m) => this.multText.setText(`x${m}`));
+    on('combo', (c) => {
+      const cols = ['#ffb060', '#ffb060', '#9ff0ff', '#ffb0d0', '#ffd75e', '#ff8a5e'];
+      const show = c.n >= 3;
+      const label = show ? (c.tier > 1 ? `${c.n} COMBO x${c.tier}` : `${c.n} COMBO`) : '';
+      if (label !== this.comboText.text) {
+        this.comboText.setText(label).setColor(cols[c.tier]);
+        if (show && c.n % 10 === 0) this.tweens.add({ targets: this.comboText, scaleX: 1.25, scaleY: 1.25, duration: 70, yoyo: true });
+      }
+      const g = this.comboBar;
+      g.clear();
+      if (!show) return;
+      const w = Math.max(60, this.comboText.width);
+      g.fillStyle(0x07060d, 1); g.fillRect(W - 14 - w, 58, w, 5);
+      g.fillStyle(Phaser.Display.Color.HexStringToColor(cols[c.tier]).color, 1); g.fillRect(W - 14 - w + 1, 59, Math.round((w - 2) * c.left), 3);
+    });
     on('light', (v) => { this.light = v; this.drawLight(false); });
     on('lightLow', (blink) => this.drawLight(blink));
     on('shield', (has) => this.shieldIcon.setVisible(has));

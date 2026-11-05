@@ -8,7 +8,11 @@ let master, limiter, musicBus, duckBus, sfxBus, ambBus, noiseBuf;
 let ambience = null; // current zone ambience
 let ambNodes = [];
 let nextAmbEvent = 0;
-let layerBase, layerDrive, layerDanger;
+let layerBase, layerDrive, layerDanger, layerCombo;
+let comboTier = 1; // music layers stack with the combo (Bit.Trip Runner)
+let heardTier = 1;
+let fadeUntil = 0;
+let thrust = null; // looping whoosh while Boo pulls
 let songName = null;
 let step = 0;
 let nextTime = 0;
@@ -144,9 +148,18 @@ function init() {
   layerBase = ctx.createGain(); layerBase.gain.value = 1; layerBase.connect(musicBus);
   layerDrive = ctx.createGain(); layerDrive.gain.value = 0; layerDrive.connect(musicBus);
   layerDanger = ctx.createGain(); layerDanger.gain.value = 0; layerDanger.connect(musicBus);
+  layerCombo = ctx.createGain(); layerCombo.gain.value = 0; layerCombo.connect(musicBus);
   noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
   const d = noiseBuf.getChannelData(0);
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  // thrust: band-passed noise that opens up while you hold (lives on the SFX bus)
+  {
+    const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 650; f.Q.value = 0.9;
+    const g = ctx.createGain(); g.gain.value = 0;
+    src.connect(f); f.connect(g); g.connect(sfxBus); src.start();
+    thrust = { f, g };
+  }
   applySettings();
   setInterval(schedule, 25);
 }
@@ -226,6 +239,15 @@ function schedule() {
       if (d.h[j] === 'x') noise(t, 0.03, j % 4 === 0 ? 0.04 : 0.022, layerDrive, 7000);
     }
     if (j % 4 === 0) tone(t, midi(song.root - 24), sixteenth * 3, 'sawtooth', 0.05, layerDanger);
+    // combo layers: x2 sparkle echo of the lead, x3 claps + 16th hats, x4 bass octave, x5 lifted arp
+    const ht = ctx.currentTime < fadeUntil ? Math.max(heardTier, comboTier) : comboTier;
+    if (ht >= 2 && l) tone(t + sixteenth * 2, midi(l + 24), sixteenth * 1.2, 'triangle', 0.022, layerCombo);
+    if (ht >= 3) {
+      if (j === 4 || j === 12) noise(t, 0.09, 0.07, layerCombo, 1800, 'bandpass');
+      if (j % 2 === 1) noise(t, 0.025, 0.018, layerCombo, 9000);
+    }
+    if (ht >= 4 && b) tone(t, midi(b + 12), sixteenth * 1.4, 'sawtooth', 0.025, layerCombo);
+    if (ht >= 5 && a) tone(t, midi(a + 12), sixteenth * 0.8, 'triangle', 0.02, layerCombo);
     nextTime += sixteenth;
     step++;
   }
@@ -297,6 +319,20 @@ export const Audio = {
   intensity(v) {
     if (!ctx) return;
     layerDrive.gain.setTargetAtTime(Math.max(0, Math.min(1, v)), ctx.currentTime, 0.5);
+  },
+  // combo tier 1..5: each tier adds a music layer; dropping back fades them out
+  combo(tier) {
+    if (!ctx) { comboTier = tier; return; }
+    if (tier < comboTier) { heardTier = comboTier; fadeUntil = ctx.currentTime + 0.9; }
+    comboTier = tier;
+    layerCombo.gain.setTargetAtTime(tier >= 2 ? 1 : 0, ctx.currentTime, tier >= 2 ? 0.05 : 0.3);
+  },
+  // the whoosh of Boo pulling you up
+  thrust(on) {
+    if (!ctx || !thrust) return;
+    const t = ctx.currentTime;
+    thrust.g.gain.setTargetAtTime(on ? 0.07 : 0, t, on ? 0.04 : 0.12);
+    thrust.f.frequency.setTargetAtTime(on ? 1100 : 500, t, on ? 0.15 : 0.2);
   },
   danger(on) {
     if (!ctx) return;
@@ -398,6 +434,15 @@ export const Audio = {
         tone(t, 110, 1.2, 'triangle', 0.15, sfxBus, 90);
         tone(t, 165, 1.2, 'sine', 0.08, sfxBus, 130);
         break;
+      case 'comboUp': {
+        const k = Math.min(5, opts.tier || 2);
+        [0, 4, 7, 12].forEach((st, i) => tone(t + i * 0.045, midi(64 + k * 2 + st), 0.14, 'square', 0.045, sfxBus));
+        noise(t, 0.25, 0.04, sfxBus, 6000);
+        break;
+      }
+      case 'comboEnd': tone(t, midi(84), 0.12, 'triangle', 0.05, sfxBus); tone(t + 0.08, midi(91), 0.2, 'triangle', 0.05, sfxBus); break;
+      case 'splat': noise(t, 0.05, 0.035 * vv, sfxBus, rand(500, 900), 'lowpass'); break;
+      case 'unlock': [0, 7, 12, 16, 19, 24].forEach((st, i) => tone(t + i * 0.08, midi(67 + st), 0.25, 'triangle', 0.07, sfxBus)); noise(t, 0.6, 0.04, sfxBus, 5000); break;
       case 'best': [0, 3, 7, 10, 15].forEach((s, i) => tone(t + i * 0.09, midi(69 + s), 0.18, 'triangle', 0.08, sfxBus)); break;
     }
   },

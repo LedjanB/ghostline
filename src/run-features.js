@@ -6,6 +6,7 @@ import { Audio } from './audio.js';
 import { text } from './ui.js';
 import { createTracker } from './missions.js';
 import { UNLOCK } from './pacing.js';
+import { TRACK, costFor, runPoints, BONUS_PER_POINT } from './unlocks.js';
 
 const TOP = CEIL + 16;
 const BOTTOM = FLOOR - 16;
@@ -196,6 +197,7 @@ export const Features = {
     this.events.emit('candles', this.runCandles);
     Audio.sfx('boo');
     this.popup('YOU OUTRAN THE DARK! +25', '#ffd75e');
+    this.addCombo('escape');
     this.quip('escaped', true);
     this.tracker?.add('chases', 1);
   },
@@ -392,10 +394,12 @@ export const Features = {
       this.events.emit('souls', this.souls);
       this.popup('+1 SOUL', '#9fc8ff');
       this.tracker?.add('souls', 1);
+      this.addCombo('soul', p.x, p.y - 30);
     } else if (p.kind === 'letter') {
       if (p.letter !== this.booIndex) return; // stale letter
       this.booIndex++;
       Audio.sfx('letter');
+      this.addCombo(this.booIndex >= LETTERS.length ? 'boo' : 'letter', p.x, p.y - 30);
       this.events.emit('letters', this.booIndex);
       if (this.booIndex >= LETTERS.length) {
         // Subway Surfers word hunt / Jetpack Joyride S-A-M: spell it for a reward
@@ -413,6 +417,7 @@ export const Features = {
     } else if (p.kind === 'power') {
       Audio.sfx('powerup');
       this.tracker?.add('powerups', 1);
+      this.addCombo('power', p.x, p.y - 30);
       if (p.power === 'shield') {
         this.shield = true;
         this.events.emit('shield', true);
@@ -483,12 +488,7 @@ export const Features = {
         g.vy += 900 * dt; g.y += g.vy * dt;
         if (g.y > FLOOR - 15) { g.y = FLOOR - 15; g.vy = 0; }
         // touching a panicking ghoul scares it silly (counts for missions)
-        if (Math.abs(near) < 16 && this.py > FLOOR - 64 && !this.dead) {
-          g.state = 'flung'; g.vy = -420; g.spin = 10;
-          Audio.sfx('ghoul');
-          this.popup('EEK!', '#c8ffc0', g.y - 30);
-          this.tracker?.add('ghouls', 1);
-        }
+        if (Math.abs(near) < 16 && this.py > FLOOR - 64 && !this.dead) this.flingGhoul(g);
       } else {
         g.vy += 900 * dt; g.y += g.vy * dt; g.s.rotation += g.spin * dt;
         if (g.y > H + 40) g.x = -100;
@@ -618,11 +618,11 @@ export const Features = {
     if (holding && this.openingDone) {
       this.exhaustT -= dt;
       while (this.exhaustT <= 0) {
-        this.exhaustT += 0.022;
+        this.exhaustT += 0.03;
         const p = this.particlePool.get();
         const x = PLAYER_X - 2 + (Math.random() - 0.5) * 8;
         const y = this.py + 14;
-        p.setPosition(x, y).setSize(3, 3).setFillStyle(Math.random() < 0.5 ? 0xcfe0ff : 0x8fe8ff).setAlpha(0.85).setVisible(true).setDepth(8.7);
+        p.setPosition(x, y).setSize(3, 3).setFillStyle(this.trailColor(Math.floor(Math.random() * 2))).setAlpha(0.6).setVisible(true).setDepth(8.7);
         this.tweens.add({
           targets: p, x: x - 30 - Math.random() * 30, y: y + 26 + Math.random() * 26, alpha: 0, duration: 280,
           onComplete: () => { p.setVisible(false); this.particlePool.put(p); },
@@ -743,12 +743,21 @@ export const Features = {
     const meters = Math.floor(this.worldX / PX_PER_METER) + this.blastM;
     const save = Save.get();
     const prevBest = save.best;
+    const prevBestScore = save.bestScore;
+    // the Grave Blast meters count for score too
+    const score = this.creative ? 0 : this.totalScore() + this.blastM * this.mult;
     const missions = this.tracker ? this.tracker.finish() : { completed: [], reward: 0, levelUps: [] };
     const daily = this.daily;
     const todays = save.daily.date === todayKey() ? save.daily.best : 0;
+    // Downwell: every run fills the unlock bar
+    const earned = this.creative ? 0 : runPoints(meters, missions.completed.length);
+    const unlocked = [];
+    let bonus = 0;
     Save.update((s) => {
       s.candles += this.runCandles;
       s.best = Math.max(s.best, meters);
+      s.bestScore = Math.max(s.bestScore, score);
+      s.bestCombo = Math.max(s.bestCombo, this.bestCombo);
       s.runs += 1;
       s.stats.runs += 1;
       s.stats.meters += meters;
@@ -759,10 +768,28 @@ export const Features = {
       if (daily && meters >= todays) {
         s.daily = { date: todayKey(), best: meters, ghost: this.ghostRec.slice() };
       }
+      const u = s.unlocks;
+      u.points += earned;
+      while (u.got < TRACK.length && u.points >= costFor(u.got)) {
+        u.points -= costFor(u.got);
+        const item = TRACK[u.got];
+        u.got += 1;
+        unlocked.push(item);
+        if (item.kind === 'candles') s.candles += item.n;
+        else u.fresh += 1;
+        // something new is something you see: new hats and trails go straight on
+        if (item.kind === 'hat') s.boo.hat = item.id;
+        if (item.kind === 'trail') s.boo.trail = item.id;
+      }
+      if (u.got >= TRACK.length && u.points > 0) { bonus = u.points * BONUS_PER_POINT; s.candles += bonus; u.points = 0; }
     });
+    const u = Save.get().unlocks;
     this.scene.launch('over', {
       meters, candles: this.runCandles, isBest: meters > prevBest, best: Math.max(prevBest, meters),
       close: this.nearMisses, missions, daily, dailyBest: Math.max(todays, daily ? meters : 0), blast: this.blastM,
+      score, mult: this.mult, isBestScore: score > prevBestScore && score > 0, bestScore: Math.max(prevBestScore, score),
+      bestCombo: this.bestCombo, creative: this.creative,
+      unlock: { earned, unlocked, bonus, got: u.got, points: u.points, cost: u.got < TRACK.length ? costFor(u.got) : 0 },
     });
   },
 

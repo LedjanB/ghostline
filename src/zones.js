@@ -523,8 +523,11 @@ export class ZoneLayers {
     this.B = mk(zoneId);
     this.zone = zoneId;
     this.next = null;
+    this.look = 0xffffff;
     LAYER_KEYS.forEach((k) => this.B[k].setVisible(false));
   }
+  // a character's world look: a color grade multiplied into every layer
+  setLook(tint) { this.look = tint; }
   beginSwap(nextId) {
     this.next = nextId;
     LAYER_KEYS.forEach((k) => this.B[k].setTexture(`${nextId}_${k}`).setVisible(true));
@@ -547,7 +550,8 @@ export class ZoneLayers {
         b.setPosition(cut, 0).setSize(Math.max(1, (640 - cut) / 2), 180).setVisible(true);
         b.tilePositionX = base + cut / 2;
       }
-      if (k === 'edge' && tint !== undefined) { a.setTint(tint); b.setTint(tint); }
+      const tt = k === 'edge' && tint !== undefined ? tint : this.look;
+      a.setTint(tt); b.setTint(tt);
     }
   }
 }

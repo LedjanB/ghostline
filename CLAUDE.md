@@ -12,7 +12,7 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 
 ## Layout
 - `src/main.js` boot + game config
-- `src/scenes/` story, menu, play, hud, pause, settings, stats, over
+- `src/scenes/` story, menu, play, hud, pause, settings, stats, over, unlocks
 - `src/zones.js` the 8 zones (data + painted 5-layer parallax art via `Buf`, gates, `ZoneLayers` seam swap); `ZONE_LENGTH_M` = 400
 - `src/art.js` all pixel art drawn in code; `docs/art-direction.md` is the visual contract
 - `src/audio.js` Web Audio synth: buses, music layers, SFX
@@ -20,6 +20,9 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 - `src/save.js` versioned save with migration + backup
 - `src/pacing.js` difficulty curve, speed curve and spawn tables
 - `src/missions.js` mission pool, levels, per-run tracker
+- `src/unlocks.js` score multiplier, combo tiers + points, unlock track (hats, trails, journal pages), character LOOKS
+- `src/run-score.js` mixed into PlayScene: score, combo, ecto spray, thrust, speed lines, hat, world tint
+- `src/looks.js` `WorldLook`: per-character color grade + signature effect (used by play and menu)
 - `src/run-features.js` mixed into PlayScene: pickups, lasers, ghouls, weather, giants, opening, daily ghost, Spirit Rush, Dark Chase, Boo quips, tips, spin/revive/finalize
 - `src/scenes/spin.js` Grave Spin; `missions.js`, `charms.js` menu overlays
 
@@ -27,12 +30,15 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 - Run state is reset in `init()`, never the constructor.
 - Simulation runs on a fixed 120 Hz step in `PlayScene.step()`; drawing happens in `render()`.
 - Gameplay reads actions from `src/input.js`, never raw keys.
-- Bump `SAVE_VERSION` and add a migration when the save shape changes (now v5: v4 fields `mode`, `creative`, `missions`, `charms`, `daily`, `giftAt` plus `tips`, `storySeen`, `stats`, settings `vibrate`/`contrast`).
+- Bump `SAVE_VERSION` and add a migration when the save shape changes (now v6: v5 fields plus `bestScore`, `bestCombo`, `unlocks` {got, points, fresh}, `boo` {hat, trail}).
 - Creative mode: `PlayScene.rebirth()` replaces death; `saveCheckpoint()` writes the creative slot.
 - iPhone fullscreen = home screen web app (`manifest.webmanifest`, apple meta tags, `icons/`).
 - Offline via `sw.js`: bump `CACHE` and add new files to its list whenever files change.
 - Zones are one-way: a gate set piece swaps layers at its seam. Never fade or loop zones.
 - Darkness covers backgrounds only (depth 4.5); hazards must stay readable. Hazard colors come from `this.hz` (high contrast setting).
+- Character looks stay below hazards: tint goes on zone layers, the color wash sits at depth 4.4, effects at depth 2 (scanlines 4.6, faint).
+- HUD x 120-180 on row 2 stays empty: the player hugs the ceiling there.
+- Anything good the player does should call `addCombo(kind)`; getting hit calls `breakCombo()`.
 
 ## Test
 Serve the folder (`python -m http.server 8000`) and open http://localhost:8000.

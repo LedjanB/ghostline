@@ -12,6 +12,7 @@ import { MissionsScene } from './scenes/missions.js';
 import { CharmsScene } from './scenes/charms.js';
 import { StoryScene } from './scenes/story.js';
 import { StatsScene } from './scenes/stats.js';
+import { UnlocksScene } from './scenes/unlocks.js';
 import { Save } from './save.js';
 
 class BootScene extends Phaser.Scene {
@@ -66,7 +67,7 @@ async function start() {
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     input: { activePointers: 3, gamepad: true },
     // draw order = list order: run, then HUD, then overlays on top
-    scene: [BootScene, StoryScene, MenuScene, PlayScene, HudScene, SpinScene, OverScene, PauseScene, MissionsScene, CharmsScene, SettingsScene, StatsScene],
+    scene: [BootScene, StoryScene, MenuScene, PlayScene, HudScene, SpinScene, OverScene, PauseScene, MissionsScene, CharmsScene, SettingsScene, StatsScene, UnlocksScene],
   });
   window.__game = game;
 }

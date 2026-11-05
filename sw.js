@@ -1,11 +1,11 @@
 // Service worker: caches the whole game so the home screen app works offline.
 // Serves from cache right away, then refreshes the cache in the background,
 // so a new version shows up on the next launch.
-const CACHE = 'ghostline-v5';
+const CACHE = 'ghostline-v6';
 const FILES = [
   './', './index.html', './manifest.webmanifest', './vendor/phaser.min.js', './fonts/press-start-2p.woff2',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
-  "./src/art.js",  "./src/audio.js",  "./src/data.js",  "./src/input.js",  "./src/main.js",  "./src/missions.js",  "./src/pacing.js",  "./src/run-features.js",  "./src/save.js",  "./src/scenes/charms.js",  "./src/scenes/hud.js",  "./src/scenes/menu.js",  "./src/scenes/missions.js",  "./src/scenes/over.js",  "./src/scenes/pause.js",  "./src/scenes/play.js",  "./src/scenes/settings.js",  "./src/scenes/spin.js",  "./src/scenes/stats.js",  "./src/scenes/story.js",  "./src/ui.js",  "./src/zones.js",
+  "./src/art.js",  "./src/audio.js",  "./src/data.js",  "./src/input.js",  "./src/main.js",  "./src/missions.js",  "./src/pacing.js",  "./src/run-features.js",  "./src/save.js",  "./src/scenes/charms.js",  "./src/scenes/hud.js",  "./src/scenes/menu.js",  "./src/scenes/missions.js",  "./src/scenes/over.js",  "./src/scenes/pause.js",  "./src/scenes/play.js",  "./src/scenes/settings.js",  "./src/scenes/spin.js",  "./src/scenes/stats.js",  "./src/scenes/story.js",  "./src/ui.js",  "./src/zones.js",  "./src/unlocks.js",  "./src/looks.js",  "./src/run-score.js",  "./src/scenes/unlocks.js",
 ];
 
 self.addEventListener('install', (e) => {

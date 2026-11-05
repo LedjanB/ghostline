@@ -1,3 +1,4 @@
+import { HATS } from './unlocks.js';
 // All pixel art is drawn in code here, so the game needs no image files.
 // Each sprite is a list of text rows; each letter is a color from its palette.
 // '.' means transparent.
@@ -613,7 +614,28 @@ const ICONS = {
   icon_charm: ['..YYY..', '.Y...Y.', '..Y.Y..', '...Y...', '..RRR..', '.RRRRR.', '..RRR..'],
 };
 
+const BAT0 = ['K.......K', 'KK.KKK.KK', '.KKKKKKK.', '..KRKRK..', '...KKK...'];
+const BAT1 = ['...KKK...', '..KRKRK..', '.KKKKKKK.', 'KK.....KK', 'K.......K'];
+function moon(ctx, w, h) {
+  ctx.fillStyle = '#f4f6ff';
+  ctx.beginPath(); ctx.arc(w / 2, h / 2, w / 2 - 1, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#c8d0e8';
+  for (const [x, y, r] of [[9, 10, 3], [20, 18, 4], [12, 22, 2], [22, 8, 2], [6, 17, 2]]) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
+}
+function scanlines(ctx, w, h) {
+  ctx.fillStyle = 'rgba(0,0,0,0.9)';
+  for (let y = 0; y < h; y += 4) ctx.fillRect(0, y, w, 1);
+  ctx.fillStyle = 'rgba(160,255,170,0.35)';
+  for (let y = 2; y < h; y += 4) ctx.fillRect(0, y, w, 1);
+}
+
 export function makeArt2(scene) {
+  for (const hat of HATS) if (hat.rows) px(scene, `hat_${hat.id}`, hat.rows, hat.pal);
+  px(scene, 'bat0', BAT0, { K: '#2a1424', R: '#ff3355' });
+  px(scene, 'bat1', BAT1, { K: '#2a1424', R: '#ff3355' });
+  px(scene, 'fx_cross', ['.X.', 'XXX', '.X.'], { X: '#bfffe8' }, false);
+  canvas(scene, 'fx_moon', 30, 30, moon);
+  canvas(scene, 'fx_scan', 4, 4, scanlines);
   for (const [k, rows] of Object.entries(ICONS)) px(scene, k, rows, { Y: '#ffd75e', W: '#cfe0ff', R: '#ff6bb5' });
   px(scene, 'ghoul0', GHOUL.walk0, GHOUL_PAL);
   px(scene, 'ghoul1', GHOUL.walk1, GHOUL_PAL);
@@ -646,4 +668,5 @@ export function makeAnims2(scene) {
   mk('ghoul_walk', ['ghoul0', 'ghoul1'], 6);
   mk('ghoul_run', ['ghoul_panic', 'ghoul1'], 12);
   mk('soul_flicker', ['soul0', 'soul1'], 6);
+  mk('bat_flap', ['bat0', 'bat1'], 8);
 }

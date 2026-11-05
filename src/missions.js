@@ -16,6 +16,8 @@ export const MISSION_DEFS = [
   { id: 'pow1', text: 'USE A POWER-UP', stars: 1, stat: 'powerups', target: 1, scope: 'run' },
   { id: 'zone1', text: 'REACH THE COLD ROOM', stars: 1, stat: 'zone', target: 1, scope: 'run' },
   { id: 'rush1', text: 'USE A SPIRIT RUSH', stars: 1, stat: 'rushes', target: 1, scope: 'run' },
+  { id: 'combo15', text: 'HIT A 15 COMBO', stars: 1, stat: 'combo', target: 15, scope: 'run' },
+  { id: 'splat3', text: 'SPLAT 3 GHOULS WITH ECTO', stars: 1, stat: 'splats', target: 3, scope: 'run' },
   { id: 'ground6', text: 'STAY ON THE FLOOR 6S', stars: 2, stat: 'groundTime', target: 6, scope: 'run' },
   { id: 'c300t', text: 'GRAB 300 CANDLES TOTAL', stars: 2, stat: 'candles', target: 300, scope: 'total' },
   { id: 'die200', text: 'DIE BETWEEN 200M-260M', stars: 2, stat: 'deathM', target: [200, 260], scope: 'death' },
@@ -28,6 +30,8 @@ export const MISSION_DEFS = [
   { id: 'laser3', text: 'SURVIVE 3 LASER ROWS', stars: 2, stat: 'lasers', target: 3, scope: 'run' },
   { id: 'c80', text: 'GRAB 80 CANDLES IN A RUN', stars: 2, stat: 'candles', target: 80, scope: 'run' },
   { id: 'ghoul5', text: 'SCARE 5 GHOULS IN A RUN', stars: 2, stat: 'ghouls', target: 5, scope: 'run' },
+  { id: 'score3k', text: 'SCORE 3,000 IN A RUN', stars: 2, stat: 'score', target: 3000, scope: 'run' },
+  { id: 'tier3', text: 'REACH COMBO X3', stars: 2, stat: 'comboTier', target: 3, scope: 'run' },
   { id: 'm700', text: 'REACH 700M', stars: 2, stat: 'meters', target: 700, scope: 'run' },
   { id: 'runs20t', text: 'PLAY 20 RUNS', stars: 2, stat: 'runs', target: 20, scope: 'total' },
   { id: 'zone3', text: 'REACH CROWSREST', stars: 2, stat: 'zone', target: 3, scope: 'run' },
@@ -36,6 +40,8 @@ export const MISSION_DEFS = [
   { id: 'nocandle', text: 'FLY 250M WITH NO CANDLES', stars: 3, stat: 'noCandleM', target: 250, scope: 'run' },
   { id: 'ban5', text: 'DODGE 5 BANSHEES IN A RUN', stars: 2, stat: 'banshees', target: 5, scope: 'run' },
   { id: 'm1000', text: 'REACH 1000M', stars: 2, stat: 'meters', target: 1000, scope: 'run' },
+  { id: 'combo60', text: 'HIT A 60 COMBO', stars: 3, stat: 'combo', target: 60, scope: 'run' },
+  { id: 'splat40t', text: 'SPLAT 40 GHOULS TOTAL', stars: 2, stat: 'splats', target: 40, scope: 'total' },
   { id: 'soul3', text: 'COLLECT 3 SOULS IN A RUN', stars: 3, stat: 'souls', target: 3, scope: 'run' },
   { id: 'rush5t', text: 'USE 5 SPIRIT RUSHES', stars: 2, stat: 'rushes', target: 5, scope: 'total' },
   { id: 'die600', text: 'DIE BETWEEN 600M-660M', stars: 3, stat: 'deathM', target: [600, 660], scope: 'death' },
@@ -46,6 +52,7 @@ export const MISSION_DEFS = [
   { id: 'laser20t', text: 'DODGE 20 LASER ROWS TOTAL', stars: 2, stat: 'lasers', target: 20, scope: 'total' },
   { id: 'c150', text: 'GRAB 150 CANDLES IN A RUN', stars: 3, stat: 'candles', target: 150, scope: 'run' },
   { id: 'soul20t', text: 'COLLECT 20 SOULS TOTAL', stars: 2, stat: 'souls', target: 20, scope: 'total' },
+  { id: 'score15k', text: 'SCORE 15,000 IN A RUN', stars: 3, stat: 'score', target: 15000, scope: 'run' },
   { id: 'near10', text: 'GET 10 CLOSE CALLS IN A RUN', stars: 3, stat: 'near', target: 10, scope: 'run' },
   { id: 'm1500', text: 'REACH 1500M', stars: 3, stat: 'meters', target: 1500, scope: 'run' },
   { id: 'chase3t', text: 'OUTRUN THE DARK 3 TIMES', stars: 3, stat: 'chases', target: 3, scope: 'total' },
@@ -55,12 +62,14 @@ export const MISSION_DEFS = [
   { id: 'spin15t', text: 'USE 15 SOULS ON GRAVE SPIN', stars: 3, stat: 'spins', target: 15, scope: 'total' },
   { id: 'ban40t', text: 'DODGE 40 BANSHEES TOTAL', stars: 3, stat: 'banshees', target: 40, scope: 'total' },
   { id: 'zone6', text: 'REACH THE DEAD CARNIVAL', stars: 3, stat: 'zone', target: 6, scope: 'run' },
+  { id: 'tier5', text: 'REACH COMBO X5', stars: 3, stat: 'comboTier', target: 5, scope: 'run' },
   { id: 'ceil10', text: 'HUG THE CEILING 10S', stars: 3, stat: 'ceilTime', target: 10, scope: 'run' },
   { id: 'die1000', text: 'DIE BETWEEN 1000M-1060M', stars: 3, stat: 'deathM', target: [1000, 1060], scope: 'death' },
   { id: 'c2000t', text: 'GRAB 2000 CANDLES TOTAL', stars: 3, stat: 'candles', target: 2000, scope: 'total' },
   { id: 'm2500', text: 'REACH 2500M', stars: 3, stat: 'meters', target: 2500, scope: 'run' },
   { id: 'nocandle500', text: 'FLY 500M WITH NO CANDLES', stars: 3, stat: 'noCandleM', target: 500, scope: 'run' },
   { id: 'zone7', text: 'REACH THE OTHER SIDE', stars: 3, stat: 'zone', target: 7, scope: 'run' },
+  { id: 'score60k', text: 'SCORE 60,000 IN A RUN', stars: 3, stat: 'score', target: 60000, scope: 'run' },
   { id: 'm3500', text: 'REACH 3500M', stars: 3, stat: 'meters', target: 3500, scope: 'run' },
 ];
 const BY_ID = Object.fromEntries(MISSION_DEFS.map((d) => [d.id, d]));
@@ -124,7 +133,7 @@ export function createTracker(onComplete) {
       let levelUps = [];
       Save.update((s) => {
         const m = s.missions;
-        for (const [k, v] of Object.entries(run)) if (typeof v === 'number' && k !== 'meters' && k !== 'zone') m.totals[k] = (m.totals[k] || 0) + v;
+        for (const [k, v] of Object.entries(run)) if (typeof v === 'number' && !['meters', 'zone', 'score', 'combo', 'comboTier', 'noCandleM', 'groundTime', 'ceilTime'].includes(k)) m.totals[k] = (m.totals[k] || 0) + v;
         for (const d of completed) {
           if (!m.done.includes(d.id)) m.done.push(d.id);
           m.active = m.active.filter((id) => id !== d.id);

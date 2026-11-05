@@ -42,3 +42,11 @@ Made with the `create-game-assets` skill's brief. All art is drawn in code: acto
 - Backgrounds never use the hazard colors (`#4fe38a`, `#ff2244`) so dangers always read
 - Each zone gets: a sky event (moon, aurora, lightning), a landmark silhouette, a weather particle set and one background giant
 - The 8 worlds go from real to unreal: hospital, morgue, woods, cemetery, sewer, catacombs, carnival, the other side
+
+## Character looks (v5)
+- Each character grades the world: a multiply tint on every zone layer + an ADD color wash at depth 4.4 (under the darkness and all hazards) + one effect (bats, moon, scanlines, bubbles, sand, ash, crosses)
+- Looks never touch actors or hazards, so dangers read the same for every character
+
+## Boo's hats and trails
+- Hats are 3-10 px wide pixel maps, outlined like every actor, sitting 11 px above the ghost's centre
+- Trail colors avoid the hazard greens and reds
