@@ -44,6 +44,9 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 - v6: `hit()` is a stumble on the ground (two in a row = caught) and costs landing distance in the air. The LIGHT bar shows how close THE STRETCH is.
 - v6: every ground trap must be beatable by jump or slide alone (Milo can't change speed). Slide fits under anything whose bottom is above FLOOR-20; standing Milo's head is FLOOR-44 (Milo is drawn at 2.5x, `MILO_SCALE`).
 - v6: ground traps live in world px (`t.wx`, drawn at `sx(wx)`); v5 hazards stay in screen px and only spawn while flying.
+- v6: one new system per run (`runnerInit`): run 1 missions only, run 2 power-ups, run 3 B-O-O letters, run 5 souls and Grave Spin.
+- v6: flight sections can be hand-made (`SET_PIECES` in runner.js, per zone id); they replace the random air spawner for that flight.
+- v6: getting caught plays the grab scene (`stepGrab`/`renderGrab`); a pit death keeps the fall.
 
 ## Test
 Serve the folder (`python -m http.server 8000`) and open http://localhost:8000.

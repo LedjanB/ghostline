@@ -329,6 +329,7 @@ export class PlayScene extends Phaser.Scene {
 
   // ---------------- spawning ----------------
   spawner(meters, pace) {
+    if (this.setPiece) { this.stepSetPiece(); return; } // v6: a hand-made flight section (runner.js)
     if (this.worldX < this.nextSpawn) return;
     const toBoundary = ZONE_LENGTH_M - (meters % ZONE_LENGTH_M);
     const more = this.zoneIndex < ZONES.length - 1;
@@ -487,7 +488,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   bansheeTimer(dt, meters, diff) {
-    if (this.gate || meters < UNLOCK.banshee) return;
+    if (this.gate || meters < UNLOCK.banshee || this.setPiece) return;
     this.nextBanshee -= dt;
     if (this.nextBanshee > 0) return;
     const first = this.intro.first('banshee');
@@ -757,6 +758,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   stepDeath(dt) {
+    if (this.grab) { this.stepGrab(dt); return; } // v6: the death scene (runner.js)
     if (this.runner) { this.speed *= Math.exp(-3.5 * dt); if (this.speed < 12) this.speed = 0; } // v6: caught = it all stops, no long slide
     this.vy += GRAVITY * dt;
     this.py += this.vy * dt;

@@ -129,6 +129,7 @@ export const Features = {
 
   onZoneEnter(zone) {
     this.time.delayedCall(900, () => this.quip(`zone_${zone.id}`, true));
+    if (this.runner) this.nextGiant = 2.5; // v6: every new world opens with its background giant
     Save.update((s) => { s.stats.maxZone = Math.max(s.stats.maxZone, this.zoneIndex); });
   },
 
@@ -595,6 +596,7 @@ export const Features = {
     // particle fields: [count, color(s), glow?, vx, vy, size, alpha]
     const P = {
       frost: [26, [0xdff6ff], false, -15, 18, 2, 0.7],
+      dust: [20, [0xcfd8e0, 0xb8c4cc], false, -6, 3, 1, 0.5], // v6: the ward is indoors, so dust in the air, not rain
       fireflies: [10, [0xd8ff7a], true, -15, 0, 0.18, 0.8],
       leaves: [18, [0xb0402a, 0xd8803a, 0x7a2a1a], false, -40, 30, 3, 0.9],
       embers: [22, [0xffb040, 0xff7020], true, -10, -30, 0.12, 0.9],
@@ -628,7 +630,7 @@ export const Features = {
       if (f.y > FLOOR) f.y = CEIL + 2;
       if (f.y < CEIL) f.y = FLOOR - 2;
     }
-    if (this.weather === 'rain' && this.settings.flicker) {
+    if ((this.weather === 'rain' || this.weather === 'dust') && this.settings.flicker) { // the storm outside the ward's windows
       this.nextLightning -= dt;
       if (this.nextLightning <= 0) {
         this.nextLightning = 9 + Math.random() * 10;

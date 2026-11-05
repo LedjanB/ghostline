@@ -94,6 +94,53 @@ const LEGS = {
     '....BB.BB...',
     '...BB..BB...',
   ],
+  // v6 running frames: a 4-step cycle (stride, passing, stride, knee up), a tucked jump and a dangling fall
+  run2: [
+    '....PPPP....',
+    '...PPPPP....',
+    '..PP...PP...',
+    '.PP.....PP..',
+    '.BB......BB.',
+    'BB.......BBB',
+  ],
+  run3: [
+    '....PPPP....',
+    '....PPPPP...',
+    '....PP.PPP..',
+    '....PP...BB.',
+    '....PP...B..',
+    '....BBB.....',
+  ],
+  jump: [
+    '....PPPPP...',
+    '...PPPPPPP..',
+    '...PP...PP..',
+    '...BB...BB..',
+    '..BBB..BBB..',
+    '............',
+  ],
+  fall: [
+    '....PPPP....',
+    '...PP..PP...',
+    '..PP....PP..',
+    '..PP....PP..',
+    '..BB....BB..',
+    '.BB......BB.',
+  ],
+};
+// arms thrown up (jump, fall, stumble): hands move from the hips to the shoulders
+const ARMS_UP = (body) => {
+  const b = body.slice();
+  const set = (r, c, ch) => { b[r] = b[r].slice(0, c) + ch + b[r].slice(c + 1); };
+  for (const c of [2, 10]) {
+    if (b[8][c] !== '.') set(8, c, '.');
+    if (b[9][c] !== '.') set(9, c, '.');
+    set(3, c === 2 ? 1 : 11, 'S'); // hands up beside the head
+    set(4, c === 2 ? 1 : 11, 'S');
+    set(5, c, 'T');
+    set(6, c, 'T');
+  }
+  return b;
 };
 
 const CHAR_LOOKS = {
@@ -134,8 +181,9 @@ const CHAR_LOOKS = {
 
 function makeCharacters(scene) {
   for (const [id, look] of Object.entries(CHAR_LOOKS)) {
-    for (const frame of ['run0', 'run1', 'fly']) {
-      const body = BODY.map((r, i) => look.rows[i] ?? r);
+    for (const frame of ['run0', 'run1', 'fly', 'run2', 'run3', 'jump', 'fall']) {
+      let body = BODY.map((r, i) => look.rows[i] ?? r);
+      if (frame === 'jump' || frame === 'fall') body = ARMS_UP(body);
       const legs = LEGS[frame].map((r, i) => (look.legRows && look.legRows[i]) ?? r);
       px(scene, `${id}_${frame}`, [...body, ...legs], look.pal);
     }
@@ -517,7 +565,7 @@ export function makeAnims(scene) {
     scene.anims.create({ key, frames: frames.map((k) => ({ key: k })), frameRate: rate, repeat: -1 });
   };
   for (const id of Object.keys(CHAR_LOOKS)) {
-    mk(`${id}_run`, [`${id}_run0`, `${id}_run1`], 10);
+    mk(`${id}_run`, [`${id}_run0`, `${id}_run1`, `${id}_run2`, `${id}_run3`], 13);
     mk(`${id}_flyA`, [`${id}_fly`], 1);
   }
   mk('ghost_float', ['ghost0', 'ghost1'], 5);

@@ -9,7 +9,7 @@ export const ZONE_LENGTH_M = 400;
 export const ZONES = [
   {
     id: 'ward', name: 'ST. MERCY WARD', flavor: '3:33 AM. THE LIGHTS ARE DYING.', song: 'ward',
-    swing: 'lamp', weather: 'rain', ghoul: 0xffffff, giant: 'shadow', accent: 0xb8d8ff, // v6: off the hazard green
+    swing: 'lamp', weather: 'dust', ghoul: 0xffffff, giant: 'shadow', accent: 0xb8d8ff, // v6: off the hazard green
   },
   {
     id: 'morgue', name: 'THE COLD ROOM', flavor: 'EVERYONE HERE IS VERY QUIET.', song: 'morgue',

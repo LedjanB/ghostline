@@ -85,6 +85,39 @@ const LEGS1 = [
   '...B...B....',
   '..BB...BB...',
 ];
+// v6 phase 2: a 4-step lurch. The head drifts a pixel ahead on the off steps and the hands swing.
+const HEAD_LEAN = HEAD.map((r) => '.' + r.slice(0, 11));
+const TORSO_B = [
+  ...TORSO.slice(0, 11),
+  '.G..B..B..G.',
+  '.FF.B..B.FF.',
+  '.F.FB..BF.F.',
+  '.F..B..B..F.',
+];
+const LEGS2 = [
+  '....B..B....',
+  '...B...B....',
+  '...B....B...',
+  '..B.....B...',
+  '..S......S..',
+  '..B.......B.',
+  '.B........B.',
+  '.B.........B',
+  '.B.........B',
+  'BB........BB',
+];
+const LEGS3 = [
+  '....B..B....',
+  '.....BB.....',
+  '.....BB.....',
+  '.....B.B....',
+  '.....S.S....',
+  '....B...B...',
+  '....B...B...',
+  '....B....B..',
+  '....B....B..',
+  '...BB....BB.',
+];
 // arms thrown up, reaching for Boo
 const REACH_ARMS = [
   'F..........F',
@@ -340,7 +373,11 @@ const STRETCH_ICON = [
 
 export function makeRunnerArt(scene) {
   px(scene, 'stretch_walk0', [...HEAD, ...TORSO, ...LEGS0], STRETCH_PAL);
-  px(scene, 'stretch_walk1', [...HEAD, ...TORSO, ...LEGS1], STRETCH_PAL);
+  px(scene, 'stretch_walk1', [...HEAD_LEAN, ...TORSO, ...LEGS1], STRETCH_PAL);
+  px(scene, 'stretch_walk2', [...HEAD, ...TORSO_B, ...LEGS2], STRETCH_PAL);
+  px(scene, 'stretch_walk3', [...HEAD_LEAN, ...TORSO_B, ...LEGS3], STRETCH_PAL);
+  // the grab: arms tucked (the reaching arm is drawn in code so it can stretch any length)
+  px(scene, 'stretch_grab', [...HEAD_LEAN, ...TORSO_UP, ...LEGS0], STRETCH_PAL);
   px(scene, 'stretch_reach', [...REACH_ARMS, ...HEAD, ...TORSO_UP, ...LEGS0], STRETCH_PAL);
   px(scene, 'stretch_crawl0', CRAWL0, STRETCH_PAL);
   px(scene, 'stretch_crawl1', CRAWL1, STRETCH_PAL);
@@ -365,13 +402,14 @@ export function makeRunnerAnims(scene) {
     if (scene.anims.exists(key)) return;
     scene.anims.create({ key, frames: frames.map((k) => ({ key: k })), frameRate: rate, repeat: -1 });
   };
-  mk('stretch_walk', ['stretch_walk0', 'stretch_walk1'], 7);
+  mk('stretch_walk', ['stretch_walk0', 'stretch_walk1', 'stretch_walk2', 'stretch_walk3'], 9);
   mk('stretch_crawl', ['stretch_crawl0', 'stretch_crawl1'], 12);
 }
 
 // row-width check for tests/tools: every sprite's rows must be the same width
 export const RUNNER_SPRITES = {
-  walk0: [...HEAD, ...TORSO, ...LEGS0], walk1: [...HEAD, ...TORSO, ...LEGS1],
+  walk0: [...HEAD, ...TORSO, ...LEGS0], walk1: [...HEAD_LEAN, ...TORSO, ...LEGS1],
+  walk2: [...HEAD, ...TORSO_B, ...LEGS2], walk3: [...HEAD_LEAN, ...TORSO_B, ...LEGS3], grab: [...HEAD_LEAN, ...TORSO_UP, ...LEGS0],
   reach: [...REACH_ARMS, ...HEAD, ...TORSO_UP, ...LEGS0], crawl0: CRAWL0, crawl1: CRAWL1,
   grave: GRAVE, crate: CRATE, salt: SALT_GUN,
   gurney: GURNEY, wetfloor: WET_FLOOR, drawer: DRAWER, chandelier: CHANDELIER, cart: CART, eye: EYE, vent: VENT,
