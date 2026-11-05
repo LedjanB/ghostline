@@ -8,7 +8,7 @@ import { W, H, CEIL, FLOOR, PLAYER_X, PX_PER_METER, ZONE_LENGTH_M, ZONES } from 
 import { Audio } from './audio.js';
 import { Save } from './save.js';
 import { text } from './ui.js';
-import { owned, PAGES } from './unlocks.js';
+import { owned, PAGES, TRACK, costFor } from './unlocks.js';
 
 export const DOOR_M = ZONES.length * ZONE_LENGTH_M; // 3200
 export const DEPTH_M = ZONE_LENGTH_M;              // beyond the door: a new depth every 400 m
@@ -18,6 +18,13 @@ const ENDING_LINES = [
   ['AND THE LIGHTS CAME BACK ON.', 7.8],
 ];
 
+// points that take the unlock bar up to (and including) the next journal page
+function pointsToNextPage(save = Save.get()) {
+  const u = save.unlocks;
+  let need = -u.points;
+  for (let i = u.got; i < TRACK.length; i++) { need += costFor(i); if (TRACK[i].kind === 'page') return Math.max(0, need); }
+  return 0;
+}
 export function pagesOwned(save = Save.get()) { return owned(save.unlocks.got).pages.length; }
 export function doorOpens(save = Save.get()) { return save.ending.seen || pagesOwned(save) >= PAGES.length; }
 
@@ -28,7 +35,7 @@ export const EndingFeatures = {
     this.doorOpen = save.ending.seen; // after the ending you just run through
     this.beyond = false; this.depth = 0;
     this.pagesHave = pagesOwned(save);
-    this.startX = 0; this.endlessMode = false;
+    this.startX = 0; this.endlessMode = false; this.doorPoints = 0;
     if (save.mode === 'endless' && save.ending.seen) { // endless: start just past the door
       this.endlessMode = true;
       this.worldX = this.doorWX + 260; this.startX = this.worldX;
@@ -81,7 +88,10 @@ export const EndingFeatures = {
     if (this.weapon) { this.weapon = null; this.events.emit('power', null); }
     Audio.thrust(false);
     if (kind === 'ending') { Audio.sfx('rebirth'); Audio.music('otherside'); }
-    else { Audio.sfx('stumble'); this.shake(200, 0.008); }
+    else { Audio.sfx('stumble'); this.shake(200, 0.008); this.doorPoints = pointsToNextPage(); }
+    this.scene.get('hud')?.cameras?.main?.setVisible(false); // nothing over the door scene
+    if (this.headObjs) { this.headObjs.forEach((o) => o.destroy()); this.headObjs = null; }
+    this.heads = []; this.headUntil = this.clock + 99;
   },
 
   // the run stops at the door; then either the light, or Boo pulling you away
@@ -93,7 +103,8 @@ export const EndingFeatures = {
     if (f.kind === 'locked') {
       if (f.t > 0.6 && f.said === 0) { f.said = 1; this.say("THE DOOR WON'T OPEN.", 120, '#ff8a9a'); this.shake(160, 0.006); Audio.sfx('bounce'); }
       if (f.t > 1.8 && f.said === 1) { f.said = 2; this.say(`IT NEEDS EVERY JOURNAL PAGE: ${this.pagesHave}/${PAGES.length}`, 150, '#cfe0ff', 8); }
-      if (f.t > 3.0 && f.said === 2) { f.said = 3; this.say('BOO PULLS YOU BACK. FIND THE REST.', 172, '#a99fd0', 8); Audio.sfx('grab'); }
+      if (f.t > 2.6 && f.said === 2) { f.said = 3; this.say('A PAGE WAS PINNED TO IT. YOU TAKE IT.', 172, '#fff2b0', 8); Audio.sfx('unlock'); }
+      if (f.t > 3.4 && f.said === 3) { f.said = 4; this.say('BOO PULLS YOU BACK. FIND THE REST.', 194, '#a99fd0', 8); Audio.sfx('grab'); }
       if (f.t > 4.6 && !this.ended) { this.ended = true; this.time.delayedCall(200, () => this.afterDeath()); }
     } else {
       for (let i = 0; i < ENDING_LINES.length; i++) if (f.said === i && f.t > ENDING_LINES[i][1]) { f.said++; this.say(ENDING_LINES[i][0], 140 + i * 26, '#2a1f4a', i === 2 ? 16 : 8, true, '#fff6d8'); }

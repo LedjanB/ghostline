@@ -110,7 +110,7 @@ export const TrickFeatures = {
       case 'canopy': return t.phase === 'strike' ? { l: x + 6, r: x + 62, t: FLOOR - 34, b: FLOOR } : null;
       case 'burrow': return t.erupt >= 0 && t.erupt < 0.28 ? { l: t.mx - 16, r: t.mx + 16, t: FLOOR - 44, b: FLOOR } : null;
       case 'ceiling': return t.dropped ? { l: x - 22, r: x + 22, t: FLOOR - 150, b: FLOOR - 25 } : null;
-      case 'skull': return t.thrown ? { l: t.sx - 9, r: t.sx + 9, t: t.sy - 9, b: t.sy + 9 } : null;
+      case 'skull': return t.thrown ? { l: t.sx - 11, r: t.sx + 11, t: t.sy - 11, b: t.sy + 11 } : null;
       case 'ride': return t.rolling ? { l: t.cx + 2, r: t.cx + 50, t: FLOOR - 32, b: FLOOR } : null;
     }
     return null;
@@ -166,7 +166,7 @@ export const TrickFeatures = {
         if (!t.thrown && !tell) { t.thrown = true; t.sx = PLAYER_X - this.gapVis * 0.72; t.sy = FLOOR - 70; t.svx = 300; t.svy = -120; Audio.sfx('swoosh'); }
         if (t.thrown) {
           t.sx += t.svx * dt; t.svy += 1400 * dt; t.sy += t.svy * dt;
-          if (t.sy > FLOOR - 9) { t.sy = FLOOR - 9; t.svy = -t.bounceV(); Audio.sfx('bounce'); this.burst(t.sx, FLOOR - 2, 0xece8f2, 4, 16, 200, 2); }
+          if (t.sy > FLOOR - 13) { t.sy = FLOOR - 13; t.svy = -t.bounceV(); Audio.sfx('bounce'); this.burst(t.sx, FLOOR - 2, 0xece8f2, 4, 16, 200, 2); }
           if (t.sx > W + 30) this.endTrick(t, true);
         }
         break;
@@ -233,6 +233,8 @@ export const TrickFeatures = {
         t.s.setPosition(x, FLOOR - 9);
         tg.fillStyle(0x07060d, 0.9); tg.fillRect(x - 2, FLOOR - 20, 46, 20);
         tg.fillStyle(0xff5a3a, 0.25 + 0.2 * Math.abs(Math.sin(this.clock * 7))); tg.fillRect(x - 4, FLOOR - 22, 50, 3);
+        // its grin in the dark of the drawer, before the arm comes
+        g.fillStyle(0xece8f2, 0.9); g.fillRect(x + 8, FLOOR - 15, 3, 3); g.fillRect(x + 16, FLOOR - 15, 3, 3); g.fillRect(x + 6, FLOOR - 9, 16, 2);
         if (t.arm > 0) { // a pale arm sweeping out along the floor
           const tip = x - 70 * t.arm;
           g.fillStyle(0x0b0918, 1); g.fillRect(tip, FLOOR - 14, x - tip + 4, 9);
@@ -289,17 +291,22 @@ export const TrickFeatures = {
         s.setTexture(t.thrown ? 'stretch_grab' : 'stretch_reach').setPosition(back, FLOOR + 2).setScale(S).setVisible(true);
         const fx = t.thrown ? t.sx : back + 4, fy = t.thrown ? t.sy : FLOOR - 92 + Math.sin(this.clock * 20) * 2;
         if (!t.thrown) arrowL(FLOOR - 50);
-        // its face: porcelain white, a wide grin
-        g.fillStyle(0x0b0918, 1); g.fillCircle(fx, fy, 10);
-        g.fillStyle(0xece8f2, 1); g.fillCircle(fx, fy, 8.5);
-        g.fillStyle(0x0b0918, 1); g.fillRect(fx - 5, fy - 3, 3, 3); g.fillRect(fx + 2, fy - 3, 3, 3); g.fillRect(fx - 5, fy + 2, 10, 2);
-        if (t.thrown) { tg.fillStyle(0x000000, 0.3); tg.fillEllipse(fx, FLOOR - 1, 14, 4); }
+        // its face: porcelain white, a wide grin, a red streak behind it, and a shadow on the floor that says how high it is
+        if (t.thrown) {
+          tg.fillStyle(0xff2244, 0.55); tg.fillEllipse(fx, FLOOR - 1, 30 - (FLOOR - fy) * 0.12, 6);
+          for (let k = 1; k <= 4; k++) { g.fillStyle(0xff2244, 0.35 - k * 0.07); g.fillCircle(fx - k * 9, fy + (t.svy || 0) * 0.012 * k, 11 - k * 1.5); }
+        }
+        g.fillStyle(0x0b0918, 1); g.fillCircle(fx, fy, 14);
+        g.fillStyle(0xece8f2, 1); g.fillCircle(fx, fy, 12);
+        g.fillStyle(0x0b0918, 1); g.fillRect(fx - 7, fy - 5, 4, 4); g.fillRect(fx + 3, fy - 5, 4, 4);
+        g.fillRect(fx - 8, fy + 3, 16, 2); for (let k = -6; k <= 6; k += 4) g.fillRect(fx + k, fy + 2, 1, 4);
         return true;
       }
       case 'ride': {
         // the rails, then the cart with its long arms and grin peeking over the edge
         tg.fillStyle(0x8a8aa0, 0.8); tg.fillRect(0, FLOOR - 3, W, 2);
         if (!t.rolling) {
+          for (let k = 0; k < 6; k++) { const sx = (this.clock * 900 + k * 120) % (PLAYER_X + 60); tg.fillStyle(0xffd75e, 0.7 * tellK); tg.fillRect(sx, FLOOR - 4, 6, 2); }
           s.setTexture('stretch_reach').setPosition(back, FLOOR + 2 - 30 * tellK).setScale(S).setVisible(true);
           arrowL(FLOOR - 20);
           t.s.setPosition(back - 20, FLOOR + 2);

@@ -97,8 +97,8 @@ function brain(s, opts) {
         let sx = t.thrown ? t.sx : PX - s.gapVis * 0.72, sy = t.thrown ? t.sy : FLOOR - 70, vx = 300, vy = t.thrown ? t.svy : -120, b = t.bounces || 0;
         const start = t.thrown ? 0 : Math.max(0, left);
         if (tau < start) return null;
-        for (let k = start; k < tau; k += 1 / 120) { sx += vx / 120; vy += 1400 / 120; sy += vy / 120; if (sy > FLOOR - 9) { sy = FLOOR - 9; b++; vy = -(b % 2 ? 560 : 380); } }
-        return { l: sx - 9, r: sx + 9, t: sy - 9, b: sy + 9 };
+        for (let k = start; k < tau; k += 1 / 120) { sx += vx / 120; vy += 1400 / 120; sy += vy / 120; if (sy > FLOOR - 13) { sy = FLOOR - 13; b++; vy = -(b % 2 ? 560 : 380); } }
+        return { l: sx - 11, r: sx + 11, t: sy - 11, b: sy + 11 };
       }
       case 'ride': {
         const cx = t.rolling ? t.cx + 330 * tau : (at < 0 ? null : -60 + 330 * at);

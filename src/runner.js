@@ -560,6 +560,10 @@ export const RunnerFeatures = {
   // ONE headline slot up top. Queued; urgent ones (flight moments) jump the queue.
   headline(main, sub = '', hold = 2.0, urgent = false) {
     const h = { main, sub, hold };
+    if (urgent && this.headObjs && this.clock < this.headUntil) { // it matters now: it replaces what's up
+      this.headObjs.forEach((o) => { this.tweens.killTweensOf(o); o.destroy(); });
+      this.headObjs = null; this.headUntil = 0;
+    }
     if (urgent) this.heads.unshift(h); else this.heads.push(h);
     this.nextHeadline();
   },
@@ -571,6 +575,7 @@ export const RunnerFeatures = {
     const a = text(this, W / 2, 132, h.main, 24, '#e6f0ff').setDepth(31).setStroke('#07060d', 6).setScale(0.7).setAlpha(0);
     const b = h.sub ? text(this, W / 2, 156, h.sub, 8, '#a99fd0').setDepth(31).setStroke('#07060d', 3).setAlpha(0) : null;
     const objs = b ? [a, b] : [a];
+    this.headObjs = objs;
     this.tweens.add({ targets: a, scaleX: 1, scaleY: 1, duration: 220, ease: 'Back.easeOut' });
     this.tweens.add({ targets: objs, alpha: 1, duration: 180, yoyo: true, hold: h.hold * 1000, onComplete: () => objs.forEach((o) => o.destroy()) });
   },
@@ -624,7 +629,7 @@ export const RunnerFeatures = {
       return;
     }
     // hand-made patterns (patterns.js): once you've met every piece in it this run
-    if (meters > 150 && this.rand.chance(0.16 + 0.22 * pace.diff + 0.25 * this.lateK()) && this.spawnPattern(meters, spawnWX, v, pace.diff)) return;
+    if (meters > 150 && this.rand.chance(0.16 + 0.22 * pace.diff + 0.4 * this.lateK()) && this.spawnPattern(meters, spawnWX, v, pace.diff)) return;
     const table = kindsAt(meters, zoneAt(this.zoneIndex).id).map(([k, w]) => [k, w]);
     if (this.lastKinds.length === 2 && this.lastKinds[0] === this.lastKinds[1]) {
       for (const e of table) if (e[0] === this.lastKinds[0]) e[1] = 0;

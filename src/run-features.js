@@ -791,7 +791,7 @@ export const Features = {
     const daily = this.daily;
     const todays = save.daily.date === todayKey() ? save.daily.best : 0;
     // Downwell: every run fills the unlock bar
-    const earned = this.creative ? 0 : runPoints(meters, missions.completed.length);
+    const earned = this.creative ? 0 : runPoints(meters, missions.completed.length) + (this.doorPoints || 0); // the shut door gives you a page
     const unlocked = [];
     let bonus = 0;
     Save.update((s) => {

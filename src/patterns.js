@@ -22,6 +22,10 @@ const SHARED = [
   { id: 'pitrun', min: 520, steps: [['pit', 0], ['beam', 0.68], ['pit', 1.25]] },
   { id: 'gauntlet', min: 700, steps: [['crate', 0], ['beam', 0.66], ['hand', 1.1], ['grave', 1.9]] },
   { id: 'ghoulpack', min: 600, steps: [['ghoul', 0], ['ghoul', 0.8], ['beam', 1.45]] },
+  // the hard half (from world 5): actions back to back at the metric minimum
+  { id: 'flow', min: 1600, steps: [['grave', 0], ['beam', 0.62], ['grave', 1.02], ['beam', 1.64]] },
+  { id: 'switchback', min: 1600, steps: [['beam', 0], ['grave', 0.42], ['beam', 1.04], ['grave', 1.46], ['beam', 2.08]] },
+  { id: 'cliffs', min: 1700, steps: [['pit', 0], ['pit', 0.75], ['pit', 1.5]] },
 ];
 
 // one or two per world, built around that world's own trap

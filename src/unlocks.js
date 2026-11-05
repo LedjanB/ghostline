@@ -69,8 +69,8 @@ export const TRACK = [
   t('gold'), h('crown'), p(7), c(250), t('void'), p(8), h('halo'), c(300), p(9), p(10), t('rainbow'), p(11),
 ];
 // early unlocks cost 1 point, so the first runs each unlock something
-// the last pages are expensive: the whole journal (the key to the door) takes many hours of runs
-export const costFor = (i) => (i < 6 ? 1 : i < 14 ? 2 : i < 24 ? 3 : i < 30 ? 8 : 20);
+// the last pages cost more; reaching the shut door also gives you the next page, so the key to the door is skill, not only time
+export const costFor = (i) => (i < 6 ? 1 : i < 14 ? 2 : i < 24 ? 3 : i < 30 ? 5 : 8);
 // every run earns at least 1 point; going far and finishing missions earn more
 export const runPoints = (meters, missionsDone) => 1 + Math.floor(meters / 400) + missionsDone;
 export const BONUS_PER_POINT = 25; // after the track is finished, points turn into candles

@@ -874,7 +874,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   banner(name, flavor = '') {
-    if (this.runner) { this.headline(name, flavor); return; } // v6: one headline at a time, up top
+    if (this.runner) { this.headline(name, flavor, 1.6); return; } // v6: one headline at a time, up top, short // v6: one headline at a time, up top
     const t = text(this, W / 2, H / 2 + 30, name, 24, '#cfe0ff').setDepth(31).setStroke('#07060d', 6).setAlpha(0);
     const f = text(this, W / 2, H / 2 + 60, flavor, 16, '#a99fd0').setDepth(31).setStroke('#07060d', 4).setAlpha(0);
     this.tweens.add({ targets: [t, f], alpha: 1, duration: 300, yoyo: true, hold: 1800, onComplete: () => { t.destroy(); f.destroy(); } });

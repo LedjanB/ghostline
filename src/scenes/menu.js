@@ -2,7 +2,7 @@
 import { W, H, CHARACTERS, PX_PER_METER, GIFT_HOURS, ZONES } from '../data.js';
 import { ZoneLayers } from '../zones.js';
 import { WorldLook } from '../looks.js';
-import { LOOKS } from '../unlocks.js';
+import { LOOKS, owned, PAGES } from '../unlocks.js';
 import { todayKey } from '../run-features.js';
 import { Save } from '../save.js';
 import { Audio } from '../audio.js';
@@ -37,6 +37,8 @@ export class MenuScene extends Phaser.Scene {
     this.add.image(24, 20, 'candle0').setScale(1.5);
     this.candleText = text(this, 40, 20, '', 16, '#ffd75e', 0).setStroke('#07060d', 4);
     this.bestText = text(this, W - 50, 20, '', 16, '#a99fd0', 1).setStroke('#07060d', 4);
+    // the long goal, always in view: the door at the end of world 8 needs every journal page
+    this.doorText = text(this, W - 50, 40, '', 8, '#fff2b0', 1).setStroke('#07060d', 3);
 
     this.add.image(W / 2, 148, 'glow').setScale(2.4).setBlendMode(Phaser.BlendModes.ADD).setTint(0xffb060).setAlpha(0.25);
     this.charSprite = this.add.sprite(W / 2, 140, 'survivor_run0').setScale(4);
@@ -215,6 +217,8 @@ export class MenuScene extends Phaser.Scene {
       : daily ? 'DAILY: RACE TODAY\'S GHOST' : endless ? 'ENDLESS: BEYOND THE DOOR' : save.ending.seen ? 'THE DOOR IS OPEN' : "DON'T LOOK BACK");
     const todayBest = save.daily.date === todayKey() ? save.daily.best : 0;
     if (daily) this.bestText.setText(`TODAY ${todayBest}M`);
+    const pages = owned(save.unlocks.got).pages.length;
+    this.doorText.setText(save.ending.seen ? 'THE DOOR IS OPEN' : pages ? `THE DOOR: ${pages}/${PAGES.length} PAGES` : '');
     this.missionsBtn.setLabel('MISSIONS');
     const fresh = save.unlocks.fresh;
     this.unlocksBtn.setLabel(fresh ? `NEW! (${fresh})` : 'UNLOCKS');

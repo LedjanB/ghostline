@@ -1,6 +1,8 @@
+// Screenshots of the phase 3 content (tricks, set pieces, the door, weapons). Serve the folder on :8000 first.
+// Usage: node scripts/phase3-shots.mjs <outDir> [tricks,pieces,door,weapons]
 import { chromium } from '@playwright/test';
 const OUT = process.argv[2];
-const b = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--use-gl=swiftshader', '--mute-audio'] });
+const b = await chromium.launch({ executablePath: process.env.CHROME_PATH || undefined, args: ['--use-gl=swiftshader', '--mute-audio'] });
 const page = await b.newPage({ viewport: { width: 640, height: 360 } });
 const errs = []; page.on('pageerror', (e) => errs.push(e.message));
 async function start(save) {
