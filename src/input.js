@@ -10,6 +10,7 @@ const KEYS = {
   right: ['RIGHT', 'D'],
   up: ['UP', 'W'],
   down: ['DOWN', 'S'],
+  slide: ['DOWN', 'S'],
 };
 // Standard gamepad mapping: 0 A, 1 B, 7 RT, 9 Start, 12-15 d-pad up/down/left/right
 const PAD = {
@@ -19,6 +20,7 @@ const PAD = {
   back: [1],
   up: [12],
   down: [13],
+  slide: [1, 13],
   left: [14],
   right: [15],
 };
@@ -72,7 +74,7 @@ export function createInput(scene) {
       const s = pad.leftStick;
       if (s) {
         if (action === 'up' && s.y < -0.6) { setDevice('gamepad'); return true; }
-        if (action === 'down' && s.y > 0.6) { setDevice('gamepad'); return true; }
+        if ((action === 'down' || action === 'slide') && s.y > 0.6) { setDevice('gamepad'); return true; }
         if (action === 'left' && s.x < -0.6) { setDevice('gamepad'); return true; }
         if (action === 'right' && s.x > 0.6) { setDevice('gamepad'); return true; }
       }
@@ -80,7 +82,20 @@ export function createInput(scene) {
     return false;
   };
 
-  const pointerDown = () => scene.input.manager.pointers.some((p) => p.isDown && !p.__ui);
+  // Pointers (v6 runner): tap = jump, hold = higher jump / rise, swipe down = slide.
+  // A touch waits 70 ms (or until it lifts) before it counts as a jump, so a swipe never jumps first.
+  const ptrs = new Map();
+  let tapLatch = false, swipeLatch = false;
+  const SWIPE_PX = 22, HOLD_MS = 70;
+  scene.input.on('pointerdown', (p) => { if (!p.__ui) ptrs.set(p.id, { y0: p.y, t0: performance.now(), state: 'pending' }); });
+  scene.input.on('pointermove', (p) => {
+    const s = ptrs.get(p.id);
+    if (s && p.isDown && s.state !== 'swipe' && p.y - s.y0 > SWIPE_PX) { s.state = 'swipe'; swipeLatch = true; }
+  });
+  const lift = (p) => { const s = ptrs.get(p.id); if (s && s.state === 'pending') tapLatch = true; ptrs.delete(p.id); };
+  scene.input.on('pointerup', lift);
+  scene.input.on('pointerupoutside', lift);
+  const pointerDown = () => [...ptrs.values()].some((s) => s.state === 'jump');
 
   // Latch key presses as events so a tap shorter than one frame is never missed
   // (input-systems skill: capture discrete presses, poll held state).
@@ -96,19 +111,25 @@ export function createInput(scene) {
 
   const api = {
     update() {
+      let ptrEdge = false;
+      for (const s of ptrs.values()) if (s.state === 'pending' && performance.now() - s.t0 >= HOLD_MS) { s.state = 'jump'; ptrEdge = true; }
+      if (tapLatch) ptrEdge = true;
       for (const a of actions) {
         prev[a] = now[a];
         let down = KEYS[a].some((k) => keys[k] && keys[k].isDown) || padDown(a);
         if (a === 'float' && pointerDown()) down = true;
         now[a] = down;
         edge[a] = (down && !prev[a]) || codesFor[a].some((c) => latched.has(c));
+        if (a === 'float' && ptrEdge) edge[a] = true;
+        if (a === 'slide' && swipeLatch) edge[a] = true;
       }
       latched = new Set();
+      tapLatch = false; swipeLatch = false;
     },
     held: (a) => !!now[a] || codesFor[a].some((c) => latched.has(c)),
     pressed: (a) => !!edge[a],
     // mark pointers currently down as belonging to UI so a button press doesn't float
-    claimPointers() { scene.input.manager.pointers.forEach((p) => { if (p.isDown) p.__ui = true; }); },
+    claimPointers() { scene.input.manager.pointers.forEach((p) => { if (p.isDown) { p.__ui = true; ptrs.delete(p.id); } }); },
   };
   scene.input.on('pointerup', (p) => { p.__ui = false; });
   api.update();

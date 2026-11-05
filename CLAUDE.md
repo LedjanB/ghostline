@@ -25,6 +25,8 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 - `src/looks.js` `WorldLook`: per-character color grade + signature effect (used by play and menu)
 - `src/run-features.js` mixed into PlayScene: pickups, lasers, ghouls, weather, giants, opening, daily ghost, Spirit Rush, Dark Chase, Boo quips, tips, spin/revive/finalize
 - `src/scenes/spin.js` Grave Spin; `missions.js`, `charms.js` menu overlays
+- `src/runner.js` (v6, branch `v6-runner`) mixed into PlayScene last: run/jump/slide, THE STRETCH chaser, ground traps, Boo flights (one chasm per world + rare orb; the v5 hazards are the air traps), salt shotgun. Tuning in `RUN`
+- `src/runner-art.js` THE STRETCH, tombstone, crate, salt shotgun pixel art
 
 ## Rules
 - Run state is reset in `init()`, never the constructor.
@@ -39,6 +41,8 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 - Character looks stay below hazards: tint goes on zone layers, the color wash sits at depth 4.4, effects at depth 2 (scanlines 4.6, faint).
 - HUD x 120-180 on row 2 stays empty: the player hugs the ceiling there.
 - Anything good the player does should call `addCombo(kind)`; getting hit calls `breakCombo()`.
+- v6: `hit()` is a stumble on the ground (two in a row = caught) and costs landing distance in the air. The LIGHT bar shows how close THE STRETCH is.
+- v6: ground traps live in world px (`t.wx`, drawn at `sx(wx)`); v5 hazards stay in screen px and only spawn while flying.
 
 ## Test
 Serve the folder (`python -m http.server 8000`) and open http://localhost:8000.

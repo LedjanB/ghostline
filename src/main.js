@@ -14,6 +14,7 @@ import { StoryScene } from './scenes/story.js';
 import { StatsScene } from './scenes/stats.js';
 import { UnlocksScene } from './scenes/unlocks.js';
 import { Save } from './save.js';
+import { makeRunnerArt, makeRunnerAnims } from './runner-art.js';
 
 class BootScene extends Phaser.Scene {
   constructor() { super('boot'); }
@@ -23,6 +24,8 @@ class BootScene extends Phaser.Scene {
     makeArt2(this);
     makeZoneArt(this);
     makeAnims2(this);
+    makeRunnerArt(this);
+    makeRunnerAnims(this);
     const loading = document.getElementById('loading');
     if (loading) loading.remove();
     // first launch: the story, then straight into the first run

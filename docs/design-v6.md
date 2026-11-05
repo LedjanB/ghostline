@@ -1,6 +1,7 @@
 # Ghostline v6: the runner (design doc)
 
-Status: idea, not built yet. v5 (the flying game) stays on `main` until a prototype proves this is better.
+Status: playable build on branch `v6-runner` (inside the real game, `src/runner.js`). v5 (the flying game) stays on `main`.
+Prototype A was kept (physics felt good). Prototype B playtest: too much flying, too hard to die. The real build answers that: flying is ~10-15% of a run (one chasm per world + a rare 3.5 s Boo orb), 3 air hits = caught on landing, and difficulty escalates with distance.
 
 ## Why
 v5 plays almost exactly like Jetpack Joyride. v6 makes it its own game:

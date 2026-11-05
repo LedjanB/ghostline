@@ -367,6 +367,10 @@ export const Audio = {
         break;
       }
       case 'float': tone(t, 260, 0.25, 'sine', 0.06 * vv, sfxBus, 420, dt); break;
+      case 'jump': tone(t, 300, 0.12, 'square', 0.04 * vv, sfxBus, 620, dt); break;
+      case 'slide': noise(t, 0.22, 0.05 * vv, sfxBus, 600, 'lowpass'); break;
+      case 'stumble': noise(t, 0.12, 0.09, sfxBus, 400, 'lowpass'); tone(t, 180, 0.2, 'square', 0.06, sfxBus, 90); break;
+      case 'salt': noise(t, 0.07, 0.07 * vv, sfxBus, 3000, 'highpass'); tone(t, 220, 0.06, 'square', 0.03, sfxBus, 110, dt); break;
       case 'warn':
         tone(t, 1040, 0.07, 'square', 0.05, sfxBus);
         tone(t + 0.1, 1040, 0.07, 'square', 0.05, sfxBus);

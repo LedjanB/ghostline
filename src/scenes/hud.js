@@ -84,7 +84,7 @@ export class HudScene extends Phaser.Scene {
     on('power', (p) => {
       this.powerBar.clear();
       if (!p) { this.powerIcon.setVisible(false); return; }
-      this.powerIcon.setTexture(`orb_${p.kind}`).setVisible(true);
+      this.powerIcon.setTexture(p.kind === 'salt' ? 'salt_gun' : `orb_${p.kind}`).setVisible(true);
       this.powerBar.fillStyle(0x07060d, 1); this.powerBar.fillRect(526, 30, 28, 4);
       this.powerBar.fillStyle(0xffb0d0, 1); this.powerBar.fillRect(526, 30, Math.round(28 * p.left), 4);
     });

@@ -90,11 +90,11 @@ test('dying shows the results screen and retry starts a fresh run', async ({ pag
   await page.keyboard.press('Enter');
   await page.waitForTimeout(1500);
   await simulate(page, 200);
-  await play(page, (s) => { s.invuln = 0; s.shield = false; s.souls = 0; s.hit('beam'); });
+  await play(page, (s) => { s.invuln = 0; s.shield = false; s.souls = 0; s.hit('beam'); s.invuln = 0; s.hit('beam'); });
   await page.waitForFunction(() => window.__game.scene.isActive('over'), null, { timeout: 15000 });
   const save = await page.evaluate(() => JSON.parse(localStorage.getItem('ghostline-save')));
   expect(save.best).toBeGreaterThanOrEqual(200);
-  expect(save.stats.deaths.beam).toBe(1);
+  expect(save.stats.deaths.caught).toBe(1);
   // reveal cards (level-ups, unlocks) come first; Enter clears each, then RETRY
   await page.waitForTimeout(1300);
   for (let i = 0; i < 10 && await page.evaluate(() => window.__game.scene.isActive('over')); i++) {
@@ -112,7 +112,8 @@ test('creative mode never dies and continues where you left off', async ({ page 
   await page.waitForTimeout(1500);
   await simulate(page, 500);
   const before = await play(page, (s) => { s.shield = false; s.rush = null; return s.rebirths; });
-  await play(page, (s) => { s.invuln = 0; s.hit('hand'); s.invuln = 0; s.hit('laser'); });
+  // v6: getting caught is what rebirths you in creative mode
+  await play(page, (s) => { s.invuln = 0; s.caught('caught'); s.invuln = 0; s.caught('pit'); });
   expect(await play(page, (s) => [s.dead, s.rebirths])).toEqual([false, before + 2]);
   await play(page, (s) => s.requestPause());
   const x = await page.evaluate(() => JSON.parse(localStorage.getItem('ghostline-save')).creative.x);
@@ -124,7 +125,7 @@ test('missions complete and pay out', async ({ page }) => {
   await page.keyboard.press('Enter');
   await page.waitForTimeout(1500);
   await simulate(page, 160);
-  await play(page, (s) => { s.invuln = 0; s.shield = false; s.souls = 0; s.hit('beam'); });
+  await play(page, (s) => { s.invuln = 0; s.shield = false; s.souls = 0; s.hit('beam'); s.invuln = 0; s.hit('beam'); });
   await page.waitForFunction(() => window.__game.scene.isActive('over'), null, { timeout: 15000 });
   const m = await page.evaluate(() => JSON.parse(localStorage.getItem('ghostline-save')).missions);
   expect(m.done).toContain('m150');
@@ -195,5 +196,73 @@ test('every character has its own world look', async ({ page }) => {
   await page.waitForTimeout(1500);
   const r = await play(page, (s) => ({ tint: s.look.tint, fx: s.look.look.fx, layer: s.layers.look }));
   expect(r).toEqual({ tint: 0xff6060, fx: 'bats', layer: 0xff6060 });
+  expect(errors).toEqual([]);
+});
+
+// ---------------- v6 runner ----------------
+test('runner: a stumble lets THE STRETCH closer, a second one in a row gets you caught', async ({ page }) => {
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 6, storySeen: true } });
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(1500);
+  await simulate(page, 60);
+  const r = await play(page, (s) => {
+    s.shield = false; s.souls = 0;
+    const before = s.gap;
+    s.invuln = 0; s.hit('grave');
+    const one = { gap: s.gap, dead: s.dead, stumbles: s.stumbles };
+    s.invuln = 0; s.hit('grave');
+    return { before, one, dead: s.dead, cause: s.deathCause };
+  });
+  expect(r.one.dead).toBe(false);
+  expect(r.one.stumbles).toBe(1);
+  expect(r.before - r.one.gap).toBe(40);
+  expect(r.dead).toBe(true);
+  expect(r.cause).toBe('caught');
+  expect(errors).toEqual([]);
+});
+
+test('runner: Boo carries you over the chasm, and it waits where you land', async ({ page }) => {
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 6, storySeen: true } });
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(1500);
+  const r = await play(page, (s) => {
+    s.openingDone = true;
+    let flew = false, n = 0;
+    for (; n < 120 * 60 && !(flew && !s.flying); n++) { s.invuln = 1e9; s.step(1 / 120, n % 40 < 20); if (s.flying && s.flyKind === 'section') flew = true; }
+    return { flew, flying: s.flying, gap: Math.round(s.gap), m: Math.floor(s.worldX / 24), dead: s.dead, zoneChasm: s.chasmZones.has(0) };
+  });
+  expect(r.flew).toBe(true);
+  expect(r.flying).toBe(false);
+  expect(r.zoneChasm).toBe(true);
+  expect(r.gap).toBeLessThan(118); // it caught up while you were in the air
+  expect(r.m).toBeGreaterThan(220);
+  expect(r.dead).toBe(false);
+  // three air hits and it's waiting right where you land
+  const r2 = await play(page, (s) => {
+    s.startFlight('orb');
+    for (let i = 0; i < 3; i++) { s.invuln = 0; s.hit('banshee'); }
+    s.invuln = 0; s.endFlight();
+    return { dead: s.dead, cause: s.deathCause };
+  });
+  expect(r2).toEqual({ dead: true, cause: 'caught' });
+  expect(errors).toEqual([]);
+});
+
+test('runner: the salt shotgun fires on its own and smashes a crate into candles', async ({ page }) => {
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 6, storySeen: true } });
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(1500);
+  const r = await play(page, (s) => {
+    s.openingDone = true;
+    s.armSalt();
+    const crate = s.addTrap('crate', s.worldX + 180);
+    const candles = s.candles.length;
+    for (let n = 0; n < 120 && !crate.gone; n++) { s.invuln = 1e9; s.step(1 / 120, false); }
+    return { gone: crate.gone, kills: s.kills, candles: s.candles.length - candles, ammo: s.weapon.ammo };
+  });
+  expect(r.gone).toBe(true);
+  expect(r.kills).toBe(1);
+  expect(r.candles).toBeGreaterThanOrEqual(2);
+  expect(r.ammo).toBeLessThan(24);
   expect(errors).toEqual([]);
 });

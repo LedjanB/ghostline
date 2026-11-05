@@ -14,6 +14,7 @@ import {
 import { Features, dailySeed } from '../run-features.js';
 import { ScoreFeatures } from '../run-score.js';
 import { ZoneLayers } from '../zones.js';
+import { RunnerFeatures } from '../runner.js';
 
 const STEP = 1 / 120;
 const MAX_STEPS = 12;
@@ -142,6 +143,7 @@ export class PlayScene extends Phaser.Scene {
     }
     this.featInit(save);
     this.scoreInit(save);
+    this.runnerInit(); // v6: Milo runs, THE STRETCH chases (src/runner.js)
   }
 
   create() {
@@ -188,6 +190,7 @@ export class PlayScene extends Phaser.Scene {
 
     this.featCreate();
     this.scoreCreate();
+    this.runnerCreate();
     this.scene.launch('hud');
 
     this.onHidden = () => this.requestPause();
@@ -217,6 +220,7 @@ export class PlayScene extends Phaser.Scene {
   update(time, deltaMs) {
     this.inputMap.update();
     if (!this.dead && this.inputMap.pressed('pause')) { this.requestPause(); return; }
+    this.runnerInput(this.inputMap);
     const real = Math.min(deltaMs / 1000, 0.1);
     if (this.hitStop > 0) { this.hitStop -= real; this.render(0); return; }
     const holding = !this.dead && this.inputMap.held('float');
@@ -246,33 +250,43 @@ export class PlayScene extends Phaser.Scene {
 
     const meters = this.worldX / PX_PER_METER;
     const pace = difficulty(meters);
-    if (!this.dead) this.speed = speedAt(meters) * this.speedMul * Math.min(1, 0.3 + this.openingT * 0.9);
+    if (!this.dead) this.speed = speedAt(meters) * this.speedMul * Math.min(1, 0.3 + this.openingT * 0.9) * this.runSlow;
     const move = this.speed * dt;
     this.worldX += move;
     this.scroll += move;
 
+    // v6: on the ground Milo runs (stepRun); in the air Boo carries him with the v5 float (stepPlayer)
+    const air = !this.runner || this.flying;
     if (this.dead) this.stepDeath(dt);
-    else this.stepPlayer(dt, holding);
-    this.stepGhost(dt, holding);
+    else if (air) this.stepPlayer(dt, holding);
+    else this.stepRun(dt, holding);
+    this.stepRunnerFlight(dt);
+    const airHold = holding && (!this.runner || this.flying);
+    this.stepGhost(dt, this.runner ? this.flying : holding);
     this.stepZones();
     if (!this.dead) {
-      this.spawner(meters, pace);
-      this.bansheeTimer(dt, meters, pace.diff);
+      if (!this.runner || this.flying) { // the v5 hazards are the air traps
+        this.spawner(meters, pace);
+        this.bansheeTimer(dt, meters, pace.diff);
+      } else {
+        this.runnerSpawner(meters, pace);
+      }
     }
     this.stepWorld(dt, move);
-    this.featStep(dt, meters, pace, holding);
-    if (!this.dead && this.openingDone) this.collide();
-    this.stepLight(dt);
+    this.stepRunnerWorld(dt);
+    this.featStep(dt, meters, pace, airHold);
+    if (!this.dead && this.openingDone) { if (!this.runner || this.flying) this.collide(); else this.runnerCollide(); }
+    if (this.runner) this.stepChaser(dt); else this.stepLight(dt);
     this.stepZoneFx(dt);
     this.stepCombo(dt);
-    this.stepFlight(dt, holding);
+    this.stepFlight(dt, airHold);
     if (this.creative) {
       this.nextAutosave -= dt;
       if (this.nextAutosave <= 0) { this.nextAutosave = 10; this.saveCheckpoint(); }
     }
     this.emitHud(meters);
     Audio.intensity(this.dead ? 0 : 0.2 + pace.diff * 0.9);
-    Audio.danger(!this.dead && this.warnings.length > 0);
+    Audio.danger(!this.dead && (this.warnings.length > 0 || (this.runner && this.light < 0.3)));
   }
 
   stepPlayer(dt, holding) {
@@ -654,7 +668,7 @@ export class PlayScene extends Phaser.Scene {
     this.tracker?.add('candles', this.char.candleMul);
     if (this.chase) this.chase.wall = Math.max(-40, this.chase.wall - 20);
     this.buzz(8);
-    this.light = Math.min(1, this.light + 0.07);
+    if (this.runner) this.candlePush(); else this.light = Math.min(1, this.light + 0.07);
     Audio.sfx('candle', { combo: this.candleRun });
     this.events.emit('candles', this.runCandles);
     c.dead = true;
@@ -694,6 +708,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   hit(kind = 'beam') {
+    if (this.runner) { this.runnerHit(kind); return; } // v6: a hit is a stumble (or costs you in the air)
     if (this.rush) return; // Spirit Rush smashes through everything
     this.buzz(kind === 'dark' ? 200 : 120);
     if (this.creative && !this.shield) { this.rebirth(); return; }
@@ -885,7 +900,7 @@ export class PlayScene extends Phaser.Scene {
       this.ghostGlow.setPosition(this.ghostX, this.ghostY).setAlpha(this.holding ? 0.5 : 0.28);
       const ax = this.ghostX, ay = this.ghostY + 12, bx = PLAYER_X - 3, by = py - 8;
       const thick = this.holding ? 5 : 3;
-      for (let pass = 0; pass < 2; pass++) {
+      for (let pass = 0; pass < (!this.runner || this.flying ? 2 : 0); pass++) {
         const size = pass === 0 ? thick + 3 : thick;
         this.tendril.fillStyle(pass === 0 ? this.trailColor() : 0xe6f0ff, pass === 0 ? (this.holding ? 0.3 : 0.1) : (this.holding ? 0.9 : 0.4));
         for (let i = 0; i <= 11; i++) {
@@ -947,6 +962,7 @@ export class PlayScene extends Phaser.Scene {
     this.renderBest(lead, py);
     this.renderFeatures(lead, py);
     this.renderFlight(lead, py);
+    this.renderRunner(lead, py);
 
     let flick = 0;
     if (this.clock < this.flickerUntil) flick = (Math.floor(this.clock * 30) % 2) * 0.3;
@@ -992,4 +1008,4 @@ export class PlayScene extends Phaser.Scene {
   }
 }
 
-Object.assign(PlayScene.prototype, Features, ScoreFeatures);
+Object.assign(PlayScene.prototype, Features, ScoreFeatures, RunnerFeatures);

@@ -164,7 +164,7 @@ export const Features = {
   stepChase(dt, meters) {
     const zone = zoneAt(this.zoneIndex);
     const into = (meters % ZONE_LENGTH_M) / ZONE_LENGTH_M;
-    if (!this.chase && !this.dead && !this.creative && ['woods', 'sewer', 'carnival'].includes(zone.id)
+    if (!this.runner && !this.chase && !this.dead && !this.creative && ['woods', 'sewer', 'carnival'].includes(zone.id)
       && !this.chaseDone.has(zone.id) && into > 0.4 && into < 0.6 && !this.gate) {
       this.chaseDone.add(zone.id);
       this.chase = { t: 0, dur: 15, wall: 30 };
@@ -220,6 +220,11 @@ export const Features = {
       zone_morgue: ["DON'T WAKE THEM."], zone_woods: ['FRESH AIR! KIND OF.'], zone_graveyard: ['I KNOW SOME OF THESE.'],
       zone_sewer: ['EW. EW. EW.'], zone_catacombs: ['NICE SKULLS.'], zone_carnival: ['I HATE CLOWNS.'], zone_otherside: ['WHERE ARE WE?!'],
     };
+    if (this.runner) Object.assign(LINES, { // v6: running from THE STRETCH
+      start: ['RUN, ' + hero + '!', "DON'T LOOK BACK!", 'IT SAW US. RUN!'],
+      grab: ['I GOT YOU!', 'UP WE GO!', 'HOLD ON!'],
+      landed: ['RUN! RUN!', "IT'S STILL COMING!"],
+    });
     const opts = LINES[kind];
     if (!opts) return;
     this.quipCooldown = 4;
@@ -248,6 +253,7 @@ export const Features = {
       soul: 'SOULS = SPINS WHEN YOU DIE', letter: 'SPELL B-O-O FOR A PRIZE', power: 'POWER-UP! IT LASTS A FEW SECONDS',
       rush: 'SPIRIT RUSH! SMASH THROUGH IT ALL!', light: 'LIGHT IS LOW! GRAB CANDLES!',
     };
+    if (this.runner) TIPS.candle = 'CANDLES PUSH THE STRETCH BACK!';
     if (!TIPS[id]) return;
     this.tipsSeen.add(id);
     Save.update((s) => { if (!s.tips.includes(id)) s.tips.push(id); });
@@ -292,8 +298,8 @@ export const Features = {
     this.stepRush(dt);
     this.stepChase(dt, meters);
     this.quipCooldown -= dt;
-    if (!this.dead && this.light < 0.3) this.tip('light');
-    if (!this.dead && this.groundStreak > 4 && this.openingDone) { this.quip('floor'); this.groundStreak = -6; }
+    if (!this.runner && !this.dead && this.light < 0.3) this.tip('light');
+    if (!this.runner && !this.dead && this.groundStreak > 4 && this.openingDone) { this.quip('floor'); this.groundStreak = -6; }
 
     // magnets pull candles in (charm = small radius, power-up = big)
     const pull = this.power && this.power.kind === 'magnet' ? 230 : this.charm.magnet ? 110 : 0;
@@ -342,7 +348,8 @@ export const Features = {
       this.pickups.push(p);
       return p;
     };
-    const safeY = () => this.rand.range(TOP + 30, BOTTOM - 30);
+    // runner: on the ground, pickups sit where a jump (or just running) reaches them
+    const safeY = () => (this.runner && !this.flying ? this.rand.range(BOTTOM - 76, BOTTOM - 6) : this.rand.range(TOP + 30, BOTTOM - 30));
     if (this.worldX >= this.nextSoulX) {
       const p = spawnAt('soul', 'soul0', safeY());
       p.s.play('soul_flicker');
