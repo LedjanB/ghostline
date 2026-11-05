@@ -29,7 +29,7 @@ const JUMP_CUT = 0.45;
 const COYOTE = 0.09, BUFFER = 0.13;
 const SLIDE_TIME = 0.62;
 const FAST_FALL = 3200;
-const BASE_SPEED = 330, MAX_SPEED = 640, SPEED_RAMP = 4.2;
+const BASE_SPEED = 330, MAX_SPEED = 600, SPEED_RAMP = 4.2;
 const STUMBLE_SLOW = 0.45;
 const STUMBLE_RECOVER = 1.3;
 const STUMBLE_COMBO = 2.6;
@@ -39,14 +39,14 @@ const CLEAN_PUSHBACK = 9;
 const PX_PER_M = 40;
 const STEP = 1 / 120;
 // flight
-const FLY_TIME = 9.5;          // Boo orb flight length (s)
+const FLY_TIME = 6.5;          // Boo orb flight length (s)
 const FLY_UP = 2500, FLY_DOWN = 1900, FLY_VMAX = 470;
 const FLY_TOP = 330;           // max height above ground while flying
-const SECTION_SECONDS = 6;     // chasm width in seconds of running
-const FIRST_CHASM = 3600, CHASM_EVERY = 7000; // px
-const LAND_GAP = 175;          // creature distance right after landing (it caught up a bit)
-const LAND_GAP_MIN = 95;
-const AIR_HIT_COST = 40;       // each air hit = creature closer when you land
+const SECTION_SECONDS = 4.5;     // chasm width in seconds of running
+const FIRST_CHASM = 4200, CHASM_EVERY = 11000; // px
+const LAND_GAP = 165;          // creature distance right after landing (it caught up a bit)
+const LAND_GAP_MIN = 0;
+const AIR_HIT_COST = 50;       // each air hit = creature closer when you land
 const CATCHUP_TIME = 1.6, CATCHUP_BOOST = 1.06; // after landing it sprints for a moment
 // weapon
 const SALT_AMMO = 22, SALT_TIME = 15, SALT_CD = 0.3, SALT_RANGE = 340, PELLET_V = 980;
@@ -109,7 +109,7 @@ class Run extends Phaser.Scene {
     this.traps = []; this.airs = []; this.pickups = []; this.candles = []; this.pellets = []; this.poofs = [];
     this.nextTrapAt = 700; this.lastKinds = [];
     this.nextChasm = FIRST_CHASM; this.chasm = null;
-    this.nextOrb = 1600 + Math.random() * 800;
+    this.nextOrb = 2400 + Math.random() * 1200;
     this.nextWeapon = 900;
     this.airNextAt = 0;
     this.flying = false; this.flyKind = ''; this.flyT = 0; this.landingGap = LAND_GAP;
@@ -169,10 +169,10 @@ class Run extends Phaser.Scene {
 
     this.baseSpeed = Math.min(MAX_SPEED, this.baseSpeed + SPEED_RAMP * dt);
     if (this.slowAmt > 0) { this.slowT += dt; if (this.slowT >= STUMBLE_RECOVER) this.slowAmt = 0; }
-    const v = this.flying ? this.baseSpeed * 1.08 : this.speed(); // a touch faster in the air: it feels like a rush
+    const v = this.flying ? this.baseSpeed : this.speed(); // a touch faster in the air: it feels like a rush
     this.dist += v * dt;
 
-    if (this.flying) { if (this.flyStep(dt, held) === 'caught') return; }
+    if (this.flying) { this.flyStep(dt, held); if (this.state === 'caught') return; }
     else if (this.groundStep(dt, held, v) === 'caught') return;
 
     // --- spawners ---
@@ -185,7 +185,7 @@ class Run extends Phaser.Scene {
     for (const o of this.airs) {
       if (o.kind === 'beam') { o.t += dt; continue; }
       o.x -= (v + o.vx) * dt; o.bob += dt;
-      if (o.kind === 'banshee') o.hy += Math.sign(this.y + 20 - o.hy) * Math.min(70 * dt, Math.abs(this.y + 20 - o.hy));
+      if (o.kind === 'banshee' && o.x > MILO_X + 260) o.hy += Math.sign(this.y + 20 - o.hy) * Math.min(45 * dt, Math.abs(this.y + 20 - o.hy));
     }
     for (const c of this.candles) {
       const mx = MILO_X, my = GROUND_Y - this.y - MILO_H / 2;
@@ -263,7 +263,7 @@ class Run extends Phaser.Scene {
     this.vy = 380; this.grounded = false; this.slide = 0;
     if (this.y < 10) this.y = 10;
     this.creatureFlyT = 0; this.creatureFlyX = MILO_X - this.gap;
-    this.airNextAt = this.speed() * 0.9;
+    this.airNextAt = this.speed() * 1.3;
     // ground stuff ahead fades out, the air is the game now
     for (const o of this.traps) if (o.x > MILO_X - 20 && o.kind !== 'chasm') { o.gone = true; this.poof(o.x + o.w / 2, GROUND_Y - 20); }
     this.popup(kind === 'orb' ? 'BOO!' : 'BOO! HOLD ON!', 1.0);
@@ -275,11 +275,13 @@ class Run extends Phaser.Scene {
     this.flying = false; this.flyKind = '';
     this.vy = 0; this.grounded = this.y <= 0;
     this.gap = Math.max(LAND_GAP_MIN, this.landingGap);
+    if (this.gap <= 30) { this.getCaught('it was waiting where you landed'); return; }
     this.creatureReturn = 0; this.catchUpT = CATCHUP_TIME;
     for (const o of this.airs) { o.gone = true; if (o.kind !== 'beam') this.poof(o.x + o.w / 2, GROUND_Y - o.hy); }
     this.nextTrapAt = this.speed() * 1.1; // a breath before ground traps
     if (this.chasm && this.chasm.x + this.chasm.w < MILO_X) { this.chasm = null; this.nextChasm = this.dist + CHASM_EVERY; }
-    this.popup('IT\'S COMING', 0.9);
+    this.nextOrb = Math.max(this.nextOrb, this.dist + 3000); // no orb right after landing
+    this.popup(this.gap <= 60 ? 'IT\'S RIGHT THERE' : 'IT\'S COMING', 0.9);
   }
 
   pitUnder() {
@@ -306,7 +308,7 @@ class Run extends Phaser.Scene {
     // pickups
     if (this.dist >= this.nextOrb && !this.chasm && !runway) {
       this.pickups.push({ kind: 'orb', x, hy: 115 + Math.random() * 25, bob: 0 });
-      this.nextOrb = this.dist + 3600 + Math.random() * 2200;
+      this.nextOrb = this.dist + 7500 + Math.random() * 3500;
     }
     if (this.dist >= this.nextWeapon && !this.weapon && !this.chasm && !runway) {
       this.pickups.push({ kind: 'salt', x: x + 120, hy: 22, bob: 0 });
@@ -346,16 +348,16 @@ class Run extends Phaser.Scene {
     const kind = roll < 0.45 ? 'bats' : roll < 0.75 ? 'beam' : 'banshee';
     const x = W + 30;
     if (kind === 'bats') {
-      const n = 2 + Math.floor(Math.random() * 3), hy = 60 + Math.random() * 220;
-      for (let i = 0; i < n; i++) this.airs.push({ kind: 'bat', x: x + i * 34, hy: hy + (i % 2) * 26, w: 20, h: 14, vx: 90, hp: 1, bob: i });
+      const n = 2 + Math.floor(Math.random() * 2), hy = 50 + Math.random() * 240;
+      for (let i = 0; i < n; i++) this.airs.push({ kind: 'bat', x: x + i * 40, hy: hy + (i % 2) * 8, w: 20, h: 14, vx: 90, hp: 1, bob: i });
     }
     if (kind === 'beam') {
       // spirit beam: telegraph, then a full-width line. Leave a safe band somewhere.
       const hy = 40 + Math.random() * 260;
-      this.airs.push({ kind: 'beam', hy, w: W, h: 14, t: 0, warn: 0.9, on: 0.7 });
+      this.airs.push({ kind: 'beam', hy, w: W, h: 12, t: 0, warn: 1.1, on: 0.6 });
     }
-    if (kind === 'banshee') this.airs.push({ kind: 'banshee', x, hy: 80 + Math.random() * 200, w: 38, h: 46, vx: 170, bob: 0 });
-    this.airNextAt = v * (0.55 + Math.random() * 0.45);
+    if (kind === 'banshee') this.airs.push({ kind: 'banshee', x, hy: 80 + Math.random() * 200, w: 34, h: 42, vx: 90, bob: 0 });
+    this.airNextAt = v * (1.0 + Math.random() * 0.5) + (kind === 'beam' ? v * 0.5 : 0);
   }
 
   // ---------- weapon: salt shotgun, aims and fires on its own ----------
@@ -380,7 +382,7 @@ class Run extends Phaser.Scene {
 
   // ---------- collisions ----------
   miloBox() {
-    const h = this.flying ? MILO_H : this.slide > 0 && this.grounded ? MILO_SLIDE_H : (this.slide > 0 ? MILO_H * 0.7 : MILO_H);
+    const h = this.flying ? MILO_H - 8 : this.slide > 0 && this.grounded ? MILO_SLIDE_H : (this.slide > 0 ? MILO_H * 0.7 : MILO_H);
     const bottom = GROUND_Y - this.y;
     return { l: MILO_X - MILO_W / 2 + 3, r: MILO_X + MILO_W / 2 - 3, t: bottom - h + 3, b: bottom - 3 };
   }
@@ -393,6 +395,13 @@ class Run extends Phaser.Scene {
   airBox(o) {
     if (o.kind === 'beam') return { l: 0, r: W, t: GROUND_Y - o.hy - o.h / 2, b: GROUND_Y - o.hy + o.h / 2 };
     return { l: o.x, r: o.x + o.w, t: GROUND_Y - o.hy - o.h, b: GROUND_Y - o.hy };
+  }
+
+  airHitBox(o) {
+    const b = this.airBox(o);
+    if (o.kind === 'beam') return { l: 0, r: W, t: b.t + 3, b: b.b - 3 };
+    const px = o.w * 0.2, py = o.h * 0.2; // forgiving: graze = miss
+    return { l: b.l + px, r: b.r - px, t: b.t + py, b: b.b - py };
   }
 
   kill(o, x, y) {
@@ -452,7 +461,7 @@ class Run extends Phaser.Scene {
       for (const o of this.airs) {
         if (o.gone) continue;
         if (o.kind === 'beam' && o.t < o.warn) continue; // only the telegraph, not live yet
-        if (overlap(m, this.airBox(o))) { this.airHit(o); return; }
+        if (overlap(m, this.airHitBox(o))) { this.airHit(o); return; }
       }
     }
   }
@@ -472,7 +481,7 @@ class Run extends Phaser.Scene {
     this.invuln = 0.9; this.flash = 1;
     if (o.kind === 'bat') { o.gone = true; this.poof(o.x, GROUND_Y - o.hy); }
     this.cameras.main.shake(160, 0.008);
-    if (this.landingGap < LAND_GAP_MIN - AIR_HIT_COST * 1.5) this.landingGap = LAND_GAP_MIN - AIR_HIT_COST * 1.5;
+    this.popup(this.landingGap <= 30 ? 'IT WILL CATCH YOU' : this.landingGap <= 80 ? 'CAREFUL' : 'OUCH', 0.6);
   }
 
   getCaught(cause) {
@@ -603,7 +612,7 @@ class Run extends Phaser.Scene {
     const mode = this.flying ? (this.flyKind === 'orb' ? `FLYING (Boo orb, ${Math.max(0, this.flyT).toFixed(1)} s)` : 'FLYING (flight section)') : 'RUNNING';
     this.debug.setText([
       `PROTOTYPE B   ${m2} m   best ${best} m   ${mode}`,
-      `speed  ${(this.flying ? this.baseSpeed * 1.08 : this.speed()).toFixed(0)} px/s`,
+      `speed  ${(this.flying ? this.baseSpeed : this.speed()).toFixed(0)} px/s`,
       this.flying ? `creature when you land  ${Math.max(0, Math.max(LAND_GAP_MIN, this.landingGap) - 30).toFixed(0)} px   air hits ${this.airHits}`
                   : `creature distance  ${Math.max(0, this.gap - 30).toFixed(0)} px${this.catchUpT > 0 ? '   (sprinting)' : ''}`,
       `stumbles ${this.stumbles}${recovering && this.stumbles && !this.flying ? '  CAREFUL' : ''}   kills ${this.kills}   flights ${this.flights}`,
