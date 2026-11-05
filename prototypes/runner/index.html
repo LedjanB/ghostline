@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Ghostline v6 Prototype A</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #111; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #game { width: 100%; height: 100%; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+<!-- PROTOTYPE A (throwaway, prototype-fast skill). Not imported by the real game. -->
+<!-- Question: is running and jumping away from the creature fun? -->
+<script src="../../vendor/phaser.min.js"></script>
+<script>
+(() => {
+// ---------- tuning (magic numbers welcome, this is a spike) ----------
+const W = 960, H = 540;
+const GROUND_Y = 430;          // top of the ground
+const MILO_X = 330;            // Milo's fixed screen x
+const MILO_W = 26, MILO_H = 46, MILO_SLIDE_H = 22;
+const GRAVITY = 2700;
+const JUMP_V = 860;            // initial jump speed
+const JUMP_CUT = 0.45;         // release early = keep this much upward speed
+const COYOTE = 0.09, BUFFER = 0.13;
+const SLIDE_TIME = 0.62;
+const FAST_FALL = 3200;        // extra gravity when you slide in the air
+const BASE_SPEED = 330, MAX_SPEED = 640, SPEED_RAMP = 4.2; // px/s, px/s per s
+const STUMBLE_SLOW = 0.45;     // speed multiplier right after a stumble
+const STUMBLE_RECOVER = 1.3;   // seconds to get back to full speed
+const STUMBLE_COMBO = 2.6;     // two stumbles within this = caught
+const START_GAP = 230;         // creature distance at start (px)
+const MAX_GAP = 270;
+const CLEAN_PUSHBACK = 9;      // px/s gained while running clean
+const CREATURE_PUSH = 1.0;     // creature runs at this x Milo's unslowed speed
+const PX_PER_M = 40;
+const STEP = 1 / 120;          // fixed 120 Hz simulation
+
+// ---------- input (tiny action map: jump, slide) ----------
+const input = { jumpHeld: false, jumpPressed: false, slidePressed: false };
+const JUMP_KEYS = ['Space', 'ArrowUp', 'KeyW'];
+const SLIDE_KEYS = ['ArrowDown', 'KeyS'];
+window.addEventListener('keydown', (e) => {
+  if (JUMP_KEYS.includes(e.code)) { if (!e.repeat) input.jumpPressed = true; input.jumpHeld = true; e.preventDefault(); }
+  if (SLIDE_KEYS.includes(e.code)) { if (!e.repeat) input.slidePressed = true; e.preventDefault(); }
+}, true);
+window.addEventListener('keyup', (e) => {
+  if (JUMP_KEYS.includes(e.code)) input.jumpHeld = false;
+}, true);
+// touch / mouse: tap or hold = jump, swipe down = slide
+let touchStart = null;
+window.addEventListener('pointerdown', (e) => {
+  touchStart = { x: e.clientX, y: e.clientY, t: performance.now(), swiped: false };
+  input.jumpPressed = true; input.jumpHeld = true;
+}, true);
+window.addEventListener('pointermove', (e) => {
+  if (!touchStart || touchStart.swiped) return;
+  if (e.clientY - touchStart.y > 40) {
+    touchStart.swiped = true;
+    input.jumpHeld = false;
+    input.slidePressed = true;
+    input.cancelJump = true; // the tap that started the swipe should not count as a jump
+  }
+}, true);
+const endPointer = () => { input.jumpHeld = false; touchStart = null; };
+window.addEventListener('pointerup', endPointer, true);
+window.addEventListener('pointercancel', endPointer, true);
+// gamepad: A jump, B or stick down slide
+let padPrev = { a: false, b: false };
+function pollPad() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  for (const p of pads) {
+    if (!p) continue;
+    const a = !!(p.buttons[0] && p.buttons[0].pressed);
+    const b = !!((p.buttons[1] && p.buttons[1].pressed) || (p.buttons[13] && p.buttons[13].pressed) || p.axes[1] > 0.6);
+    if (a && !padPrev.a) input.jumpPressed = true;
+    if (b && !padPrev.b) input.slidePressed = true;
+    input.padHeld = a;
+    padPrev = { a, b };
+    return;
+  }
+  input.padHeld = false;
+}
+
+let best = 0;
+try { best = Number(localStorage.getItem('ghostline-protoA-best')) || 0; } catch (e) {}
+
+class Run extends Phaser.Scene {
+  constructor() { super('run'); }
+
+  init() {
+    // all run state lives here (reset every run)
+    this.t = 0;
+    this.acc = 0;
+    this.dist = 0;               // px travelled
+    this.baseSpeed = BASE_SPEED;
+    this.slowT = 0;              // time since last stumble (recovering)
+    this.slowAmt = 0;
+    this.y = 0;                  // Milo height above ground (px, up = positive)
+    this.vy = 0;
+    this.grounded = true;
+    this.coyote = 0; this.buffer = 0;
+    this.slide = 0;
+    this.gap = START_GAP;
+    this.lastStumble = -99;
+    this.stumbles = 0;
+    this.invuln = 0;
+    this.traps = [];
+    this.nextTrapAt = 900;       // px until the first trap
+    this.state = 'run';          // run | caught
+    this.caughtT = 0;
+    this.cause = '';
+    this.creatureLunge = 0;
+    this.flash = 0;
+    this.started = false;
+  }
+
+  create() {
+    this.g = this.add.graphics();
+    this.debug = this.add.text(12, 10, '', { fontFamily: 'monospace', fontSize: '15px', color: '#9fdc8f' });
+    this.big = this.add.text(W / 2, 150, '', { fontFamily: 'monospace', fontSize: '30px', color: '#ffffff', align: 'center' }).setOrigin(0.5);
+    this.hint = this.add.text(W / 2, 205, '', { fontFamily: 'monospace', fontSize: '16px', color: '#bbbbbb', align: 'center' }).setOrigin(0.5);
+    this.updateHint();
+  }
+
+  updateHint() {
+    const touch = matchMedia('(pointer: coarse)').matches;
+    this.hint.setText(touch ? 'TAP = jump (hold = higher)   SWIPE DOWN = slide' : 'SPACE / UP = jump (hold = higher)   DOWN = slide');
+  }
+
+  speed() {
+    const k = this.slowAmt > 0 ? Phaser.Math.Linear(STUMBLE_SLOW, 1, Math.min(1, this.slowT / STUMBLE_RECOVER)) : 1;
+    return this.baseSpeed * k;
+  }
+
+  update(_time, delta) {
+    pollPad();
+    this.acc += Math.min(delta / 1000, 0.1);
+    let stepped = false;
+    while (this.acc >= STEP) { this.step(STEP); this.acc -= STEP; stepped = true; }
+    // only consume presses once a sim step has seen them (quick taps never get lost)
+    if (stepped) { input.jumpPressed = false; input.slidePressed = false; input.cancelJump = false; }
+    this.render();
+  }
+
+  // ---------- simulation ----------
+  step(dt) {
+    const held = input.jumpHeld || input.padHeld;
+    if (this.state === 'caught') {
+      this.caughtT += dt;
+      this.creatureLunge = Math.min(1, this.creatureLunge + dt * 4);
+      if (this.caughtT > 0.8 && input.jumpPressed && !input.cancelJump) this.scene.restart();
+      return;
+    }
+    if (!this.started) {
+      if (input.jumpPressed || input.slidePressed) { this.started = true; this.hint.setText(''); }
+      else return;
+    }
+    this.t += dt;
+    this.invuln = Math.max(0, this.invuln - dt);
+    this.flash = Math.max(0, this.flash - dt * 3);
+
+    // speed curve
+    this.baseSpeed = Math.min(MAX_SPEED, this.baseSpeed + SPEED_RAMP * dt);
+    if (this.slowAmt > 0) { this.slowT += dt; if (this.slowT >= STUMBLE_RECOVER) this.slowAmt = 0; }
+    const v = this.speed();
+    this.dist += v * dt;
+
+    // --- Milo: jump / slide ---
+    if (input.jumpPressed && !input.cancelJump) this.buffer = BUFFER;
+    else this.buffer = Math.max(0, this.buffer - dt);
+    if (input.cancelJump) this.buffer = 0;
+    if (this.grounded) this.coyote = COYOTE; else this.coyote = Math.max(0, this.coyote - dt);
+
+    if (input.slidePressed) {
+      this.slide = SLIDE_TIME;
+      this.buffer = 0;
+      if (!this.grounded && this.vy > -200) this.vy = Math.min(this.vy, -200); // start dropping
+    }
+    if (this.slide > 0) this.slide = Math.max(0, this.slide - dt);
+
+    if (this.buffer > 0 && this.coyote > 0) {
+      this.vy = JUMP_V; this.grounded = false; this.coyote = 0; this.buffer = 0;
+      this.slide = 0; // jumping cancels the slide
+    }
+    if (!held && this.vy > 0) this.vy *= Math.pow(JUMP_CUT, dt * 20); // variable height
+    if (!this.grounded) {
+      this.vy -= (GRAVITY + (this.slide > 0 ? FAST_FALL : 0)) * dt;
+      this.y += this.vy * dt;
+    }
+    const overPit = this.pitUnder();
+    if (this.y <= 0 && !overPit) { this.y = 0; this.vy = 0; this.grounded = true; }
+    else if (this.y <= 0 && overPit) { this.grounded = false; }
+    else if (this.y > 0) this.grounded = false;
+    if (overPit && this.grounded) this.grounded = false;
+    if (this.y < -60) return this.getCaught('fell in a pit');
+
+    // --- creature: runs at your full speed; it gains when you're slowed ---
+    const creatureV = this.baseSpeed * CREATURE_PUSH;
+    this.gap -= (creatureV - v) * dt;
+    if (this.t - this.lastStumble > 3) this.gap = Math.min(MAX_GAP, this.gap + CLEAN_PUSHBACK * dt);
+    if (this.gap <= 30) return this.getCaught('it closed the gap');
+
+    // --- traps ---
+    this.nextTrapAt -= v * dt;
+    if (this.nextTrapAt <= 0) this.spawnTrap();
+    for (const tr of this.traps) tr.x -= v * dt;
+    this.traps = this.traps.filter((tr) => tr.x + tr.w > -50);
+    this.checkTraps();
+  }
+
+  pitUnder() {
+    const l = MILO_X - MILO_W / 2 + 6, r = MILO_X + MILO_W / 2 - 6;
+    return this.traps.some((tr) => tr.kind === 'pit' && l > tr.x && r < tr.x + tr.w);
+  }
+
+  spawnTrap() {
+    const v = this.speed();
+    const roll = Math.random();
+    let kind;
+    if (this.dist < 2500) kind = roll < 0.6 ? 'grave' : 'branch';           // teach jump, then slide
+    else if (this.dist < 5000) kind = roll < 0.35 ? 'grave' : roll < 0.65 ? 'branch' : roll < 0.85 ? 'hands' : 'pit';
+    else kind = roll < 0.25 ? 'grave' : roll < 0.5 ? 'branch' : roll < 0.75 ? 'hands' : 'pit';
+    const x = W + 40;
+    let tr;
+    if (kind === 'grave') tr = { kind, x, w: 30, h: 44, low: true };
+    if (kind === 'branch') tr = { kind, x, w: 70, h: 26, low: false, top: GROUND_Y - 58 }; // must slide
+    if (kind === 'hands') tr = { kind, x, w: 120, h: 26, low: true };                       // wide, long jump
+    if (kind === 'pit') tr = { kind, x, w: Phaser.Math.Clamp(v * 0.24, 90, 160), h: 0, low: true };
+    tr.hit = false;
+    this.traps.push(tr);
+    // next gap scales with speed so reaction time stays fair (~0.85-1.6 s)
+    const minGap = v * 0.85 + tr.w, maxGap = v * 1.6 + tr.w;
+    this.nextTrapAt = Phaser.Math.Between(minGap, maxGap);
+    // sometimes a quick double
+    if (this.dist > 3500 && Math.random() < 0.18) this.nextTrapAt = v * 0.6 + tr.w;
+  }
+
+  miloBox() {
+    const h = this.slide > 0 && this.grounded ? MILO_SLIDE_H : (this.slide > 0 ? MILO_H * 0.7 : MILO_H);
+    const bottom = GROUND_Y - this.y;
+    return { l: MILO_X - MILO_W / 2, r: MILO_X + MILO_W / 2, t: bottom - h, b: bottom };
+  }
+
+  checkTraps() {
+    const m = this.miloBox();
+    for (const tr of this.traps) {
+      if (tr.hit || tr.kind === 'pit') continue;
+      let box;
+      if (tr.kind === 'branch') box = { l: tr.x, r: tr.x + tr.w, t: tr.top, b: tr.top + tr.h };
+      else box = { l: tr.x, r: tr.x + tr.w, t: GROUND_Y - tr.h, b: GROUND_Y };
+      const pad = 3;
+      if (m.r - pad > box.l && m.l + pad < box.r && m.b - pad > box.t && m.t + pad < box.b) {
+        tr.hit = true;
+        if (this.invuln <= 0) this.stumble(tr.kind);
+      }
+    }
+  }
+
+  stumble(kind) {
+    if (this.t - this.lastStumble < STUMBLE_COMBO) return this.getCaught('two stumbles in a row');
+    this.lastStumble = this.t;
+    this.stumbles++;
+    this.slowAmt = 1; this.slowT = 0;
+    this.invuln = 0.5;
+    this.flash = 1;
+    this.cameras.main.shake(160, 0.008);
+  }
+
+  getCaught(cause) {
+    this.state = 'caught';
+    this.cause = cause;
+    this.cameras.main.shake(300, 0.018);
+    this.flash = 1;
+    const m = Math.floor(this.dist / PX_PER_M);
+    const newBest = m > best;
+    if (newBest) { best = m; try { localStorage.setItem('ghostline-protoA-best', String(m)); } catch (e) {} }
+    this.big.setText(`CAUGHT\n${m} m${newBest ? '  NEW BEST' : ''}`);
+    this.hint.setText(`${cause}\n\njump to run again`);
+  }
+
+  // ---------- drawing (grey boxes) ----------
+  render() {
+    const g = this.g;
+    g.clear();
+    // sky + ground
+    g.fillStyle(0x1b1b22).fillRect(0, 0, W, H);
+    g.fillStyle(0x3a3a44).fillRect(0, GROUND_Y, W, H - GROUND_Y);
+    // ground ticks so motion reads
+    g.fillStyle(0x4a4a55);
+    const off = this.dist % 80;
+    for (let x = -off; x < W; x += 80) g.fillRect(x, GROUND_Y + 8, 30, 4);
+
+    // traps
+    for (const tr of this.traps) {
+      if (tr.kind === 'pit') { g.fillStyle(0x0a0a0d).fillRect(tr.x, GROUND_Y, tr.w, H - GROUND_Y); continue; }
+      if (tr.kind === 'grave') g.fillStyle(tr.hit ? 0x666666 : 0xa0a0a8).fillRect(tr.x, GROUND_Y - tr.h, tr.w, tr.h);
+      if (tr.kind === 'branch') {
+        g.fillStyle(0x5a4a3a).fillRect(tr.x + tr.w / 2 - 4, 0, 8, tr.top); // hangs from above
+        g.fillStyle(tr.hit ? 0x666666 : 0xb08a5a).fillRect(tr.x, tr.top, tr.w, tr.h);
+      }
+      if (tr.kind === 'hands') {
+        g.fillStyle(tr.hit ? 0x666666 : 0x8fb08a);
+        for (let i = 0; i < 4; i++) g.fillRect(tr.x + 6 + i * 29, GROUND_Y - tr.h + (i % 2) * 6, 14, tr.h - (i % 2) * 6);
+      }
+    }
+
+    // creature (THE STRETCH): tall thin box, long arms, white face
+    const lunge = this.creatureLunge;
+    const cx = MILO_X - this.gap + lunge * (this.gap - 10);
+    const near = Phaser.Math.Clamp(1 - (this.gap - 30) / (START_GAP - 30), 0, 1);
+    const fours = this.slowAmt > 0 || near > 0.6; // drops to all fours when it speeds up
+    const bob = Math.sin(this.t * 14) * 4;
+    g.fillStyle(0x5a5466);
+    if (fours) {
+      g.fillRect(cx - 70, GROUND_Y - 62 + bob, 70, 26);              // body low
+      g.fillRect(cx - 66, GROUND_Y - 36, 8, 36); g.fillRect(cx - 12, GROUND_Y - 36, 8, 36);
+      g.fillStyle(0xeeeeee).fillRect(cx - 4, GROUND_Y - 72 + bob, 22, 26); // face
+    } else {
+      g.fillRect(cx - 24, GROUND_Y - 150 + bob, 18, 110);            // tall torso
+      g.fillRect(cx - 26, GROUND_Y - 40, 6, 40); g.fillRect(cx - 10, GROUND_Y - 40, 6, 40);
+      g.fillRect(cx - 8, GROUND_Y - 140 + bob, 44 + near * 30, 6);   // long reaching arm
+      g.fillStyle(0xeeeeee).fillRect(cx - 28, GROUND_Y - 178 + bob, 26, 30);
+    }
+    g.fillStyle(0x111111).fillRect(cx + (fours ? 0 : -24), GROUND_Y - (fours ? 56 : 160) + bob, 18, 3); // grin
+
+    // Milo
+    const m = this.miloBox();
+    const blink = this.invuln > 0 && Math.floor(this.invuln * 20) % 2 === 0;
+    if (!blink) g.fillStyle(this.state === 'caught' ? 0x884444 : 0x6fa8ff).fillRect(m.l, m.t, m.r - m.l, m.b - m.t);
+
+    // danger edge (creature distance) + flash
+    g.fillStyle(0xaa2222, near * 0.35).fillRect(0, 0, 40 + near * 80, H);
+    if (this.flash > 0) g.fillStyle(0xff3030, this.flash * 0.25).fillRect(0, 0, W, H);
+
+    // danger meter (replaces LIGHT bar)
+    g.fillStyle(0x000000, 0.5).fillRect(W - 232, 14, 214, 16);
+    g.fillStyle(near > 0.66 ? 0xff4040 : near > 0.33 ? 0xffb040 : 0x60d060).fillRect(W - 230, 16, 210 * near, 12);
+
+    const m2 = Math.floor(this.dist / PX_PER_M);
+    const recovering = this.t - this.lastStumble < STUMBLE_COMBO;
+    this.debug.setText([
+      `PROTOTYPE A   ${m2} m   best ${best} m`,
+      `speed  ${this.speed().toFixed(0)} px/s  (base ${this.baseSpeed.toFixed(0)})`,
+      `creature distance  ${Math.max(0, this.gap - 30).toFixed(0)} px`,
+      `stumbles  ${this.stumbles}${recovering && this.stumbles ? '   CAREFUL: next one = caught' : ''}`,
+    ].join('\n'));
+    if (!this.started && this.state === 'run') this.big.setText('RUN.');
+    else if (this.state === 'run') this.big.setText('');
+  }
+}
+
+window.__game = new Phaser.Game({
+  type: Phaser.AUTO,
+  parent: 'game',
+  width: W, height: H,
+  backgroundColor: '#111111',
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  scene: [Run],
+});
+})();
+</script>
+</body>
+</html>
