@@ -2,7 +2,7 @@
 // migrate old saves, validate on load, keep a backup of the last good save.
 import { TRACK, HAT_IDS, TRAIL_IDS, owned as ownedUnlocks } from './unlocks.js';
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 const KEY = 'ghostline-save';
 const BACKUP_KEY = 'ghostline-save.bak';
 const LEGACY_KEY = 'ghostline-save-v1'; // v1 of the game stored here, without a version field
@@ -34,6 +34,8 @@ function defaults() {
     bestCombo: 0,
     unlocks: { got: 0, points: 0, fresh: 0 },
     boo: { hat: 'none', trail: 'ecto' },
+    // v7: the ending (seen once = the door stays open and endless mode unlocks)
+    ending: { seen: false, runs: 0 },
     settings: { music: 0.8, sfx: 0.9, muted: false, shake: true, flicker: true, vibrate: true, contrast: false },
   };
 }
@@ -58,6 +60,7 @@ const MIGRATIONS = {
     const d = defaults();
     return { ...old, version: 6, bestScore: 0, bestCombo: 0, unlocks: d.unlocks, boo: d.boo };
   },
+  6: (old) => ({ ...old, version: 7, ending: { seen: false, runs: 0 } }),
   3: (old) => {
     const d = defaults();
     return { ...old, version: 4, missions: d.missions, charms: d.charms, daily: d.daily, giftAt: 0 };
@@ -93,7 +96,7 @@ function validate(raw) {
     runs: isInt(s.runs) ? s.runs : 0,
     owned: Array.isArray(s.owned) ? s.owned.filter((id) => CHARACTER_IDS.includes(id)) : [],
     selected: CHARACTER_IDS.includes(s.selected) ? s.selected : 'survivor',
-    mode: ['normal', 'daily', 'creative'].includes(s.mode) ? s.mode : 'normal',
+    mode: ['normal', 'daily', 'creative', 'endless'].includes(s.mode) ? s.mode : 'normal',
     missions: {
       active: strArr(s.missions?.active).slice(0, 3),
       done: strArr(s.missions?.done),
@@ -135,6 +138,10 @@ function validate(raw) {
       hat: HAT_IDS.includes(s.boo?.hat) ? s.boo.hat : 'none',
       trail: TRAIL_IDS.includes(s.boo?.trail) ? s.boo.trail : 'ecto',
     },
+    ending: {
+      seen: !!s.ending?.seen,
+      runs: isInt(s.ending?.runs) ? s.ending.runs : 0,
+    },
     creative: {
       x: Number.isFinite(s.creative?.x) && s.creative.x >= 0 ? s.creative.x : 0,
       rebirths: isInt(s.creative?.rebirths) ? s.creative.rebirths : 0,
@@ -149,6 +156,7 @@ function validate(raw) {
       contrast: typeof s.settings?.contrast === 'boolean' ? s.settings.contrast : false,
     },
   };
+  if (out.mode === 'endless' && !out.ending.seen) out.mode = 'normal';
   if (!out.owned.includes('survivor')) out.owned.unshift('survivor');
   out.owned = [...new Set(out.owned)];
   if (!out.owned.includes(out.selected)) out.selected = 'survivor';

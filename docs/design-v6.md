@@ -92,6 +92,30 @@ If both prototypes pass, the real build reuses the v5 systems and replaces the r
   drops while one more stumble gets you, results readable before the level-up cards. AI testers: 6, 6, 6 out of 10
   (round 2 was 5, 5, 4), all three would run again.
 
+## Phase 3 (alpha), Nov 5
+- **Every world has a flight set piece** (`src/setpieces.js`): ward THREAD THE NEEDLE (beam gates), morgue THE COLD HANDS
+  (hands close to a gap), woods THE SWAYING PINES (branches sway up and down), graveyard CROW STORM (banshee waves, two
+  lanes open), sewer PIPE BURST (one laser row at a time), catacombs THE BONE WHEELS (spinning bones), carnival THE
+  BROKEN COASTER (a tube of beams), the Other Side THE LAST CROSSING (a mix). A chasm in every world now; it opens early
+  enough that you always land before the gate.
+- **THE STRETCH has a trick per world** (`src/tricks.js`), every 10 to 15 s of running (more often in worlds 5 to 8), with
+  a tell and one answer: ward reaches at head height (slide), morgue comes out of a low drawer (jump), woods drops from
+  the trees and crawls at you (jump), graveyard burrows and bursts up under you (jump), sewer crawls the ceiling and
+  drops ahead, legs wide (slide), catacombs throws its face, bouncing high and low (read it), carnival rides a coaster
+  cart from behind (jump). The Other Side: any of them, faster. Beating one = "IT MISSED!" + combo.
+- **Weapons with a purpose** (`ANSWERS`, `WORLD_WEAPON`): salt breaks crates, ghouls, beds and carts; flame burns hands,
+  roots, drawers and wrecks; holy water blinds eyes, douses steam and hurts it; the bone boomerang turns round and hits
+  it behind you (knocks it back, breaks a trick). A weapon only aims at what it answers (white brackets show it), and
+  the pickup you get is the answer to the world you're in.
+- **Hand-made trap patterns** (`src/patterns.js`): 7 shared + 2 per world, timed in seconds so they work at any speed,
+  checked by a test against the jump/slide metrics. They only use traps you've already met this run.
+- **The ending**: the door at 3,200 m. Without every journal page it stays shut (Boo pulls you back, results say how
+  many pages you have). With all 12 (the last pages now cost 8 and 20 points, so the whole track is about 160 points,
+  many hours of runs) AND a run that reaches it: the ending, once. Then the door stays open, the run goes on beyond it
+  (a new depth every 400 m), and ENDLESS mode appears in the menu (starts at the door, score counts only what you run).
+- Worlds 5 to 8 are the hard half (`lateK`): tighter gaps, more patterns, more tricks, a longer two-stumble window, a slower recovery.
+- Bots (`scripts/bot.mjs`): casual, regular, expert. They read traps better than people, so they are a floor check, not a difficulty target.
+
 ## Open questions
 - The creature's final name and look
 - Does the LIGHT meter go away completely, or does the dark come back as part of the creature?

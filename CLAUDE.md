@@ -25,14 +25,19 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 - `src/looks.js` `WorldLook`: per-character color grade + signature effect (used by play and menu)
 - `src/run-features.js` mixed into PlayScene: pickups, lasers, ghouls, weather, giants, opening, daily ghost, Spirit Rush, Dark Chase, Boo quips, tips, spin/revive/finalize
 - `src/scenes/spin.js` Grave Spin; `missions.js`, `charms.js` menu overlays
-- `src/runner.js` (v6, branch `v6-runner`) mixed into PlayScene last: run/jump/slide, THE STRETCH chaser, ground traps, Boo flights (a chasm every other world + a rare 8 s orb; the v5 hazards are the air traps), one trap per world (`WORLD_TRAPS`), weapons (`WEAPONS`: salt, flame, holy, bone; Boo's ecto blaster in flight). Tuning in `RUN`
+- `src/runner.js` (v6, branch `v6-runner`) mixed into PlayScene last: run/jump/slide, THE STRETCH chaser, ground traps, Boo flights (a chasm in every world + a rare 8 s orb; the v5 hazards are the air traps), one trap per world (`WORLD_TRAPS`), weapons (`WEAPONS`: salt, flame, holy, bone; each only aims at what it answers, `ANSWERS`; the pickup is the answer to the world, `WORLD_WEAPON`; Boo's ecto blaster in flight). Tuning in `RUN`; `lateK()` makes worlds 5 to 8 harder
+- `src/tricks.js` (phase 3) THE STRETCH's trick per world (`TRICKS`): tell, then one answer (jump or slide); lives in `this.traps` as kind `trick`
+- `src/patterns.js` (phase 3) hand-made ground trap patterns, shared + per world; `patternFair()` checks them against the jump/slide metrics
+- `src/setpieces.js` (phase 3) a hand-made flight set piece per world (`SET_PIECES`: gate, pinch, sway, wave, laser, wheel, track segments)
+- `src/ending.js` (phase 3) the door at the end of world 8 (needs every journal page), the ending scene, endless mode (`save.ending.seen`, mode `endless`)
+- `scripts/bot.mjs` bot players (casual, regular, expert): `node scripts/bot.mjs 6 all` for full runs, `--pieces` for each world's flight
 - `src/runner-art.js` THE STRETCH, ground and world traps, weapons, HUD face icon (pixel art)
 
 ## Rules
 - Run state is reset in `init()`, never the constructor.
 - Simulation runs on a fixed 120 Hz step in `PlayScene.step()`; drawing happens in `render()`.
 - Gameplay reads actions from `src/input.js`, never raw keys.
-- Bump `SAVE_VERSION` and add a migration when the save shape changes (now v6: v5 fields plus `bestScore`, `bestCombo`, `unlocks` {got, points, fresh}, `boo` {hat, trail}).
+- Bump `SAVE_VERSION` and add a migration when the save shape changes (now v7: v5 fields plus `bestScore`, `bestCombo`, `unlocks` {got, points, fresh}, `boo` {hat, trail}; v7 adds `ending` {seen, runs} and mode `endless`).
 - Creative mode: `PlayScene.rebirth()` replaces death; `saveCheckpoint()` writes the creative slot.
 - iPhone fullscreen = home screen web app (`manifest.webmanifest`, apple meta tags, `icons/`).
 - Offline via `sw.js`: bump `CACHE` and add new files to its list whenever files change.
@@ -45,7 +50,9 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 - v6: every ground trap must be beatable by jump or slide alone (Milo can't change speed). Slide fits under anything whose bottom is above FLOOR-20; standing Milo's head is FLOOR-44 (Milo is drawn at 2.5x, `MILO_SCALE`).
 - v6: ground traps live in world px (`t.wx`, drawn at `sx(wx)`); v5 hazards stay in screen px and only spawn while flying.
 - v6: one new system per run (`runnerInit`): run 1 missions only, run 2 power-ups, run 3 B-O-O letters, run 5 souls and Grave Spin.
-- v6: flight sections can be hand-made (`SET_PIECES` in runner.js, per zone id); they replace the random air spawner for that flight.
+- v6: every flight section is hand-made (`SET_PIECES` in setpieces.js, per zone id); it replaces the random air spawner. The chasm opens early enough that you land before the gate (`chasmAtM`).
+- v6: a trick or pattern needs the screen to itself: no traps spawn while `this.trick` runs, patterns only use traps already seen this run (teach, then test).
+- v6: the door at 3,200 m only opens with every journal page; after the ending it stays open and the run goes on beyond it (endless, `this.beyond`, a new depth every 400 m).
 - v6: a gate is a passage (`renderGate`): the door art stands 150 px before the seam, the seam sits inside a black stretch, the next world fades in after it.
 - v6: one popup at a time (`popup(str, color, y, prio)`): a newer one replaces the old unless the old is more important and under 0.6 s old.
 - v6: getting caught plays the grab scene (`stepGrab`/`renderGrab`); a pit death keeps the fall.

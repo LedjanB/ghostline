@@ -11,6 +11,9 @@ import { text } from './ui.js';
 import { Features } from './run-features.js';
 import { Device } from './input.js';
 import { Save } from './save.js';
+import { SET_PIECES } from './setpieces.js';
+import { patternsFor, stepNeed } from './patterns.js';
+export { SET_PIECES } from './setpieces.js';
 
 const TOP = CEIL + 16;
 const MILO_SCALE = 2.5;     // v6: 1.25x the v5 size, so he reads on a busy screen
@@ -32,26 +35,33 @@ export const RUN = {
   LAND_GAP: 100, AIR_HIT: 30, // flight: it waits where you land; each air hit = 30 px closer (3 hits = caught)
   ORB_TIME: 8,               // Boo orb flight (s): rare, but long enough to be a real moment
   ORB_FIRST_M: 900, ORB_EVERY_M: [1800, 2600],
-  CHASM_S: 6.5,              // flight section width in seconds of running
-  CHASM_AT_M: 220,           // a flight section every other world (0, 2, 4, 6), this far into it
+  CHASM_S: 6.5,              // fallback flight section width in seconds (a set piece sets its own)
+  CHASM_AT_M: 220,           // phase 3: a flight section in every world, this far into it
   SAFE_RUNS: 3, SAFE_M: 300, // a player's first runs: Boo saves you until 300 m
 };
 // weapons (picked up during the run; each breaks after its time or ammo). They aim and fire on their own.
+// Phase 3: each weapon is the answer to something (ANSWERS); it only aims at what it answers, and the
+// pickup you get is the answer to the world you're in (WORLD_WEAPON).
 export const WEAPONS = {
-  salt: { name: 'SALT SHOTGUN', icon: 'salt_gun', ammo: 24, time: 16, cd: 0.32, range: 230 },       // short, wide spread
-  flame: { name: 'CANDLE FLAMETHROWER', icon: 'flame_gun', ammo: Infinity, time: 9, cd: 0.045, range: 125 }, // constant stream, burns hands
-  holy: { name: 'HOLY WATER SLINGSHOT', icon: 'sling', ammo: 12, time: 18, cd: 0.7, range: 420 },  // long range, pierces
-  bone: { name: 'BONE BOOMERANG', icon: 'bone', ammo: 8, time: 18, cd: 0.25, range: 270 },         // comes back, hits twice
+  salt: { name: 'SALT SHOTGUN', icon: 'salt_gun', ammo: 24, time: 16, cd: 0.32, range: 230, answer: 'BREAKS CRATES, GHOULS AND WHEELS' },       // short, wide spread
+  flame: { name: 'CANDLE FLAMETHROWER', icon: 'flame_gun', ammo: Infinity, time: 9, cd: 0.045, range: 125, answer: 'BURNS HANDS, ROOTS, DRAWERS, WRECKS' }, // constant stream
+  holy: { name: 'HOLY WATER SLINGSHOT', icon: 'sling', ammo: 12, time: 18, cd: 0.7, range: 420, answer: 'BLINDS EYES, DOUSES STEAM, HURTS IT' },  // long range, pierces
+  bone: { name: 'BONE BOOMERANG', icon: 'bone', ammo: 8, time: 18, cd: 0.25, range: 270, answer: 'HITS IT BEHIND YOU. KNOCKS IT BACK' },   // comes back, hits behind you
+};
+export const ANSWERS = {
+  salt: ['crate', 'ghoul', 'gurney', 'cart'],
+  flame: ['hand', 'roots', 'drawer', 'chandelier'],
+  holy: ['eye', 'vent', 'ghoul', 'trick'],
+  bone: ['trick', 'ghoul', 'crate'],
+};
+export const WORLD_WEAPON = {
+  ward: 'salt', morgue: 'flame', woods: 'flame', graveyard: 'bone',
+  sewer: 'holy', catacombs: 'bone', carnival: 'salt', otherside: 'holy',
 };
 const ECTO = { cd: 0.28, range: 300 }; // Boo's ectoplasm while flying: pops banshees and hands
 const STRETCH_SCALE = 2.4; // about 2.5x Milo's height
 const BEAM_END = FLOOR - 32; // a ceiling beam's tip: just above Milo's head, so sliding clearly fits under
 // one trap of its own per world
-// hand-made flight sections: the gap centre (screen y) of each beam gate, in order
-export const SET_PIECES = {
-  ward: { title: 'THREAD THE NEEDLE!', gates: [176, 150, 206, 160, 214], half: 74 },
-};
-
 export const WORLD_TRAPS = {
   ward: 'gurney', morgue: 'drawer', woods: 'roots', graveyard: 'sinkhole',
   sewer: 'vent', catacombs: 'chandelier', carnival: 'cart', otherside: 'eye',
@@ -92,6 +102,8 @@ export const RunnerFeatures = {
     this.lastKinds = [];
     this.runDiff = 0;
     this.chasmZones = new Set(); this.chasm = null;
+    this.seenKinds = new Set(); this.lastPattern = ''; this.patterns = 0;
+    this.tricksInit();
     this.nextOrbX = this.worldX + RUN.ORB_FIRST_M * PX_PER_METER;
     this.cleanFromX = this.worldX;
     this.stepT = 0; this.breathT = 0;
@@ -130,6 +142,9 @@ export const RunnerFeatures = {
     this.pitGfx = this.add.graphics().setDepth(15.2);  // over the floor band: pits are holes in it
     this.trapGfx = this.add.graphics().setDepth(7);
     this.shotGfx = this.add.graphics().setDepth(21.7);
+    this.trickGfx = this.add.graphics().setDepth(9.45); // THE STRETCH's tricks: arms, mounds, its face
+    this.aimGfx = this.add.graphics().setDepth(21.65);  // brackets on what the weapon will shoot
+    this.endingCreate();
     this.stretch = this.add.sprite(PLAYER_X - this.gap, FLOOR + 2, 'stretch_walk0').setScale(STRETCH_SCALE).setOrigin(0.5, 1).setDepth(9.4);
     this.edgeGfx = this.add.graphics().setDepth(4.45);
     this.gateGfx = this.add.graphics().setDepth(4.46); // the dark passage you run through at a world gate
@@ -222,7 +237,7 @@ export const RunnerFeatures = {
       this.catchUpT = Math.max(0, this.catchUpT - dt);
       this.crEnter = Math.min(1, this.crEnter + dt * 1.7);
       const cap = maxGap(this.runDiff) + this.perk.startGap;
-      if (this.clock - this.lastStumble > 3 && this.catchUpT <= 0 && this.started && this.gap < cap) this.gap = Math.min(cap, this.gap + cleanRate(this.runDiff) * dt);
+      if (this.clock - this.lastStumble > 3 && this.catchUpT <= 0 && this.started && this.gap < cap) this.gap = Math.min(cap, this.gap + cleanRate(this.runDiff) * (1 - 0.55 * this.lateK()) * dt);
       // it sprints for a moment after you land, but the sprint alone never catches you
       if (this.catchUpT > 0 && this.gap > RUN.CAUGHT + 24) this.gap = Math.max(RUN.CAUGHT + 24, this.gap - 12 * dt);
       if (this.gap <= RUN.CAUGHT && this.openingDone) { this.caught('caught'); return; }
@@ -273,7 +288,7 @@ export const RunnerFeatures = {
       return;
     }
     this.lastHitKind = kind; // the results screen names the trap that got you
-    if (this.clock - this.lastStumble < comboWindow(this.runDiff)) { this.caught('2nd'); return; }
+    if (this.clock - this.lastStumble < comboWindow(this.runDiff) + 1.6 * this.lateK()) { this.caught('2nd'); return; }
     this.lastStumble = this.clock; this.stumbles++;
     this.lungeT = 0; this.lastHitKind = kind;
     this.cleanFromX = this.worldX;
@@ -447,9 +462,8 @@ export const RunnerFeatures = {
     for (const sw of this.swings) if (sw.x > PLAYER_X - 20) { if (sw.hx !== undefined) this.burst(sw.hx, sw.hy, 0x9fb8e8, 8, 30, 400); sw.x = -1e5; }
     this.nextSpawn = this.worldX + this.speed * 0.9;
     this.nextBanshee = 1.6;
-    const piece = kind === 'section' ? SET_PIECES[zoneAt(this.zoneIndex).id] : null;
-    this.setPiece = piece ? { ...piece, i: 0, step: this.speed * 1.0 } : null;
-    if (this.setPiece) this.nextSpawn = this.worldX + this.speed * 0.3;
+    this.setPiece = kind === 'section' ? this.makeSetPiece(this.pieceHere()) : null;
+    if (this.setPiece) this.nextSpawn = this.worldX + this.speed * 0.35;
     Audio.sfx('grab'); Audio.thrust(true);
     this.shake(140, 0.006); this.flash(120, 200, 220, 255);
     this.addCombo('power', PLAYER_X + 40, this.py - 40);
@@ -457,23 +471,29 @@ export const RunnerFeatures = {
     this.quip('grab', true);
   },
 
-  // ---------------- flight set pieces ----------------
-  // A hand-made flight instead of the random air spawner: a row of beam gates whose gap climbs and
-  // drops, with candles marking the line through each one. Phase 2 builds the ward's; phase 3 adds one per world.
-  stepSetPiece() {
-    const sp = this.setPiece;
-    if (sp.i >= sp.gates.length || this.worldX < this.nextSpawn) return;
-    const x0 = W + 60, gc = sp.gates[sp.i++];
-    const half = sp.half;
-    const beam = (y1, y2) => this.spawnBeam(x0, 0, Math.PI / 2, false, (y1 + y2) / 2, null, y2 - y1);
-    beam(CEIL + 22, gc - half); // the top node stays clear of the HUD row
-    beam(gc + half, FLOOR - 8);
-    for (let k = -1; k <= 1; k++) this.addCandle(x0 + k * 40, gc);
-    // candles bend from this gap to the next so the line is easy to follow
-    const next = sp.gates[sp.i];
-    if (next !== undefined) for (let k = 1; k <= 4; k++) this.addCandle(x0 + 40 + k * (sp.step / 5), gc + (next - gc) * (k / 5));
-    else for (let k = 0; k < 8; k++) this.addCandle(x0 + 120 + k * 22, gc - Math.sin(k / 7 * Math.PI) * 50);
-    this.nextSpawn = this.worldX + sp.step;
+  // ---------------- flight set pieces (setpieces.js) ----------------
+  // this world's piece; beyond the door, any of them
+  pieceHere() {
+    if (!this.beyond) return SET_PIECES[zoneAt(this.zoneIndex).id];
+    const key = this.chasmKey();
+    if (this.beyondPiece?.key !== key) this.beyondPiece = { key, piece: SET_PIECES[this.rand.pick(Object.keys(SET_PIECES))] };
+    return this.beyondPiece.piece;
+  },
+  // 0 in worlds 1 to 4, then up to 1 in world 8 and beyond: the second half of the journey is the hard half
+  lateK() { return this.beyond ? 1 : Math.max(0, (this.zoneIndex - 3) / 4); },
+  chasmKey() { return this.beyond ? 100 + this.depth : this.zoneIndex; },
+  // where this world's chasm opens (m into the world): 220 m, or earlier when the flight is long,
+  // so you always land with room to spare before the gate (and before the door at the end of world 8)
+  chasmAtM(v = this.speed) {
+    const flightM = (v * this.pieceSeconds(this.pieceHere(), v)) / PX_PER_METER;
+    return Math.max(120, Math.min(RUN.CHASM_AT_M, ZONE_LENGTH_M - 80 - flightM));
+  },
+  // seconds of flight a piece needs: its last segment has to reach you and pass
+  pieceSeconds(piece, v) {
+    if (!piece) return RUN.CHASM_S;
+    const n = piece.segs.length;
+    if (piece.time) return 0.35 + n * piece.every + 1.0;
+    return 0.35 + (n - 1) * piece.every + (W + 60 - PLAYER_X) / v + 0.7;
   },
 
   stepRunnerFlight(dt) {
@@ -505,7 +525,7 @@ export const RunnerFeatures = {
     if (this.airHits === 0) { // a clean flight earns real distance
       this.tracker?.add('cleanLands', 1);
       this.addCombo('power', PLAYER_X + 40, this.py - 40);
-      this.popup(this.setPiece ? 'NEEDLE THREADED!' : 'CLEAN LANDING!', '#9fe8ff');
+      this.popup(this.setPiece ? this.setPiece.done : 'CLEAN LANDING!', '#9fe8ff');
     }
     this.setPiece = null;
     this.flyPop(this.gap - RUN.CAUGHT < 40 ? 'IT\'S RIGHT THERE' : 'IT\'S COMING');
@@ -562,31 +582,34 @@ export const RunnerFeatures = {
     const spawnWX = this.worldX + (W + 40 - PLAYER_X);
     const zoneM = meters % ZONE_LENGTH_M;
     const toGate = ZONE_LENGTH_M - zoneM;
-    // one flight section per world (a gap Boo carries you over)
-    const chasmWorld = this.zoneIndex % 2 === 0;
-    if (chasmWorld && !this.chasm && !this.chasmZones.has(this.zoneIndex) && zoneM >= RUN.CHASM_AT_M && zoneM < RUN.CHASM_AT_M + 60 && !this.gate) {
-      this.chasmZones.add(this.zoneIndex);
-      const w = v * (RUN.CHASM_S * this.perk.fly + this.perk.flyPlus);
+    // one flight section per world (a gap Boo carries you over); beyond the door, one per depth
+    const chasmKey = this.chasmKey();
+    const at = this.chasmAtM(v);
+    if (!this.chasm && !this.chasmZones.has(chasmKey) && zoneM >= at && zoneM < at + 60 && !this.gate && !this.trick) {
+      this.chasmZones.add(chasmKey);
+      // as wide as this world's set piece needs (Count Vlad and Long Ride stretch the piece out, not the gap)
+      const w = v * this.pieceSeconds(this.pieceHere(), v);
       this.chasm = this.addTrap('chasm', spawnWX, { w });
       this.nextTrapX = spawnWX + w + v * 0.9;
       // candles lead the eye to the edge
       for (let i = 0; i < 6; i++) this.addCandle(W + 40 - 150 + i * 22, BOTTOM - 4);
       return;
     }
-    const runway = chasmWorld && !this.chasm && !this.chasmZones.has(this.zoneIndex) && zoneM > RUN.CHASM_AT_M - v * 1.4 / PX_PER_METER && zoneM < RUN.CHASM_AT_M;
+    const runway = !this.chasm && !this.chasmZones.has(chasmKey) && zoneM > at - v * 1.4 / PX_PER_METER && zoneM < at;
     if (this.chasm || runway) return;
-    if (this.gate || toGate < 22) return; // gates stay clear
+    if (this.gate || (toGate < 22 && !this.beyond)) return; // gates (and the door) stay clear
+    if (this.trick) return; // THE STRETCH has the screen to itself
 
     // pickups: a weapon (salt first, then a different one each time) and the (rare) Boo orb
     if (this.worldX >= this.nextWeaponX && !this.weapon) {
-      const kind = this.lastWeapon ? this.rand.pick(Object.keys(WEAPONS).filter((k) => k !== this.lastWeapon)) : 'salt';
+      const kind = this.weaponHere();
       const p = this.makePickup('weapon', spawnWX + 60, BOTTOM - 4, WEAPONS[kind].icon);
       p.weapon = kind;
       this.runPickups.push(p);
       this.nextWeaponX = Infinity; // the next one is scheduled when this weapon breaks
     }
     // the (rare) Boo orb never lands near a flight section or a gate
-    const nearChasm = chasmWorld && zoneM > RUN.CHASM_AT_M - 120 && zoneM < RUN.CHASM_AT_M + 160;
+    const nearChasm = zoneM > at - 120 && zoneM < at + 160;
     if (this.worldX >= this.nextOrbX && !nearChasm && toGate > 80) {
       this.runPickups.push(this.makePickup('orb', spawnWX + 30, BOTTOM - 62));
       this.nextOrbX = this.worldX + this.rand.range(RUN.ORB_EVERY_M[0], RUN.ORB_EVERY_M[1]) * PX_PER_METER;
@@ -600,6 +623,8 @@ export const RunnerFeatures = {
       this.nextTrapX = this.worldX + n * 22 + v * 0.8;
       return;
     }
+    // hand-made patterns (patterns.js): once you've met every piece in it this run
+    if (meters > 150 && this.rand.chance(0.16 + 0.22 * pace.diff + 0.25 * this.lateK()) && this.spawnPattern(meters, spawnWX, v, pace.diff)) return;
     const table = kindsAt(meters, zoneAt(this.zoneIndex).id).map(([k, w]) => [k, w]);
     if (this.lastKinds.length === 2 && this.lastKinds[0] === this.lastKinds[1]) {
       for (const e of table) if (e[0] === this.lastKinds[0]) e[1] = 0;
@@ -622,14 +647,66 @@ export const RunnerFeatures = {
     const d = pace.diff;
     // later on, short combos: you must chain two actions without a breath
     if (meters > 300 && kind !== 'swing' && this.rand.chance(0.15 + 0.25 * d)) w += this.spawnCombo(spawnWX + w, v, d);
-    const lo = Phaser.Math.Linear(1.05, 0.62, d), hi = Phaser.Math.Linear(1.6, 1.1, d);
+    const tight = 1 - 0.2 * this.lateK(); // worlds 5 to 8 pack the traps closer
+    const lo = Phaser.Math.Linear(1.05, 0.62, d) * tight, hi = Phaser.Math.Linear(1.6, 1.1, d) * tight;
     let gap = v * this.rand.range(lo, hi) + w;
     if (meters > 120 && this.rand.chance(0.25 + d * 0.2)) gap = v * (0.8 - 0.12 * d) + w; // a quick double
     this.nextTrapX = this.worldX + gap;
   },
 
   // something that walks at you starts further out, so it reaches you when a still trap would have
-  walkLead(kind, v) { return (WALKERS[kind] || 0) * ((W + 40 - PLAYER_X) / v); },
+  // (t: seconds later than the first thing in a pattern)
+  walkLead(kind, v, t = 0) { return (WALKERS[kind] || 0) * ((W + 40 - PLAYER_X) / v + t); },
+
+  // the pickup is the answer to this world (salt first in a run; never the same one twice in a row)
+  weaponHere() {
+    if (!this.lastWeapon) return 'salt';
+    const want = this.beyond ? this.rand.pick(Object.keys(WEAPONS)) : WORLD_WEAPON[zoneAt(this.zoneIndex).id];
+    if (want !== this.lastWeapon) return want;
+    return this.rand.pick(Object.keys(WEAPONS).filter((k) => k !== this.lastWeapon));
+  },
+
+  // a hand-made pattern; returns false if none fits here
+  spawnPattern(meters, spawnWX, v, d) {
+    const zoneId = this.beyond ? 'otherside' : zoneAt(this.zoneIndex).id;
+    const zoneM = meters % ZONE_LENGTH_M;
+    const pool = patternsFor(zoneId, meters).filter((p) => p.id !== this.lastPattern && p.steps.every((st) => this.seenKinds.has(st[0])));
+    if (!pool.length) return false;
+    const p = this.rand.pick(pool);
+    const last = p.steps[p.steps.length - 1][1];
+    // later on the same pattern comes a little faster (never below the jump/slide metrics)
+    const squeeze = 1 - 0.08 * d;
+    const len = v * last * squeeze + 120;
+    if ((ZONE_LENGTH_M - zoneM) * PX_PER_METER < len + 22 * PX_PER_METER && !this.beyond) return false; // not across a gate
+    this.lastPattern = p.id; this.patterns++;
+    const T0 = (W + 40 - PLAYER_X) / v;
+    let endW = 0;
+    for (const st of p.steps) {
+      const [kind, t0, opts = {}] = st;
+      const t = t0 * squeeze;
+      const wx = spawnWX + v * t + this.walkLead(kind, v, t);
+      const arrive = T0 + t; // seconds until it reaches Milo
+      let tr;
+      if (kind === 'pit') tr = this.addTrap('pit', wx, { w: Math.min(this.pitWidth(v), v * 0.26) });
+      else tr = this.addTrap(kind, wx);
+      if (kind === 'vent') { // steam on (or off) just as you get there
+        const want = opts.on ? 1.35 : 0.3;
+        tr.ph = (((want - (this.clock + arrive)) % 1.7) + 1.7) % 1.7;
+      }
+      if (kind === 'eye') { // high = slide under it, low = jump it
+        const target = opts.at === 'low' ? Math.PI / 2 : -0.3;
+        tr.ph = target - 2.4 * (this.clock + arrive);
+      }
+      tr.pattern = p.id;
+      endW = Math.max(endW, v * t + tr.w);
+    }
+    this.lastKinds = [p.steps[p.steps.length - 1][0], p.steps[p.steps.length - 1][0] + '*'];
+    if (p.tip) this.tip(p.tip);
+    const gap = v * Phaser.Math.Linear(1.2, 0.85, d);
+    this.nextTrapX = this.worldX + (W + 40 - PLAYER_X) + endW + gap;
+    void stepNeed;
+    return true;
+  },
 
   // pits keep growing with speed, so they stay a real jump at 500 px/s
   pitWidth(v) { return Phaser.Math.Clamp(v * 0.3, 60, 150); },
@@ -694,6 +771,7 @@ export const RunnerFeatures = {
       t.s = this.add.image(0, t.y, 'eye').setScale(2).setDepth(8.6);
     }
     if (kind === 'pit' || kind === 'chasm') t.seed = Math.floor(wx) % 97;
+    this.seenKinds.add(kind);
     this.traps.push(t);
     return t;
   },
@@ -729,8 +807,11 @@ export const RunnerFeatures = {
 
   // ---------------- world: traps, monsters, pickups, the salt shotgun ----------------
   stepRunnerWorld(dt) {
+    if (this.trick && this.trick.gone) { this.trick = null; this.crEnter = Math.min(this.crEnter, 0.25); }
+    this.stepTricks(dt, this.worldX / PX_PER_METER, ZONE_LENGTH_M - ((this.worldX / PX_PER_METER) % ZONE_LENGTH_M));
     for (const t of this.traps) {
       if (t.gone) continue;
+      if (t.kind === 'trick') { if (!this.dead) this.stepTrick(t, dt); continue; } // tricks run on their own clock (tricks.js)
       if (t.walk) t.wx -= t.walk * dt;
       const x = this.sx(t.wx);
       if (t.tip && !t.tipped && x < W - 90) { t.tipped = true; this.tip(t.tip); } // the tip shows when you can see the thing
@@ -822,33 +903,57 @@ export const RunnerFeatures = {
     this.lastWeapon = kind;
     this.gunImg.setTexture(def.icon);
     Audio.sfx('powerup');
-    this.popup(def.name + '!', '#ffffff');
-    this.tip('weapon');
+    this.headline(def.name + '!', def.answer, 1.3, true); // what it's for, every time
+    this.tip(kind === 'bone' ? 'bone' : 'weapon');
     this.addCombo('power', PLAYER_X + 40, this.py - 40);
     this.events.emit('power', { kind: 'weapon', icon: def.icon, left: 1 });
   },
 
   // every target a weapon can hit right now: { cx, cy, box, t (trap) | b (banshee) | h (v5 hand) }
+  // a ground weapon only sees what it answers (ANSWERS); Boo's ecto sees what's in the air
   targets(kind) {
     const out = [];
-    for (const t of this.traps) {
-      if (t.gone) continue;
-      const x = this.sx(t.wx);
-      const burnable = kind === 'flame' && ((t.kind === 'hand' && t.state !== 'wait') || (t.kind === 'roots' && t.state === 'rise'));
-      if (!(t.hp > 0) && !burnable) continue;
-      let box;
-      if (t.kind === 'eye') box = { l: x, r: x + t.w, t: t.y - 11, b: t.y + 11 };
-      else if (t.kind === 'hand') box = { l: x - 10, r: x + 10, t: t.y, b: FLOOR };
-      else if (t.kind === 'roots') box = { l: x, r: x + t.w, t: FLOOR - t.cur - 4, b: FLOOR };
-      else box = { l: x, r: x + t.w, t: FLOOR - t.h - 4, b: FLOOR };
-      out.push({ cx: (box.l + box.r) / 2, cy: (box.t + box.b) / 2, box, t });
+    if (kind === 'ecto') {
+      for (const b of this.banshees) out.push({ cx: b.x - 6, cy: b.y, box: { l: b.x - 22, r: b.x + 10, t: b.y - 16, b: b.y + 16 }, b });
+      for (const h of this.hands) if (h.state !== 'wait') {
+        const box = h.fromFloor ? { l: h.x - 12, r: h.x + 12, t: h.y + 6, b: FLOOR } : { l: h.x - 12, r: h.x + 12, t: CEIL, b: h.y - 6 };
+        out.push({ cx: h.x, cy: (box.t + box.b) / 2, box, h });
+      }
+      return out;
     }
-    if (kind !== 'flame') for (const b of this.banshees) out.push({ cx: b.x - 6, cy: b.y, box: { l: b.x - 22, r: b.x + 10, t: b.y - 16, b: b.y + 16 }, b });
-    if (kind === 'ecto') for (const h of this.hands) if (h.state !== 'wait') {
-      const box = h.fromFloor ? { l: h.x - 12, r: h.x + 12, t: h.y + 6, b: FLOOR } : { l: h.x - 12, r: h.x + 12, t: CEIL, b: h.y - 6 };
-      out.push({ cx: h.x, cy: (box.t + box.b) / 2, box, h });
+    const ans = ANSWERS[kind] || [];
+    for (const t of this.traps) {
+      if (t.gone || !ans.includes(t.kind)) continue;
+      const x = this.sx(t.wx);
+      let box;
+      if (t.kind === 'trick') {
+        const c = this.trickAim(t);
+        if (!c) continue;
+        box = { l: c.x - 14, r: c.x + 14, t: c.y - 16, b: c.y + 16 };
+      } else if (t.kind === 'eye') box = { l: x, r: x + t.w, t: t.y - 11, b: t.y + 11 };
+      else if (t.kind === 'hand') { if (t.state === 'wait') continue; box = { l: x - 10, r: x + 10, t: t.y, b: FLOOR }; }
+      else if (t.kind === 'roots') { if (t.state !== 'rise') continue; box = { l: x, r: x + t.w, t: FLOOR - t.cur - 4, b: FLOOR }; }
+      else if (t.kind === 'drawer') { if (t.out < 0.2) continue; box = { l: x, r: x + t.w * t.out, t: FLOOR - 50, b: FLOOR - 26 }; }
+      else if (t.kind === 'chandelier') { if (t.state !== 'down') continue; box = { l: x, r: x + t.w, t: t.y - 2, b: FLOOR }; }
+      else if (t.kind === 'vent') box = { l: x, r: x + t.w, t: FLOOR - 34, b: FLOOR };
+      else box = { l: x, r: x + t.w, t: FLOOR - t.h - 4, b: FLOOR };
+      out.push({ cx: (box.l + box.r) / 2, cy: (box.t + box.b) / 2, box, t, behind: t.kind === 'trick' });
     }
     return out;
+  },
+
+  // where a weapon aims at a trick: THE STRETCH itself, or the part of it that's coming at you
+  trickAim(t) {
+    const b = this.trickBox(t);
+    if (b) return { x: (b.l + b.r) / 2, y: (b.t + b.b) / 2 };
+    const back = PLAYER_X - 8 - this.gapVis * 0.72 - 14;
+    switch (t.trick) {
+      case 'drawer': return { x: this.sx(t.wx) + 20, y: FLOOR - 12 };
+      case 'burrow': return t.erupt < 0 ? { x: t.mx, y: FLOOR - 10 } : null;
+      case 'ceiling': return { x: t.cx, y: CEIL + 24 };
+      case 'canopy': return t.phase === 'tell' ? null : { x: this.sx(t.wx) + 34, y: FLOOR - 18 };
+      default: return back > 0 ? { x: back, y: FLOOR - 50 } : null;
+    }
   },
 
   stepWeapon(dt) {
@@ -882,7 +987,7 @@ export const RunnerFeatures = {
     if (wp.cd > 0 || this.flying) return; // in the air, Boo's ecto does the shooting
     if (wp.kind === 'bone' && this.pellets.some((p) => p.type === 'bone')) return; // one boomerang at a time
     const mx = PLAYER_X + 12, my = this.py - 2;
-    const tg = this.nearest(this.targets(wp.kind), mx, my, def.range);
+    const tg = this.nearest(this.targets(wp.kind), mx, my, def.range, wp.kind === 'bone');
     if (!tg) return;
     const a = Math.atan2(tg.cy - my, tg.cx - mx);
     const shot = (type, ang, speed, life, dmg, extra = {}) => this.pellets.push({ type, x: mx, y: my, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, life, dmg, hits: new Set(), ...extra });
@@ -905,9 +1010,10 @@ export const RunnerFeatures = {
     if (wp.ammo !== Infinity) wp.ammo--;
   },
 
-  nearest(list, mx, my, range) {
+  // the closest target ahead; the boomerang also turns round for THE STRETCH behind you
+  nearest(list, mx, my, range, back = false) {
     let best = null, bestD = range;
-    for (const t of list) { const d = Math.hypot(t.cx - mx, t.cy - my); if (t.cx > mx - 4 && d < bestD) { bestD = d; best = t; } }
+    for (const t of list) { const d = Math.hypot(t.cx - mx, t.cy - my); if ((t.cx > mx - 4 || (back && t.behind)) && d < bestD) { bestD = d; best = t; } }
     return best;
   },
 
@@ -931,17 +1037,17 @@ export const RunnerFeatures = {
       if (p.life <= 0 || p.x > W + 40 || p.x < -40 || p.y > FLOOR + 4) p.dead = true;
     }
     // hits: pierce unless the shot is a single pellet; each shot hits each target once (bone: once out, once back)
-    const list = this.pellets.some((p) => !p.dead) ? this.targets('ecto').concat(this.targets('flame').filter((x) => x.t && !(x.t.hp > 0))) : [];
+    // each shot only meets what its weapon answers (ANSWERS); the lists are built once per step
+    const lists = {};
+    const listFor = (type) => lists[type] || (lists[type] = this.targets(type));
     for (const p of this.pellets) {
       if (p.dead) continue;
       const seen = p.type === 'bone' && p.phase === 'back' ? p.back : p.hits;
-      for (const tg of list) {
+      for (const tg of listFor(p.type)) {
         const ref = tg.t || tg.b || tg.h;
-        if (seen.has(ref)) continue;
+        if (seen.has(ref) || (tg.t && tg.t.gone)) continue;
         const bx = tg.box;
         if (p.x < bx.l || p.x > bx.r || p.y < bx.t || p.y > bx.b) continue;
-        if (tg.h && p.type !== 'ecto') continue;
-        if (tg.t && !(tg.t.hp > 0) && p.type !== 'flame') continue; // only fire burns hands and roots
         seen.add(ref);
         this.hitTarget(tg, p);
         if (p.once) { p.dead = true; break; }
@@ -976,11 +1082,19 @@ export const RunnerFeatures = {
     }
     const t = tg.t;
     const x = this.sx(t.wx);
-    if (!(t.hp > 0)) { // fire burns a hand or roots away
+    if (t.kind === 'trick') { this.smashTrick(t); return; }
+    if (t.kind === 'vent') { // holy water puts the steam out for good
+      this.burst(tg.cx, FLOOR - 20, 0xdfe8e0, 14, 40, 420);
+      this.popup('DOUSED!', '#9fd0ff', FLOOR - 70);
+      this.addCombo('splat', tg.cx, FLOOR - 60); this.kills++; this.tracker?.add('kills', 1);
+      Audio.sfx('holy'); this.dropTrap(t);
+      return;
+    }
+    if (p.type === 'flame' && !(t.hp > 0)) { // fire burns a hand, roots, a drawer or a wreck away
       this.burst(tg.cx, tg.cy, 0xff8a2a, 12, 30, 380);
       this.addCandle(tg.cx, FLOOR - 30);
       this.addCombo('splat', tg.cx, tg.cy - 30);
-      this.popup('BURNED!', '#ffb060', tg.cy - 30);
+      this.popup(t.kind === 'drawer' ? 'BURNED SHUT!' : 'BURNED!', '#ffb060', Math.min(tg.cy - 30, FLOOR - 70));
       this.tracker?.add('burns', 1); this.kills++; this.tracker?.add('kills', 1);
       this.dropTrap(t);
       return;
@@ -1037,7 +1151,8 @@ export const RunnerFeatures = {
       else if (t.kind === 'vent') hit = t.on && hits(x + 3, x + t.w - 3, FLOOR - 60, FLOOR);
       else if (t.kind === 'chandelier') hit = t.state !== 'hang' && hits(x + 4, x + t.w - 4, t.y + 2, t.y + t.h);
       else if (t.kind === 'eye') hit = hits(x + 3, x + t.w - 3, t.y - 9, t.y + 9);
-      if (hit) { t.hit = true; this.stumble(t.kind); return; }
+      else if (t.kind === 'trick') { const b = this.trickBox(t); hit = !!b && hits(b.l, b.r, b.t, b.b); }
+      if (hit) { t.hit = true; this.stumble(t.kind === 'trick' ? 'trick:' + t.trick : t.kind); return; }
     }
     for (const s of this.swings) {
       if (!s.ground || s.hx === undefined || s.hitDone) continue;
@@ -1084,9 +1199,12 @@ export const RunnerFeatures = {
     pg.clear();
     const tg = this.trapGfx;
     tg.clear();
+    this.trickGfx.clear();
+    this.renderDoor(lead);
     for (const t of this.traps) {
       if (t.gone) continue;
       const x = Math.round(this.sx(t.wx) - lead);
+      if (t.kind === 'trick') { t.ownsStretch = this.renderTrick(t, x, tg, pg); continue; }
       if (t.kind === 'pit' || t.kind === 'chasm') {
         // a hole with depth: lit lips, side walls going down, the dark getting deeper
         pg.fillStyle(0x07060d, 1); pg.fillRect(x, FLOOR - 1, t.w, H - FLOOR + 1);
@@ -1105,7 +1223,7 @@ export const RunnerFeatures = {
         continue;
       }
       // every ground threat sits on a warm danger shadow, so it reads as a threat and not as scenery
-      if (t.kind !== 'drawer' && t.kind !== 'eye' && t.kind !== 'beam' && t.kind !== 'chandelier') {
+      if (t.kind !== 'drawer' && t.kind !== 'eye' && t.kind !== 'beam' && t.kind !== 'chandelier' && t.kind !== 'vent') {
         tg.fillStyle(0xff5a3a, 0.28); tg.fillEllipse(x + (t.kind === 'hand' ? 0 : t.w / 2), FLOOR - 1, (t.kind === 'hand' ? 24 : t.w) + 10, 7);
       }
       if (t.kind === 'beam') {
@@ -1173,9 +1291,11 @@ export const RunnerFeatures = {
     }
     this.gunImg.setVisible(!!this.weapon && !this.dead)
       .setPosition(PLAYER_X + 14, (this.slide > 0 && this.grounded ? FLOOR - 16 : py + 4));
+    this.renderAim();
     this.renderGate(lead);
 
     if (this.grab) { this.edgeGfx.clear(); this.renderGrab(); return; }
+    if (this.finish) { this.edgeGfx.clear(); return; } // ending.js draws the door scene
     this.renderStretch();
   },
 
@@ -1297,8 +1417,29 @@ export const RunnerFeatures = {
     }
   },
 
+  // small brackets on what your weapon will shoot, so you learn what each one is for
+  renderAim() {
+    const g = this.aimGfx;
+    g.clear();
+    const wp = this.weapon;
+    if (!wp || this.dead || this.flying) return;
+    const range = WEAPONS[wp.kind].range;
+    const a = 0.5 + 0.3 * Math.sin(this.clock * 10);
+    g.lineStyle(2, 0xffffff, a);
+    for (const tg of this.targets(wp.kind)) {
+      if (Math.hypot(tg.cx - PLAYER_X, tg.cy - this.py) > range + 120 || tg.cx > W) continue;
+      const { l, r, t, b } = tg.box, k = 5;
+      g.lineBetween(l - 2, t - 2, l - 2 + k, t - 2); g.lineBetween(l - 2, t - 2, l - 2, t - 2 + k);
+      g.lineBetween(r + 2, t - 2, r + 2 - k, t - 2); g.lineBetween(r + 2, t - 2, r + 2, t - 2 + k);
+      g.lineBetween(l - 2, b + 2, l - 2 + k, b + 2); g.lineBetween(l - 2, b + 2, l - 2, b + 2 - k);
+      g.lineBetween(r + 2, b + 2, r + 2 - k, b + 2); g.lineBetween(r + 2, b + 2, r + 2, b + 2 - k);
+    }
+  },
+
   renderStretch() {
     const s = this.stretch;
+    if (this.trick && !this.trick.gone && this.trick.ownsStretch && !this.flying) { this.renderEdge(1 - this.light); return; }
+    this.resetStretchSprite();
     if (this.flying) {
       this.edgeGfx.clear();
       // it can't follow: it jumps and reaches up with its long arms, then falls behind

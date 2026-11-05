@@ -72,6 +72,9 @@ export const MISSION_DEFS = [
   { id: 'nocandle500', text: 'RUN 500M WITH NO CANDLES', stars: 3, stat: 'noCandleM', target: 500, scope: 'run' },
   { id: 'zone7', text: 'REACH THE OTHER SIDE', stars: 3, stat: 'zone', target: 7, scope: 'run' },
   { id: 'score60k', text: 'SCORE 60,000 IN A RUN', stars: 3, stat: 'score', target: 60000, scope: 'run' },
+  { id: 'trick3', text: 'MAKE IT MISS 3 TIMES IN A RUN', stars: 2, stat: 'tricks', target: 3, scope: 'run' },
+  { id: 'trick25t', text: 'MAKE IT MISS 25 TIMES TOTAL', stars: 3, stat: 'tricks', target: 25, scope: 'total' },
+  { id: 'door1', text: 'FIND THE DOOR', stars: 3, stat: 'doors', target: 1, scope: 'run' },
   { id: 'm3500', text: 'REACH 3500M', stars: 3, stat: 'meters', target: 3500, scope: 'run' },
 ];
 const BY_ID = Object.fromEntries(MISSION_DEFS.map((d) => [d.id, d]));

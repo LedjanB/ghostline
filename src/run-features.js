@@ -275,6 +275,9 @@ export const Features = {
       gurney: 'ROLLING BEDS! JUMP THEM!', drawer: 'DRAWERS POP OUT. SLIDE UNDER!', roots: 'ROOTS RISE UP. JUMP THEM!',
       sinkhole: 'LOOSE DIRT CAVES IN. JUMP IT!', vent: 'STEAM! JUMP IT OR WAIT IT OUT', chandelier: 'WATCH THE SHADOW ON THE FLOOR',
       cart: 'CARTS ON THE RAILS! JUMP!', eye: 'THE EYE BOBS. SLIDE OR JUMP',
+      reach: 'ITS ARM COMES AT HEAD HEIGHT!', tdrawer: 'LOW DRAWER = ITS ARM. JUMP!', canopy: 'SHADOW AHEAD? IT DROPS. JUMP!',
+      burrow: 'MOUND BEHIND? JUMP WHEN IT HITS', ceiling: 'IT DROPS AHEAD. SLIDE THROUGH!', skull: 'HIGH: SLIDE. LOW: JUMP.',
+      ride: 'A CART FROM BEHIND! JUMP!', hold: 'HOLD SLIDE TO STAY LOW!', bone: 'THE BONE HITS IT BEHIND YOU!',
     });
     if (!TIPS[id]) return;
     if (this.runner && (this.dead || this.flying)) return; // never over a death or a flight; it comes back next time

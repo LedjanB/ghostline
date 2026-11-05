@@ -15,6 +15,9 @@ import { Features, dailySeed } from '../run-features.js';
 import { ScoreFeatures } from '../run-score.js';
 import { ZoneLayers } from '../zones.js';
 import { RunnerFeatures } from '../runner.js';
+import { TrickFeatures } from '../tricks.js';
+import { SetPieceFeatures } from '../setpieces.js';
+import { EndingFeatures } from '../ending.js';
 
 const STEP = 1 / 120;
 const MAX_STEPS = 12;
@@ -141,6 +144,7 @@ export class PlayScene extends Phaser.Scene {
       this.bestPx = 0; // records only count in normal mode
       if (this.worldX > 0) this.nextBanshee = 8;
     }
+    this.endingInit(save); // v6 phase 3: the door at the end of world 8, endless mode (src/ending.js)
     this.featInit(save);
     this.scoreInit(save);
     this.runnerInit(); // v6: Milo runs, THE STRETCH chases (src/runner.js)
@@ -264,6 +268,7 @@ export class PlayScene extends Phaser.Scene {
     const airHold = holding && (!this.runner || this.flying);
     this.stepGhost(dt, this.runner ? this.flying : holding);
     this.stepZones();
+    if (this.runner) this.stepDoor();
     if (!this.dead) {
       if (!this.runner || this.flying) { // the v5 hazards are the air traps
         this.spawner(meters, pace);
@@ -758,6 +763,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   stepDeath(dt) {
+    if (this.finish) { this.stepFinish(dt); return; } // v6: the door (ending.js)
     if (this.grab) { this.stepGrab(dt); return; } // v6: the death scene (runner.js)
     if (this.runner) { this.speed *= Math.exp(-3.5 * dt); if (this.speed < 12) this.speed = 0; } // v6: caught = it all stops, no long slide
     this.vy += GRAVITY * dt;
@@ -1017,4 +1023,4 @@ export class PlayScene extends Phaser.Scene {
   }
 }
 
-Object.assign(PlayScene.prototype, Features, ScoreFeatures, RunnerFeatures);
+Object.assign(PlayScene.prototype, Features, ScoreFeatures, RunnerFeatures, TrickFeatures, SetPieceFeatures, EndingFeatures);

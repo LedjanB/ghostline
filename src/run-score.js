@@ -48,7 +48,7 @@ export const ScoreFeatures = {
 
   totalScore() {
     if (this.creative) return 0;
-    return Math.floor(this.worldX / 24) * this.mult + this.points;
+    return Math.floor((this.worldX - (this.startX || 0)) / 24) * this.mult + this.points; // endless starts at the door: score only what you ran
   },
 
   trailColor(i = 0) {

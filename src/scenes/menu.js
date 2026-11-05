@@ -97,7 +97,7 @@ export class MenuScene extends Phaser.Scene {
   }
 
   toggleMode() {
-    const order = ['normal', 'daily', 'creative'];
+    const order = Save.get().ending.seen ? ['normal', 'endless', 'daily', 'creative'] : ['normal', 'daily', 'creative'];
     Save.update((s) => { s.mode = order[(order.indexOf(s.mode) + 1) % order.length]; });
     this.refresh();
   }
@@ -205,12 +205,14 @@ export class MenuScene extends Phaser.Scene {
     });
     const creative = save.mode === 'creative';
     const daily = save.mode === 'daily';
-    this.modeBtn.setLabel(creative ? 'CREATIVE' : daily ? 'DAILY' : 'NORMAL');
-    if (creative) this.modeBtn.setColors(0x1d3a3a, 0x7fe0c0);
+    const endless = save.mode === 'endless';
+    this.modeBtn.setLabel(creative ? 'CREATIVE' : daily ? 'DAILY' : endless ? 'ENDLESS' : 'NORMAL');
+    if (endless) this.modeBtn.setColors(0x3a3010, 0xfff2b0);
+    else if (creative) this.modeBtn.setColors(0x1d3a3a, 0x7fe0c0);
     else if (daily) this.modeBtn.setColors(0x1f2a4a, 0x6fb7ff);
     else this.modeBtn.setColors(0x2a1f4a, 0x8f7fbf);
     this.subtitle.setText(creative ? "CREATIVE: YOU CAN'T LOSE"
-      : daily ? 'DAILY: RACE TODAY\'S GHOST' : "DON'T LOOK BACK");
+      : daily ? 'DAILY: RACE TODAY\'S GHOST' : endless ? 'ENDLESS: BEYOND THE DOOR' : save.ending.seen ? 'THE DOOR IS OPEN' : "DON'T LOOK BACK");
     const todayBest = save.daily.date === todayKey() ? save.daily.best : 0;
     if (daily) this.bestText.setText(`TODAY ${todayBest}M`);
     this.missionsBtn.setLabel('MISSIONS');

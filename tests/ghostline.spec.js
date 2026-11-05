@@ -42,7 +42,8 @@ test('first launch plays the story, then starts a run', async ({ page }) => {
 test('an old v1 save migrates to the current version and keeps progress', async ({ page }) => {
   await boot(page, { key: 'ghostline-save-v1', value: { candles: 321, best: 999, owned: ['survivor', 'nurse'], selected: 'nurse', muted: true, runs: 7 } });
   const s = await page.evaluate(() => JSON.parse(localStorage.getItem('ghostline-save')));
-  expect(s.version).toBe(6);
+  expect(s.version).toBe(7);
+  expect(s.ending).toEqual({ seen: false, runs: 0 });
   expect(s.candles).toBe(321);
   expect(s.bestScore).toBe(0);
   expect(s.boo).toEqual({ hat: 'none', trail: 'ecto' });
@@ -133,7 +134,7 @@ test('missions complete and pay out', async ({ page }) => {
 });
 
 test('score = meters x mission multiplier + combo points, and a hit drops the combo', async ({ page }) => {
-  const errors = await boot(page, { key: 'ghostline-save', value: { version: 6, storySeen: true, missions: { active: [], done: [], stars: 0, level: 4, totals: {} } } });
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 7, storySeen: true, missions: { active: [], done: [], stars: 0, level: 4, totals: {} } } });
   await page.keyboard.press('Enter');
   await page.waitForTimeout(1500);
   const r = await play(page, (s) => {
@@ -160,7 +161,7 @@ test('score = meters x mission multiplier + combo points, and a hit drops the co
 });
 
 test('every run unlocks something, new hats and trails go straight on Boo', async ({ page }) => {
-  const errors = await boot(page, { key: 'ghostline-save', value: { version: 6, storySeen: true, runs: 5 } });
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 7, storySeen: true, runs: 5 } });
   await page.keyboard.press('Enter');
   await page.waitForTimeout(1500);
   await simulate(page, 50);
@@ -176,7 +177,7 @@ test('every run unlocks something, new hats and trails go straight on Boo', asyn
 });
 
 test('the unlocks screen and journal open from the menu', async ({ page }) => {
-  const errors = await boot(page, { key: 'ghostline-save', value: { version: 6, storySeen: true, unlocks: { got: 12, points: 0, fresh: 3 } } });
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 7, storySeen: true, unlocks: { got: 12, points: 0, fresh: 3 } } });
   await page.evaluate(() => window.__game.scene.getScene('menu').overlay('unlocks'));
   await page.waitForTimeout(400);
   expect(await scenes(page)).toContain('unlocks');
@@ -191,7 +192,7 @@ test('the unlocks screen and journal open from the menu', async ({ page }) => {
 });
 
 test('every character has its own world look', async ({ page }) => {
-  const errors = await boot(page, { key: 'ghostline-save', value: { version: 6, storySeen: true, owned: ['survivor', 'vampire'], selected: 'vampire' } });
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 7, storySeen: true, owned: ['survivor', 'vampire'], selected: 'vampire' } });
   await page.keyboard.press('Enter');
   await page.waitForTimeout(1500);
   const r = await play(page, (s) => ({ tint: s.look.tint, fx: s.look.look.fx, layer: s.layers.look }));
@@ -201,7 +202,7 @@ test('every character has its own world look', async ({ page }) => {
 
 // ---------------- v6 runner ----------------
 test('runner: a stumble lets THE STRETCH closer, a second one in a row gets you caught', async ({ page }) => {
-  const errors = await boot(page, { key: 'ghostline-save', value: { version: 6, storySeen: true, runs: 5 } });
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 7, storySeen: true, runs: 5 } });
   await page.keyboard.press('Enter');
   await page.waitForTimeout(1500);
   await simulate(page, 60);
@@ -222,7 +223,7 @@ test('runner: a stumble lets THE STRETCH closer, a second one in a row gets you 
 });
 
 test('runner: Boo carries you over the chasm, and it waits where you land', async ({ page }) => {
-  const errors = await boot(page, { key: 'ghostline-save', value: { version: 6, storySeen: true, runs: 5 } });
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 7, storySeen: true, runs: 5 } });
   await page.keyboard.press('Enter');
   await page.waitForTimeout(1500);
   const r = await play(page, (s) => {
@@ -249,7 +250,7 @@ test('runner: Boo carries you over the chasm, and it waits where you land', asyn
 });
 
 test('runner: the salt shotgun fires on its own and smashes a crate into candles', async ({ page }) => {
-  const errors = await boot(page, { key: 'ghostline-save', value: { version: 6, storySeen: true } });
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 7, storySeen: true } });
   await page.keyboard.press('Enter');
   await page.waitForTimeout(1500);
   const r = await play(page, (s) => {
@@ -268,7 +269,7 @@ test('runner: the salt shotgun fires on its own and smashes a crate into candles
 });
 
 test('runner: on a first run, Boo saves you until 300 m', async ({ page }) => {
-  const errors = await boot(page, { key: 'ghostline-save', value: { version: 6, storySeen: true } });
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 7, storySeen: true } });
   await page.keyboard.press('Enter');
   await page.waitForTimeout(1500);
   await simulate(page, 80);
@@ -278,5 +279,132 @@ test('runner: on a first run, Boo saves you until 300 m', async ({ page }) => {
     return { safe: s.safeRun, dead: s.dead, rescues: s.rescues };
   });
   expect(r).toEqual({ safe: true, dead: false, rescues: 1 });
+  expect(errors).toEqual([]);
+});
+
+// ---------------- v6 phase 3 (alpha) ----------------
+const startRun = async (page, save) => {
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 7, storySeen: true, runs: 12, ...save } });
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(1500);
+  return errors;
+};
+
+test('phase 3: every hand-made trap pattern leaves time to jump or slide', async ({ page }) => {
+  await boot(page);
+  const r = await page.evaluate(async () => {
+    const P = await import('/src/patterns.js');
+    return { unfair: P.ALL_PATTERNS.filter((p) => !P.patternFair(p)).map((p) => p.id), worlds: Object.keys(P.WORLD_PATTERNS).length, n: P.ALL_PATTERNS.length };
+  });
+  expect(r.unfair).toEqual([]);
+  expect(r.worlds).toBe(8);
+  expect(r.n).toBeGreaterThanOrEqual(20);
+});
+
+test('phase 3: every world has its own flight set piece, and each one builds its hazards', async ({ page }) => {
+  const errors = await startRun(page, {});
+  const r = await play(page, (s) => {
+    const out = {};
+    for (let w = 0; w < 8; w++) {
+      s.traps.forEach((t) => s.dropTrap(t)); s.traps = []; s.trick = null; s.chasm = null;
+      s.worldX = (w * 400 + 100) * 24; s.zoneIndex = w; s.nextTrapX = s.worldX + 1e6; s.trickZone = w; s.nextTrickT = 99;
+      let n = 0;
+      for (; n < 120 * 30 && !s.flying; n++) { s.invuln = 1e9; s.step(1 / 120, true); }
+      const title = s.setPiece && s.setPiece.title;
+      let made = 0, maxI = 0, segs = s.setPiece ? s.setPiece.segs.length : -1;
+      const count = () => s.beams.length + s.hands.length + s.warnings.length + s.lasers.length + s.banshees.length;
+      for (n = 0; n < 120 * 20 && s.flying; n++) { s.invuln = 1e9; const c0 = count(); s.step(1 / 120, s.py > 180); made += Math.max(0, count() - c0); if (s.setPiece) maxI = s.setPiece.i; }
+      out[w] = { title, done: maxI === segs, made, landed: !s.flying };
+    }
+    return out;
+  });
+  const titles = new Set(Object.values(r).map((x) => x.title));
+  expect(titles.size).toBe(8);
+  for (const w of Object.values(r)) { expect(w.done).toBe(true); expect(w.landed).toBe(true); expect(w.made).toBeGreaterThan(3); }
+  expect(errors).toEqual([]);
+});
+
+test('phase 3: THE STRETCH has a trick in every world, it can hurt you, and it ends', async ({ page }) => {
+  const errors = await startRun(page, {});
+  const r = await play(page, (s) => {
+    const out = {};
+    for (let w = 0; w < 7; w++) {
+      s.zoneIndex = w;
+      s.traps.forEach((t) => s.dropTrap(t)); s.traps = []; s.trick = null;
+      s.startTrick(false);
+      const t = s.trick;
+      let armed = false, n = 0;
+      for (; n < 120 * 8 && s.trick === t; n++) { s.invuln = 1e9; s.nextTrapX = s.worldX + 1e6; s.step(1 / 120, false); if (!t.gone && s.trickBox(t)) armed = true; }
+      out[t.trick] = { armed, ended: s.trick !== t };
+    }
+    return out;
+  });
+  expect(Object.keys(r).sort()).toEqual(['burrow', 'canopy', 'ceiling', 'drawer', 'reach', 'ride', 'skull']);
+  expect(Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v.armed && v.ended]))).toEqual({ burrow: true, canopy: true, ceiling: true, drawer: true, reach: true, ride: true, skull: true });
+  expect(errors).toEqual([]);
+});
+
+test('phase 3: each weapon only aims at what it answers', async ({ page }) => {
+  const errors = await startRun(page, {});
+  const r = await play(page, (s) => {
+    s.openingDone = true;
+    s.traps.forEach((t) => s.dropTrap(t)); s.traps = [];
+    const vent = s.addTrap('vent', s.worldX + 160);
+    const crate = s.addTrap('crate', s.worldX + 220);
+    s.armWeapon('salt');
+    const salt = s.targets('salt').map((x) => x.t.kind);
+    s.weapon = null;
+    s.armWeapon('holy');
+    for (let n = 0; n < 240 && !vent.gone; n++) { s.invuln = 1e9; s.step(1 / 120, false); }
+    return { salt, ventGone: vent.gone, crateLeft: !crate.gone || crate.wx < s.worldX };
+  });
+  expect(r.salt).toEqual(['crate']);
+  expect(r.ventGone).toBe(true); // holy water douses the steam
+  expect(r.crateLeft).toBe(true); // and leaves the crate to the salt
+  expect(errors).toEqual([]);
+});
+
+test('phase 3: the door at the end of world 8 stays shut without every journal page', async ({ page }) => {
+  const errors = await startRun(page, { unlocks: { got: 8, points: 0, fresh: 0 } });
+  const r = await play(page, (s) => {
+    s.openingDone = true;
+    s.worldX = 3150 * 24; s.zoneIndex = 7; s.chasmZones.add(7); s.nextTrapX = s.worldX + 1e6;
+    let n = 0;
+    for (; n < 120 * 20 && !s.ended; n++) { s.invuln = 1e9; s.trickZone = 7; s.nextTrickT = 99; s.step(1 / 120, false); }
+    return { kind: s.finish && s.finish.kind, ended: s.ended, cause: s.lastHitKind };
+  });
+  expect(r).toEqual({ kind: 'locked', ended: true, cause: 'door' });
+  expect(errors).toEqual([]);
+});
+
+test('phase 3: with every page the door opens, the ending plays once, then endless mode', async ({ page }) => {
+  const errors = await startRun(page, { unlocks: { got: 33, points: 0, fresh: 0 } });
+  const r = await play(page, (s) => {
+    s.openingDone = true;
+    s.worldX = 3150 * 24; s.zoneIndex = 7; s.chasmZones.add(7); s.nextTrapX = s.worldX + 1e6;
+    let n = 0;
+    for (; n < 120 * 25 && !s.ended; n++) { s.invuln = 1e9; s.trickZone = 7; s.nextTrickT = 99; s.step(1 / 120, false); }
+    return { kind: s.finish && s.finish.kind, ended: s.ended };
+  });
+  expect(r).toEqual({ kind: 'ending', ended: true });
+  const save = await page.evaluate(async () => (await import('/src/save.js')).Save.get());
+  expect(save.ending.seen).toBe(true);
+  // endless: starts past the door, the score counts only what you ran, and a new depth every 400 m
+  await page.evaluate(async () => { const { Save } = await import('/src/save.js'); Save.update((s) => { s.mode = 'endless'; }); });
+  await page.reload();
+  await page.waitForFunction(() => window.__game && window.__game.scene.getScenes(true).length > 0);
+  await page.waitForTimeout(500);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(1500);
+  const e = await play(page, (s) => {
+    const start = Math.floor(s.worldX / 24), score0 = s.totalScore();
+    s.openingDone = true;
+    for (let n = 0; n < 120 * 40 && !s.dead; n++) { s.invuln = 1e9; s.step(1 / 120, n % 40 < 20); }
+    return { start, beyond: s.beyond, score0, depth: s.depth, dead: s.dead };
+  });
+  expect(e.start).toBeGreaterThan(3200);
+  expect(e.beyond).toBe(true);
+  expect(e.score0).toBeLessThan(300); // not the 3,200 m before the door
+  expect(e.depth).toBeGreaterThanOrEqual(1);
   expect(errors).toEqual([]);
 });
