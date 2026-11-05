@@ -13,7 +13,8 @@ export class HudScene extends Phaser.Scene {
     this.distText = text(this, 14, 18, '0M', 16, '#e6f0ff', 0).setDepth(d).setStroke('#07060d', 4);
     this.candleIcon = this.add.image(176, 18, 'candle0').setScale(1.5);
     this.candleText = text(this, 190, 18, `${play.runCandles}`, 16, '#ffd75e', 0).setStroke('#07060d', 4);
-    this.flame = this.add.image(318, 18, 'flame_icon').setScale(2);
+    this.runner = !!play.runner;
+    this.flame = this.add.image(318, 18, this.runner ? 'stretch_icon' : 'flame_icon').setScale(2);
     this.lightBar = this.add.graphics();
     this.shieldIcon = this.add.image(498, 18, 'shield_icon').setScale(2).setVisible(play.shield);
     this.pauseBtn = button(this, W - 24, 18, 'II', () => play.requestPause(), { w: 30, h: 26, size: 8 });
@@ -84,7 +85,7 @@ export class HudScene extends Phaser.Scene {
     on('power', (p) => {
       this.powerBar.clear();
       if (!p) { this.powerIcon.setVisible(false); return; }
-      this.powerIcon.setTexture(p.kind === 'salt' ? 'salt_gun' : `orb_${p.kind}`).setVisible(true);
+      this.powerIcon.setTexture(p.icon || `orb_${p.kind}`).setVisible(true);
       this.powerBar.fillStyle(0x07060d, 1); this.powerBar.fillRect(526, 30, 28, 4);
       this.powerBar.fillStyle(0xffb0d0, 1); this.powerBar.fillRect(526, 30, Math.round(28 * p.left), 4);
     });
@@ -114,7 +115,10 @@ export class HudScene extends Phaser.Scene {
     g.clear();
     g.fillStyle(0x07060d, 1); g.fillRect(332, 11, 132, 14);
     g.fillStyle(0x3a2a1a, 1); g.fillRect(334, 13, 128, 10);
-    g.fillStyle(blink ? 0xff4040 : 0xffb040, 1); g.fillRect(334, 13, Math.round(128 * v), 10);
-    g.fillStyle(0xffe0a0, 1); g.fillRect(334, 13, Math.round(128 * v), 2);
+    // v6 runner: the bar is how far back THE STRETCH is (full = safe), and it turns red as it closes in
+    const col = !this.runner ? (blink ? 0xff4040 : 0xffb040) : blink ? 0xff4040 : v > 0.6 ? 0x9fd0ff : v > 0.3 ? 0xffb040 : 0xff6a5a;
+    const hi = !this.runner ? 0xffe0a0 : v > 0.6 ? 0xdff0ff : 0xffe0a0;
+    g.fillStyle(col, 1); g.fillRect(334, 13, Math.round(128 * v), 10);
+    g.fillStyle(hi, 1); g.fillRect(334, 13, Math.round(128 * v), 2);
   }
 }

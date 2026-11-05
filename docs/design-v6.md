@@ -2,6 +2,7 @@
 
 Status: playable build on branch `v6-runner` (inside the real game, `src/runner.js`). v5 (the flying game) stays on `main`.
 Prototype A was kept (physics felt good). Prototype B playtest: too much flying, too hard to die. The real build answers that: flying is ~10-15% of a run (one chasm per world + a rare 3.5 s Boo orb), 3 air hits = caught on landing, and difficulty escalates with distance.
+Built since: one trap per world (gurney, morgue drawer, roots, sinkhole, steam vent, chandelier with a shadow, coaster cart, bobbing eye), all four weapons plus Boo's ecto blaster in flight, THE STRETCH's face on the danger meter. Not built: the creature's per-world twist (climbs trees, ceiling crawl, rides the rails).
 
 ## Why
 v5 plays almost exactly like Jetpack Joyride. v6 makes it its own game:

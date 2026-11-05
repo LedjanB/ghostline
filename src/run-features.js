@@ -253,7 +253,12 @@ export const Features = {
       soul: 'SOULS = SPINS WHEN YOU DIE', letter: 'SPELL B-O-O FOR A PRIZE', power: 'POWER-UP! IT LASTS A FEW SECONDS',
       rush: 'SPIRIT RUSH! SMASH THROUGH IT ALL!', light: 'LIGHT IS LOW! GRAB CANDLES!',
     };
-    if (this.runner) TIPS.candle = 'CANDLES PUSH THE STRETCH BACK!';
+    if (this.runner) Object.assign(TIPS, { // v6 (each fits the tip banner: 32 characters max)
+      candle: 'CANDLES PUSH THE STRETCH BACK!', slide: 'SLIDE UNDER THE BEAMS!', weapon: 'WEAPONS FIRE ON THEIR OWN!',
+      gurney: 'ROLLING BEDS! JUMP OR SHOOT', drawer: 'DRAWERS POP OUT. SLIDE UNDER!', roots: 'ROOTS RISE UP. JUMP THEM!',
+      sinkhole: 'LOOSE DIRT CAVES IN. JUMP IT!', vent: 'STEAM! JUMP IT OR WAIT IT OUT', chandelier: 'WATCH THE SHADOW ON THE FLOOR',
+      cart: 'CARTS ON THE RAILS! JUMP!', eye: 'THE EYE BOBS. SLIDE OR JUMP',
+    });
     if (!TIPS[id]) return;
     this.tipsSeen.add(id);
     Save.update((s) => { if (!s.tips.includes(id)) s.tips.push(id); });

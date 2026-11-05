@@ -200,6 +200,123 @@ const SALT_GUN = [
 ];
 const SALT_PAL = { G: '#5a5a6e', L: '#a8a8bc', B: '#8a5a2a', W: '#ffffff' };
 
+
+// ---------------- v6 world traps (one per zone) ----------------
+const GURNEY = [ // ward: a hospital bed rolling at you, something under the sheet
+  '......WWWWW.........',
+  '..WWWWWWWWWWWWWWWW..',
+  '.WWSWWWWWWWWWWWWWWW.',
+  'GGGGGGGGGGGGGGGGGGGG',
+  'G..F...............G',
+  '.G.F..............G.',
+  '.G................G.',
+  '.G................G.',
+  'KKK..............KKK',
+  '.K................K.',
+];
+const GURNEY_PAL = { W: '#e6e2ee', S: '#b8b2c8', G: '#7a7a90', F: '#d8d0c0', K: '#1a1824' };
+const DRAWER = [ // morgue: a slab that slides out at head height
+  'GGGGGGGGGGGGGGGGGGGGGG',
+  'GLLLLLLLLLLLLLLLLLLLLG',
+  'GWWWWWWWWWWWWWWWWWWWWG',
+  'GWWWWWWWWWWWWWWWWWTTWG',
+  'GWWWWWWWWWWWWWWWWWTTWG',
+  'GWWWWWWWWWWWWWWWWWWWWG',
+  'GLLLLLLLLLLLLLLLLLLLLG',
+  'GGGGGGGGGGGGGGGGGGGGGG',
+];
+const DRAWER_PAL = { G: '#5a5a70', L: '#9a9ab0', W: '#dcd8e6', T: '#e8c060' };
+const CHANDELIER = [ // catacombs: watch its shadow on the floor
+  '.........II.........',
+  '.........II.........',
+  '..Y...Y..II..Y...Y..',
+  '..C...C..II..C...C..',
+  '..C...C.IIII.C...C..',
+  'IIIIIIIIIIIIIIIIIIII',
+  '.I......IIII......I.',
+  '..IIIIIIIIIIIIIIII..',
+  '.......I....I.......',
+];
+const CHANDELIER_PAL = { I: '#4a4458', Y: '#ffd75e', C: '#e8e0d0' };
+const CART = [ // carnival: a coaster cart on the rails
+  '..RRRRRRRRRRRRRR..',
+  '.RYYYYYYYYYYYYYYR.',
+  'RRRRRRRRRRRRRRRRRR',
+  'RRRRRWWWRRRRRRRRRR',
+  'RRRRWKKKWRRRRRRRRR',
+  'RRRRRWWWRRRRRRRRRR',
+  'RRRRRRRRRRRRRRRRRR',
+  '.GGGGGGGGGGGGGGGG.',
+  '..KK.........KK...',
+  '..KK.........KK...',
+];
+const CART_PAL = { R: '#c83a5a', Y: '#ffd75e', W: '#ffffff', K: '#1a1824', G: '#6a6a80' };
+const EYE = [ // the other side: a floating eye that bobs up and down
+  '...WWWW...',
+  '.WWWWWWWW.',
+  'WWWVPPVWWW',
+  'WWPPPPPPWW',
+  'WVPPKKPPVW',
+  'WVPPKKPPVW',
+  'WWPPPPPPWW',
+  'WWWVPPVWWW',
+  '.WWWWWWWW.',
+  '...WWWW...',
+];
+const EYE_PAL = { W: '#f4f0f8', V: '#e090a8', P: '#9a5ae0', K: '#140f24' };
+const VENT = [ // sewer: a grate that blasts steam
+  'GGGGGGGGGGGG',
+  'GKGKGKGKGKGG',
+  'GGGGGGGGGGGG',
+];
+const VENT_PAL = { G: '#6a7a6a', K: '#141c14' };
+
+// ---------------- v6 weapons ----------------
+const FLAME_GUN = [ // candle flamethrower
+  '...........OY.',
+  'RRRRRRRRRRGOYY',
+  'RLLLLLLLLRG.O.',
+  'RRRRRRRRRRG...',
+  '..BB..........',
+  '.BBB..........',
+  '.BB...........',
+  '.B............',
+];
+const FLAME_PAL = { R: '#b03a2a', L: '#e0604a', G: '#6a6a7e', O: '#ff8a2a', Y: '#ffd75e', B: '#8a5a2a' };
+const SLING = [ // holy water slingshot
+  'B.......B...',
+  'B.......B...',
+  '.B.....B....',
+  '..BWWWB.....',
+  '...BBB......',
+  '....B....L..',
+  '....B...LLL.',
+  '....B...LLL.',
+  '....B....L..',
+];
+const SLING_PAL = { B: '#8a5a2a', W: '#e8e0d0', L: '#6fb7ff' };
+const BONE = [ // bone boomerang
+  'FF..........',
+  'FFF.........',
+  '.FSF........',
+  '..FSF.......',
+  '...FSF......',
+  '....FSF..FF.',
+  '.....FSFFFFF',
+  '......FFFFF.',
+];
+const BONE_PAL = { F: '#ece8dc', S: '#b8b0a0' };
+// HUD: THE STRETCH's face for the danger meter
+const STRETCH_ICON = [
+  '.FFFFFF.',
+  'FEEFFEEF',
+  'FEEFFEEF',
+  'FFFFFFFF',
+  'EEEEEEEE',
+  'ETETETET',
+  '.EEEEEE.',
+];
+
 export function makeRunnerArt(scene) {
   px(scene, 'stretch_walk0', [...HEAD, ...TORSO, ...LEGS0], STRETCH_PAL);
   px(scene, 'stretch_walk1', [...HEAD, ...TORSO, ...LEGS1], STRETCH_PAL);
@@ -209,6 +326,16 @@ export function makeRunnerArt(scene) {
   px(scene, 'grave', GRAVE, GRAVE_PAL);
   px(scene, 'crate', CRATE, CRATE_PAL);
   px(scene, 'salt_gun', SALT_GUN, SALT_PAL);
+  px(scene, 'gurney', GURNEY, GURNEY_PAL);
+  px(scene, 'drawer', DRAWER, DRAWER_PAL);
+  px(scene, 'chandelier', CHANDELIER, CHANDELIER_PAL);
+  px(scene, 'cart', CART, CART_PAL);
+  px(scene, 'eye', EYE, EYE_PAL);
+  px(scene, 'vent', VENT, VENT_PAL);
+  px(scene, 'flame_gun', FLAME_GUN, FLAME_PAL);
+  px(scene, 'sling', SLING, SLING_PAL);
+  px(scene, 'bone', BONE, BONE_PAL);
+  px(scene, 'stretch_icon', STRETCH_ICON, STRETCH_PAL);
 }
 
 export function makeRunnerAnims(scene) {
@@ -225,4 +352,6 @@ export const RUNNER_SPRITES = {
   walk0: [...HEAD, ...TORSO, ...LEGS0], walk1: [...HEAD, ...TORSO, ...LEGS1],
   reach: [...REACH_ARMS, ...HEAD, ...TORSO_UP, ...LEGS0], crawl0: CRAWL0, crawl1: CRAWL1,
   grave: GRAVE, crate: CRATE, salt: SALT_GUN,
+  gurney: GURNEY, drawer: DRAWER, chandelier: CHANDELIER, cart: CART, eye: EYE, vent: VENT,
+  flame: FLAME_GUN, sling: SLING, bone: BONE, icon: STRETCH_ICON,
 };

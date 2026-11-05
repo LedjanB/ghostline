@@ -118,6 +118,7 @@ export function createInput(scene) {
         prev[a] = now[a];
         let down = KEYS[a].some((k) => keys[k] && keys[k].isDown) || padDown(a);
         if (a === 'float' && pointerDown()) down = true;
+        if (a === 'slide' && [...ptrs.values()].some((s) => s.state === 'swipe')) down = true; // keep the finger down to keep sliding
         now[a] = down;
         edge[a] = (down && !prev[a]) || codesFor[a].some((c) => latched.has(c));
         if (a === 'float' && ptrEdge) edge[a] = true;
