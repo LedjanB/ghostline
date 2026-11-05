@@ -442,7 +442,7 @@ export const RunnerFeatures = {
     for (const t of this.traps) {
       if (t.kind === 'chasm') continue;
       const x = this.sx(t.wx);
-      if (x > PLAYER_X - 20) { this.burst(x + t.w / 2, FLOOR - 16, 0x9fb8e8, 8, 30, 400); t.gone = true; }
+      if (x > PLAYER_X - 20) { this.burst(x + t.w / 2, FLOOR - 16, 0x9fb8e8, 8, 30, 400); this.dropTrap(t); } // remove the sprites too, or they freeze on screen
     }
     for (const sw of this.swings) if (sw.x > PLAYER_X - 20) { if (sw.hx !== undefined) this.burst(sw.hx, sw.hy, 0x9fb8e8, 8, 30, 400); sw.x = -1e5; }
     this.nextSpawn = this.worldX + this.speed * 0.9;
@@ -1249,27 +1249,38 @@ export const RunnerFeatures = {
     g.clear();
     if (!this.gate) { if (this.gateShadeOn) { this.gateShade.clear(); this.gateShadeHi.clear(); this.gateShadeOn = false; } return; }
     this.gateShadeOn = true;
-    // v6: the gate is a dark doorway you run through, under every hazard. Its top and bottom trims still
-    // cover the ceiling and floor seams; the sign sits over the door, out of the HUD row.
+    // v6: a gate is a passage, not a wall. You run in through the door (the gate art), through a dark
+    // stretch where the two worlds meet (the seam is hidden in there, floor and ceiling too), and out
+    // into the light of the next world. Everything sits under the hazards.
+    const S = this.gate.parts[0].x; // play.js puts the parts on the seam every frame
+    const DOOR = S - 150, IN = S - 70, OUT = S + 130, RAMP = 190;
+    this.gate.parts.forEach((p) => { p.x = DOOR; });
     const body = this.gate.parts[0];
     if (body.depth !== 4.47) body.setDepth(4.47);
-    const x0 = body.x - 80, x1 = body.x + 80, ramp = 210;
-    // shade the wall itself so it sits back with the dark rooms (a tint alone left it pale), and the
-    // trims over the ceiling and floor even more, so they read as a lintel and a threshold
-    const sh = this.gateShade.clear();
-    sh.fillStyle(0x07060d, 0.5); sh.fillRect(x0, CEIL, 160, FLOOR - CEIL);
-    const hi = this.gateShadeHi.clear();
-    hi.fillStyle(0x07060d, 0.72); hi.fillRect(x0, 0, 160, CEIL); hi.fillRect(x0, FLOOR, 160, H - FLOOR);
-    for (let i = 0; i < 13; i++) { // the shadow the wall throws on both sides hides the zone seam
-      const a = 0.9 * Math.pow(1 - i / 13, 1.4), w = ramp / 13;
-      g.fillStyle(0x07060d, a);
-      g.fillRect(x0 - (i + 1) * w, CEIL, w + 0.5, FLOOR - CEIL);
-      g.fillRect(x1 + i * w, CEIL, w + 0.5, FLOOR - CEIL);
+    const black = 0x07060d;
+    // the passage: black from the back of the door to the way out, then the next world fades in
+    g.fillStyle(black, 1); g.fillRect(IN, CEIL, OUT - IN, FLOOR - CEIL);
+    for (let i = 0; i < 12; i++) {
+      const w = RAMP / 12;
+      g.fillStyle(black, Math.pow(1 - (i + 1) / 13, 1.3)); g.fillRect(OUT + i * w, CEIL, w + 0.5, FLOOR - CEIL);
+      if (i < 5) { g.fillStyle(black, 0.5 * (1 - (i + 1) / 6)); g.fillRect(DOOR - 80 - (i + 1) * 12, CEIL, 12.5, FLOOR - CEIL); } // its shadow on this side
     }
-    // light from the next world spilling over the threshold
+    // light from the next world on the floor near the way out
     const lc = zoneAt(this.gate.next).accent ?? 0xb8d8ff;
-    const pulse = 0.18 + 0.06 * Math.sin(this.clock * 3);
-    for (let i = 0; i < 4; i++) { g.fillStyle(lc, pulse * (1 - i / 4)); g.fillRect(body.x - 56 - i * 10, FLOOR - 4 - i * 2, 112 + i * 20, 4 + i * 2); }
+    const pulse = 0.22 + 0.06 * Math.sin(this.clock * 3);
+    for (let i = 0; i < 6; i++) { g.fillStyle(lc, pulse * (i + 1) / 6); g.fillRect(IN + (OUT - IN) * (i / 6), FLOOR - 3, (OUT - IN) / 6 + 0.5, 3); }
+    // the door wall sits back with the dark rooms (a tint alone left it pale)
+    const sh = this.gateShade.clear();
+    sh.fillStyle(black, 0.5); sh.fillRect(DOOR - 80, CEIL, 160, FLOOR - CEIL);
+    // ceiling and floor bands: dark through the passage so their seam never shows; lintel and threshold on the door
+    const hi = this.gateShadeHi.clear();
+    hi.fillStyle(black, 0.72); hi.fillRect(DOOR - 80, 0, 160, CEIL); hi.fillRect(DOOR - 80, FLOOR, 160, H - FLOOR);
+    hi.fillStyle(black, 0.9); hi.fillRect(IN, 0, OUT - IN, CEIL); hi.fillRect(IN, FLOOR, OUT - IN, H - FLOOR);
+    for (let i = 0; i < 12; i++) {
+      const w = RAMP / 12, a = 0.9 * Math.pow(1 - (i + 1) / 13, 1.3);
+      hi.fillStyle(black, a); hi.fillRect(OUT + i * w, 0, w + 0.5, CEIL); hi.fillRect(OUT + i * w, FLOOR, w + 0.5, H - FLOOR);
+    }
+    hi.fillStyle(lc, pulse * 0.6); hi.fillRect(IN, FLOOR, OUT - IN, 2); // a faint floor line so Milo isn't running on nothing
   },
 
   // the dark it brings: grows in from the left as it closes in, red while one more stumble gets you

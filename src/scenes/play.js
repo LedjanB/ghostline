@@ -828,7 +828,7 @@ export class PlayScene extends Phaser.Scene {
     if (next >= ZONES.length) return;
     const gateWorld = this.gate ? this.gate.world : next * ZONE_LENGTH_M * PX_PER_METER;
     const sx = PLAYER_X + (gateWorld - this.worldX);
-    if (!this.gate && sx < W + 120) {
+    if (!this.gate && sx < W + (this.runner ? 260 : 120)) { // v6: the runner's door stands 150 px before the seam
       const key = `gate_${next - 1}`;
       const body = this.add.image(sx, 0, key).setOrigin(0.5, 0).setScale(2).setDepth(8);
       const top = this.add.image(sx, 0, key).setOrigin(0.5, 0).setScale(2).setDepth(15.5).setCrop(0, 0, 80, 18);
@@ -849,7 +849,7 @@ export class PlayScene extends Phaser.Scene {
       this.addCombo('gate', PLAYER_X + 40, H / 2);
       this.onZoneEnter?.(zone);
     }
-    if (sx < -100) {
+    if (sx < (this.runner ? -360 : -100)) { // v6: the passage runs on past the seam
       this.gate.parts.forEach((p) => p.destroy());
       this.gate = null;
       this.layers.endSwap();
@@ -992,8 +992,11 @@ export class PlayScene extends Phaser.Scene {
     if (x < PLAYER_X && !this.dead) {
       this.passedBest = true;
       Audio.sfx('best');
-      const pop = text(this, PLAYER_X + 40, py - 40, 'NEW BEST!', 16, '#ffd75e').setDepth(31).setStroke('#07060d', 4);
-      this.tweens.add({ targets: pop, y: '-=40', alpha: 0, duration: 1200, ease: 'Quad.easeOut', onComplete: () => pop.destroy() });
+      if (this.runner) this.popup('NEW BEST!', '#ffd75e', null, 3); // v6: through the one popup slot
+      else {
+        const pop = text(this, PLAYER_X + 40, py - 40, 'NEW BEST!', 16, '#ffd75e').setDepth(31).setStroke('#07060d', 4);
+        this.tweens.add({ targets: pop, y: '-=40', alpha: 0, duration: 1200, ease: 'Quad.easeOut', onComplete: () => pop.destroy() });
+      }
       const m = this.bestMarker;
       this.tweens.add({ targets: [m.g, m.t], alpha: 0, duration: 800, onComplete: () => { m.g.destroy(); m.t.destroy(); } });
     }

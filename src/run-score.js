@@ -72,11 +72,12 @@ export const ScoreFeatures = {
       Audio.combo(tier);
       Audio.sfx('comboUp', { tier });
       this.popup(`COMBO x${tier}!`, ['#e6f0ff', '#e6f0ff', '#9ff0ff', '#ffb0d0', '#ffd75e', '#ff8a5e'][tier], this.py - 56);
-      this.flash(80, 255, 255, 255);
+      if (!this.runner) this.flash(80, 255, 255, 255); // v6: no full-screen flashes while you run
       this.tweens.add({ targets: this.ghost, scaleX: 2.6, scaleY: 2.6, duration: 90, yoyo: true, ease: 'Quad.easeOut' });
     }
     // small floating points for the big events, not every candle
-    if (kind !== 'candle' && !this.creative) {
+    const popupUp = this.runner && (this.popups || []).some((o) => o.active && this.clock - o.bornAt < 0.5);
+    if (kind !== 'candle' && !this.creative && !popupUp) { // v6: a fresh popup already says it
       const t = text(this, x, y, `+${gain}`, 8, '#ffe8a0').setDepth(31).setStroke('#07060d', 3);
       this.tweens.add({ targets: t, y: y - 22, alpha: 0, duration: 700, ease: 'Quad.easeOut', onComplete: () => t.destroy() });
     }
@@ -98,7 +99,7 @@ export const ScoreFeatures = {
 
   // you got hit: the combo is gone
   breakCombo() {
-    if (this.combo >= 12 && !this.dead) this.popup('COMBO LOST', '#ff8a9a', this.py - 50);
+    if (this.combo >= 12 && !this.dead) this.popup('COMBO LOST', '#ff8a9a', this.py - 50, 1);
     this.resetCombo();
   },
 

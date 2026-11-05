@@ -116,13 +116,17 @@ export const Features = {
     if (this.tracker) this.tracker.add('runs', 1);
   },
 
-  popup(str, color = '#e6f0ff', y = null) {
-    // v6: at most two at once, stacked instead of drawn on top of each other
+  popup(str, color = '#e6f0ff', y = null, prio = null) {
+    // v6: ONE popup at a time. A newer one replaces the old, unless the old one is more important
+    // and still fresh (a STUMBLE! is never covered by a CLOSE!). Boo's bubble gives way to it.
+    const p = prio ?? (color === '#ff8a9a' ? 2 : 1);
     this.popups = (this.popups || []).filter((o) => o.active);
-    while (this.popups.length >= 2) this.popups.shift().destroy();
-    const recent = this.popups.filter((o) => this.clock - o.bornAt < 0.5).length;
-    const t = text(this, PLAYER_X + 50, (y ?? this.py - 40) - recent * 20, str, 16, color).setDepth(31).setStroke('#07060d', 4);
-    t.bornAt = this.clock;
+    const cur = this.popups[this.popups.length - 1];
+    if (cur && cur.prio > p && this.clock - cur.bornAt < 0.6) return;
+    this.popups.forEach((o) => o.destroy()); this.popups = [];
+    if (this.runner && this.bubble) { this.bubble.forEach((o) => o.destroy()); this.bubble = null; }
+    const t = text(this, PLAYER_X + 50, y ?? this.py - 40, str, 16, color).setDepth(31).setStroke('#07060d', 4);
+    t.bornAt = this.clock; t.prio = p;
     this.popups.push(t);
     this.tweens.add({ targets: t, y: '-=36', alpha: 0, duration: 1000, ease: 'Quad.easeOut', onComplete: () => t.destroy() });
   },

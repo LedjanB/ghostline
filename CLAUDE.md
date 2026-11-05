@@ -46,6 +46,8 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 - v6: ground traps live in world px (`t.wx`, drawn at `sx(wx)`); v5 hazards stay in screen px and only spawn while flying.
 - v6: one new system per run (`runnerInit`): run 1 missions only, run 2 power-ups, run 3 B-O-O letters, run 5 souls and Grave Spin.
 - v6: flight sections can be hand-made (`SET_PIECES` in runner.js, per zone id); they replace the random air spawner for that flight.
+- v6: a gate is a passage (`renderGate`): the door art stands 150 px before the seam, the seam sits inside a black stretch, the next world fades in after it.
+- v6: one popup at a time (`popup(str, color, y, prio)`): a newer one replaces the old unless the old is more important and under 0.6 s old.
 - v6: getting caught plays the grab scene (`stepGrab`/`renderGrab`); a pit death keeps the fall.
 
 ## Test

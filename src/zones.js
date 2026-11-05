@@ -271,7 +271,7 @@ const PAINT = {
     // chapel with spire
     far.rect(200, 92, 44, 40, '#30101a'); far.rect(214, 60, 16, 32, '#30101a');
     for (let k = 0; k < 18; k++) far.rect(222 - k / 2, 42 + k, k + 1, 1, '#30101a');
-    far.rect(221, 34, 2, 10, '#30101a'); far.rect(218, 37, 8, 2, '#30101a');
+    far.rect(221, 36, 2, 8, '#30101a'); // the spire's tip (no cross)
     far.rect(219, 72, 6, 9, '#ff9a5a'); far.glow(222, 76, 10, '#ff9a5a', 0.3);
     const mid = blank();
     const r = rng(42);
@@ -279,7 +279,7 @@ const PAINT = {
       const kind = r();
       const h = 14 + r() * 12;
       if (kind < 0.4) { mid.rect(x, FLOOR0 - h, 12, h, '#14050a'); mid.circle(x + 6, FLOOR0 - h, 6, '#14050a'); }
-      else if (kind < 0.7) { mid.rect(x + 5, FLOOR0 - h - 6, 3, h + 6, '#14050a'); mid.rect(x, FLOOR0 - h, 13, 3, '#14050a'); }
+      else if (kind < 0.7) { mid.rect(x + 3, FLOOR0 - h - 4, 7, h + 4, '#14050a'); mid.rect(x + 4, FLOOR0 - h - 6, 5, 2, '#14050a'); mid.rect(x + 5, FLOOR0 - h - 7, 3, 1, '#14050a'); } // v6: an obelisk (no crosses)
       else mid.rect(x, FLOOR0 - h * 0.7, 16, h * 0.7, '#14050a');
     }
     for (let x = 0; x < W0; x += 5) mid.rect(x, FLOOR0 - 26 - (x % 15 === 0 ? 4 : 0), 1, 26, '#1c070e');
