@@ -139,6 +139,18 @@ function makeCharacters(scene) {
       const legs = LEGS[frame].map((r, i) => (look.legRows && look.legRows[i]) ?? r);
       px(scene, `${id}_${frame}`, [...body, ...legs], look.pal);
     }
+    // v6: a real slide pose (feet first, leaning back, head up) instead of a rotated run frame
+    const body = BODY.map((r, i) => look.rows[i] ?? r);
+    const head = [1, 2, 3, 4].map((i) => body[i].slice(2, 11) + '.........');
+    const legP = (look.legRows && look.legRows[0] && look.legRows[0].includes('T')) ? 'T' : 'P';
+    const slide = [
+      ...head,
+      '.' + body[7].slice(2, 11) + legP.repeat(6) + '..',
+      '.' + body[8].slice(2, 11) + legP.repeat(6) + 'BB',
+      '.....' + legP.repeat(10) + 'BBB',
+      '......' + legP.repeat(9) + 'BBB',
+    ];
+    px(scene, `${id}_slide`, slide, look.pal);
   }
 }
 

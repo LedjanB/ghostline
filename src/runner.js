@@ -13,7 +13,9 @@ import { Device } from './input.js';
 import { Save } from './save.js';
 
 const TOP = CEIL + 16;
-const BOTTOM = FLOOR - 16;   // Milo's centre when standing
+const MILO_SCALE = 2.5;     // v6: 1.25x the v5 size, so he reads on a busy screen
+const MILO_HALF = 22;       // half his height at that scale
+const BOTTOM = FLOOR - MILO_HALF; // Milo's centre when standing
 // movement (scaled from prototype A: 2/3 of its 960x540 numbers)
 const RUN_G = 1800;
 const JUMP_V = 575;          // about 90 px high, 0.64 s in the air
@@ -116,7 +118,9 @@ export const RunnerFeatures = {
     this.trapGfx = this.add.graphics().setDepth(7);
     this.shotGfx = this.add.graphics().setDepth(21.7);
     this.stretch = this.add.sprite(PLAYER_X - this.gap, FLOOR + 2, 'stretch_walk0').setScale(STRETCH_SCALE).setOrigin(0.5, 1).setDepth(9.4);
-    this.edgeGfx = this.add.graphics().setDepth(4.45); // the dark it brings with it: backgrounds only, under every hazard
+    this.edgeGfx = this.add.graphics().setDepth(4.45);
+    this.gateGfx = this.add.graphics().setDepth(4.46); // the dark passage you run through at a world gate
+    this.player.setScale(MILO_SCALE); // the dark it brings with it: backgrounds only, under every hazard
     this.stretch.play('stretch_walk');
     this.gunImg = this.add.image(PLAYER_X, BOTTOM, 'salt_gun').setScale(1.5).setDepth(9.1).setVisible(false);
     this.tutorial.setText(`${prompt2('jump')} TO JUMP`);
@@ -156,7 +160,7 @@ export const RunnerFeatures = {
     if (this.buffer > 0 && this.coyote > 0) {
       this.vy = -JUMP_V * this.perk.jump; this.grounded = false; this.coyote = 0; this.buffer = 0; this.slide = 0;
       Audio.sfx('jump');
-      this.tweens.add({ targets: this.player, scaleX: 1.7, scaleY: 2.4, duration: 70, yoyo: true, ease: 'Quad.easeOut' });
+      this.tweens.add({ targets: this.player, scaleX: MILO_SCALE * 0.85, scaleY: MILO_SCALE * 1.2, duration: 70, yoyo: true, ease: 'Quad.easeOut' });
     }
     if (!holding && this.vy < 0) this.vy *= Math.pow(JUMP_CUT, dt * 20);
     const over = this.pitUnder();
@@ -346,6 +350,7 @@ export const RunnerFeatures = {
   stepRunnerFlight(dt) {
     if (!this.flying || this.dead) return;
     this.jumpLatch = false; this.slideLatch = false; // presses in the air don't carry over to the landing
+    if (this.py > BOTTOM) { this.py = BOTTOM; if (this.vy > 0) this.vy = 0; }
     // Boo never lets you drop into a chasm
     if (this.pitUnder() && this.py > BOTTOM - 26) { this.py = BOTTOM - 26; if (this.vy > 0) this.vy = 0; this.grounded = false; }
     if (this.flyKind === 'orb') {
@@ -873,8 +878,9 @@ export const RunnerFeatures = {
   // ---------------- ground collisions ----------------
   miloBox() {
     const sliding = this.slide > 0;
-    const top = sliding ? (this.grounded ? this.py - 4 : this.py - 8) : this.py - 18; // standing = the sprite's real head
-    return { l: PLAYER_X - 7, r: PLAYER_X + 7, t: top, b: this.py + 16 };
+    // standing = the sprite's real head (FLOOR-44); a slide fits under anything above FLOOR-20
+    const top = sliding ? (this.grounded ? this.py + 2 : this.py - 4) : this.py - MILO_HALF;
+    return { l: PLAYER_X - 8, r: PLAYER_X + 8, t: top, b: this.py + MILO_HALF };
   },
 
   runnerCollide() {
@@ -1007,14 +1013,21 @@ export const RunnerFeatures = {
     // Milo's pose: slide = lean back low, jump = the fly frame
     if (!this.dead && !this.flying) {
       const sliding = this.slide > 0 && this.grounded;
-      const key = this.grounded && !sliding ? `${this.char.id}_run` : `${this.char.id}_flyA`;
-      if (this.player.anims.currentAnim?.key !== key) this.player.play(key);
-      this.player.rotation = sliding ? -Math.PI / 2 : this.grounded ? 0 : Phaser.Math.Clamp(this.vy / 2400, -0.2, 0.25);
-      if (sliding) this.player.setScale(1.5, 2); else if (this.player.scaleX === 1.5) this.player.setScale(2);
-      this.player.setPosition(PLAYER_X, sliding ? FLOOR - 11 : py);
+      if (sliding) {
+        if (this.player.anims.isPlaying) this.player.anims.stop();
+        if (this.player.texture.key !== `${this.char.id}_slide`) this.player.setTexture(`${this.char.id}_slide`);
+        this.player.rotation = 0;
+        this.player.setPosition(PLAYER_X + 6, FLOOR - 12); // the slide frame is 10 px tall: about 25 on screen
+      } else {
+        const key = this.grounded ? `${this.char.id}_run` : `${this.char.id}_flyA`;
+        if (this.player.anims.currentAnim?.key !== key || !this.player.anims.isPlaying) this.player.play(key);
+        this.player.rotation = this.grounded ? 0 : Phaser.Math.Clamp(this.vy / 2400, -0.2, 0.25);
+        this.player.setPosition(PLAYER_X, py);
+      }
     }
     this.gunImg.setVisible(!!this.weapon && !this.dead)
-      .setPosition(PLAYER_X + 12, (this.slide > 0 && this.grounded ? FLOOR - 14 : py + 2));
+      .setPosition(PLAYER_X + 14, (this.slide > 0 && this.grounded ? FLOOR - 16 : py + 4));
+    this.renderGate(lead);
 
     this.renderStretch();
   },
@@ -1082,6 +1095,31 @@ export const RunnerFeatures = {
         return true;
       default: return false;
     }
+  },
+
+  renderGate(lead) {
+    const g = this.gateGfx;
+    g.clear();
+    if (!this.gate) return;
+    // v6: the gate is a dark doorway you run through, under every hazard. Its top and bottom trims still
+    // cover the ceiling and floor seams; the sign sits over the door, out of the HUD row.
+    const body = this.gate.parts[0];
+    if (body.depth !== 4.47) body.setDepth(4.47);
+    const t = this.worldTint();
+    const dim = (c) => Math.round(((t >> c) & 255) * 0.5) << c;
+    const tint = dim(16) | dim(8) | dim(0);
+    this.gate.parts.forEach((p) => p.setTint(tint));
+    const x0 = body.x - 80, x1 = body.x + 80, ramp = 130;
+    for (let i = 0; i < 13; i++) { // the shadow the wall throws on both sides hides the zone seam
+      const a = 0.7 * (1 - i / 13), w = ramp / 13;
+      g.fillStyle(0x07060d, a);
+      g.fillRect(x0 - (i + 1) * w, CEIL, w + 0.5, FLOOR - CEIL);
+      g.fillRect(x1 + i * w, CEIL, w + 0.5, FLOOR - CEIL);
+    }
+    // light from the next world spilling over the threshold
+    const lc = zoneAt(this.gate.next).accent ?? 0xb8d8ff;
+    const pulse = 0.18 + 0.06 * Math.sin(this.clock * 3);
+    for (let i = 0; i < 4; i++) { g.fillStyle(lc, pulse * (1 - i / 4)); g.fillRect(body.x - 56 - i * 10, FLOOR - 4 - i * 2, 112 + i * 20, 4 + i * 2); }
   },
 
   // the dark it brings: grows in from the left as it closes in, red while one more stumble gets you

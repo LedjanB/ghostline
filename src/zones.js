@@ -490,7 +490,10 @@ function gate(i) {
     b.glow(40, 100, 30, C.lc, 0.15);
   }
   b.rect(0, 0, 80, 18, C.trim); b.rect(0, 162, 80, 18, C.trim);
-  if (C.label) sign(b, C.label, 40 - C.label.length * 2, 8, C.lc);
+  if (C.label) { // v6: on a plate over the doorway, below the ceiling band (the HUD row stays clean)
+    b.rect(40 - C.label.length * 2 - 3, 27, C.label.length * 4 + 5, 9, '#06050a');
+    sign(b, C.label, 40 - C.label.length * 2, 29, C.lc);
+  }
   return b;
 }
 

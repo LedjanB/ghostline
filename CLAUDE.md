@@ -42,7 +42,7 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 - HUD x 120-180 on row 2 stays empty: the player hugs the ceiling there.
 - Anything good the player does should call `addCombo(kind)`; getting hit calls `breakCombo()`.
 - v6: `hit()` is a stumble on the ground (two in a row = caught) and costs landing distance in the air. The LIGHT bar shows how close THE STRETCH is.
-- v6: every ground trap must be beatable by jump or slide alone (Milo can't change speed). Slide fits under anything whose bottom is above FLOOR-20; standing Milo's head is FLOOR-34.
+- v6: every ground trap must be beatable by jump or slide alone (Milo can't change speed). Slide fits under anything whose bottom is above FLOOR-20; standing Milo's head is FLOOR-44 (Milo is drawn at 2.5x, `MILO_SCALE`).
 - v6: ground traps live in world px (`t.wx`, drawn at `sx(wx)`); v5 hazards stay in screen px and only spawn while flying.
 
 ## Test
