@@ -423,22 +423,23 @@ const FACE_BIG = [ // phase 4b: tall and narrow, like the rest of it (18 x 26): 
   '......GGGGGG......',
 ];
 // the graveyard scare's hand (14 x 20): open (clawing up) and shut (closing on air)
-// phase 4 round 6: crooked, splayed, every finger a different length, knuckles and a thumb that juts out
-const HAND_WRIST = [
-  '......SSSSSS......', '......SSSDSS......', '......SSSSSS......', '......SSSSSS......', '......SDSSSS......', '......SSSSSS......',
-  '..MMMMSSSSSSMMMM..', '.MMMMMMMMMMMMMMMM.',
-];
+// phase 4 round 6: crooked and broken: every finger a different length and angle, the pinky and thumb
+// jut out, the ring finger hooks, the wrist leans out of the dirt
 const HAND_OPEN = [
-  '..........N.......', '.....N...NS.......', '.....SN..SS....NN.', '....SS...SD...SS..', '....SD..SSD...SD..', '.N..SD...SD..SSD..',
-  '.SS.SSD..SD..SD...', '..SD.SD..SDS.SD...', '..SSDSD.SSD.SSD...', '...SDSSDSSDSSDD...', '...SSSSSSSSSSSD..N', '...SSDSSSDSSSSSSSD',
-  '...SSSSSSSSSSSSSD.', '....SSSLSSSSSDSS..', '....SSSSSSSSSSSS..', '.....SSDSSSSSSS...', '.....SSSSSSSSS....',
-  ...HAND_WRIST,
+  '............N.......', '...........SN.......', '..N........SD.......', '..SN.......SD.......', '...SS.....SSD....NN.',
+  '....SD.NS.SD....SSN.', '....SD..SDSD...SSD..', '.....SSSDSSD..SSD...', 'NN...SDSD.SDSSSD....', '.SSS.SDSD.SSSSD.....',
+  '..SSSSSSSSSSSDD.....', '...SSSDSSSSSSSD..N..', '....SSSSSSSSSSSSSD..', '....SSSSLSSSSSSDD...', '....SDSSSSSSSDSS....',
+  '.....SSSSSSSSSS.....', '.....SSSSDSSSSS.....', '......SSSSSSSS......', '.......SSSSSS.......', '.......SSSDSS.......',
+  '........SSSSSS......', '........SSSSSS......', '........SSDSSSS.....', '.........SSSSSS.....', '...MMMMMMSSSSSSMMMM.',
+  '..MMMMMMMMMMMMMMMMMM',
 ];
 const HAND_SHUT = [ // a fist closing on air: uneven knuckles, nails, the thumb across
-  '..................', '..................', '..................', '..................', '..................', '..................',
-  '........SS........', '.....SS.SSS.SS....', '....SSSDSSSDSSS...', '...SSSDSSSDSSSDS..', '...SDSSSDSSSDSSSS.', '...SSNSSSDNSSSNSD.',
-  '...SSSSSNSSSSSSSD.', '..SSSSDSSSSSSSDSS.', '..SDDDSSSSSSSSSS..', '...SSDDDDDSSSSN...', '....SSSSSSDSSS....',
-  ...HAND_WRIST,
+  '....................', '....................', '....................', '....................', '....................',
+  '....................', '....................', '..........S.........', '......SS.SSD.SS.....', '.....SSSDSSSDSSS....',
+  '....SSSDSSSSSDSSS...', '....SDSSSDSSSSSDSS..', '....SSNSSSSNSSSNSD..', '....SSSSSNSSSSSSSD..', '...SSSSDSSSSSSSDSS..',
+  '...SDDDSSSSSSSSSS...', '....SSDDDDDSSSSN....', '.....SSSSSSDSSS.....', '......SSSSSSSS......', '.......SSSSSS.......',
+  '.......SSSDSS.......', '........SSSSSS......', '........SSSSSS......', '........SSDSSSS.....', '.........SSSSSS.....',
+  '...MMMMMMSSSSSSMMMM.', '..MMMMMMMMMMMMMMMMMM',
 ];
 const HAND_PAL = { S: '#9fb39a', D: '#5e6e58', N: '#e8dcc0', M: '#4a3a2a' };
 

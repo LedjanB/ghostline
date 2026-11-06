@@ -168,6 +168,10 @@ export const ScareFeatures = {
         B.lineStyle(1, 0xb8a888, out); B.lineBetween(x + 57, y - 1, x + 66 + sway, y + 10);
         B.fillStyle(0xd8c89a, out); B.fillRect(x + 64 + sway, y + 10, 9, 12); B.fillStyle(0x6a5a40, out); B.fillRect(x + 65 + sway, y + 14, 7, 1); B.fillRect(x + 65 + sway, y + 17, 5, 1);
         if (up > 0) {
+          // one slack sheet: from the lap it runs to the knees, and its hem hangs over the slab's edge, ragged
+          B.fillStyle(SHEET, out); B.fillTriangle(x - 16, y - 2, x - 16, y + 19, x + 10, y + 7);
+          for (let i = 0; i < 12; i++) { const hx0 = x - 66 + i * 10; B.fillRect(hx0, y + 19, 10, 6 + ((i * 7) % 5) * 2); }
+          B.fillStyle(FOLD, out); for (let i = 0; i < 12; i += 2) B.fillRect(x - 64 + i * 10, y + 20, 2, 6 + ((i * 3) % 4) * 2);
           // sitting up, then slumped forward a little: the back curves, the head hangs off to one side
           const top = y + 8 - 110 * up, hx = x - 22, hy = top + 12;
           B.fillStyle(SHEET, out);

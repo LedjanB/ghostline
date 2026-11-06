@@ -14,7 +14,12 @@ async function start(save) {
   await page.waitForFunction(() => window.__game.scene.getScene('play')?.runner && window.__game.scene.isActive('play'));
   await page.waitForTimeout(1400); // the opening '!' and the controls fade out first
 }
-const sim = (fn, arg) => page.evaluate(([src, a]) => (0, eval)(src)(window.__game.scene.getScene('play'), a), [fn.toString(), arg]);
+const sim = (fn, arg) => page.evaluate(([src, a]) => { // the harness runs in creative mode and skips the first input: hide its label and the controls hint
+  const g = window.__game, p = g.scene.getScene('play');
+  g.scene.getScene('hud')?.rebirthText?.setVisible(false);
+  [p.tutorial, p.tutorial2].forEach((o) => o?.active && o.setVisible(false));
+  return (0, eval)(src)(p, a);
+}, [fn.toString(), arg]);
 const base = (w, extra = {}) => ({ version: 7, storySeen: true, runs: 12, tips: [], mode: 'creative', creative: { x: (w * 400 + 40) * 24, rebirths: 0 }, ...extra });
 const TR = ['ward', 'morgue', 'woods', 'graveyard', 'sewer', 'catacombs', 'carnival'];
 const phases = process.argv[3] ? process.argv[3].split(',') : ['tricks', 'pieces', 'door', 'weapons', 'patterns'];

@@ -151,6 +151,8 @@ AI testers after phase 3: 7, 6.5, 7 out of 10, all would run again. Phase 4 fixe
   a different length, knuckles, a thumb that juts out; the fist closes unevenly). The morgue body is a corpse: bare feet and a
   toe tag out the end of the sheet, it sits up and slumps, the head lolls, the cloth sinks into the face, a grey arm hangs off the
   slab. Candles grabbed in the air can't push the landing gap all the way back (`LAND_MAX` 108), so landing stays tense.
+  Testers 7, 7, 7 on the first pass: two headlines could stack (the old one was left to fade on its own; now `nextHeadline`
+  clears it first). The hand got a leaning wrist and broken, uneven fingers; the morgue sheet became one slack piece with a hem.
 
 ## Open questions
 - The creature's final name and look

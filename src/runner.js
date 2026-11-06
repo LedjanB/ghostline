@@ -588,6 +588,7 @@ export const RunnerFeatures = {
   nextHeadline() {
     if (this.clock < this.headUntil || !this.heads.length || !this.started || this.dead || this.scare) return; // a scare owns the screen
     const h = this.heads.shift();
+    this.clearHeadline(); // one headline, ever: never trust the old one's fade-out to be done
     this.headUntil = this.clock + h.hold + 0.3;
     this.quietUntil = this.headUntil;
     this.clearMessages();
