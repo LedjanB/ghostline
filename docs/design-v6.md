@@ -138,8 +138,10 @@ AI testers after phase 3: 7, 6.5, 7 out of 10, all would run again. Phase 4 fixe
   "safer"); far = dark silhouette; the journal picture warms from sepia with Boo in a lit window.
 - **Round 3** (testers 8, 8, 7.5): the near stage stays upright (on all fours it read smaller and cuter) and is 20% bigger;
   the morgue body has shoulders, a tilted head and a draped sheet; the ending's light is a beam, and the crack and shards
-  draw over the face. Still open: the journal pages show slices of the ward, not their own content; the carnival clown
-  reads cute; the hush has little visible build-up (mostly audio).
+  draw over the face.
+- **Round 4**: every journal page has its own pencil drawing (`drawJournalPage` in ending.js); the ending shows the twelve
+  first, then they turn one by one into the pieces of the ward picture. The carnival clown is long, lopsided, with a grin
+  wider than its face. Every hush is visible: the dark closes in from the edges, then lets go after the hit.
 
 ## Open questions
 - The creature's final name and look

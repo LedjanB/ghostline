@@ -19,6 +19,64 @@ export const DEPTH_M = ZONE_LENGTH_M;              // beyond the door: a new dep
 //   THE STRETCH, close up, and the light reaching it;
 //   THE WARD, lit up: every lamp comes back on, and Boo can finally clock out.
 // One line of text at a time, like the rest of the game.
+
+// phase 4c: each journal page has its own drawing (the ending shows them before they fit together).
+// 80 x 60 px, pencil on old paper, one red accent. The drawing matches the page's lines in PAGES.
+function drawJournalPage(c, i) {
+  const ink = '#4a3018', red = '#a02020', W8 = 80, H6 = 60;
+  c.fillStyle = '#efe2c2'; c.fillRect(0, 0, W8, H6);
+  c.fillStyle = '#d8c39a'; c.fillRect(0, 0, W8, 2); c.fillRect(0, H6 - 2, W8, 2); c.fillRect(0, 0, 2, H6); c.fillRect(W8 - 2, 0, 2, H6);
+  c.fillStyle = '#c9b48a'; for (let y = 12; y < H6; y += 9) c.fillRect(6, y, W8 - 12, 1); // ruled lines
+  c.strokeStyle = ink; c.fillStyle = ink; c.lineWidth = 2; c.lineCap = 'round'; c.lineJoin = 'round';
+  const L = (pts) => { c.beginPath(); c.moveTo(pts[0], pts[1]); for (let j = 2; j < pts.length; j += 2) c.lineTo(pts[j], pts[j + 1]); c.stroke(); };
+  const O = (x, y, r, fill) => { c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); if (fill) c.fill(); else c.stroke(); };
+  const dot = (x, y, col = red) => { c.fillStyle = col; c.fillRect(x, y, 3, 3); c.fillStyle = ink; };
+  switch (i) {
+    case 0: // the night janitor: a mop and bucket, and a ghost leaning on it
+      L([22, 10, 34, 50]); L([28, 50, 40, 50]); for (let x = 29; x < 40; x += 3) L([x, 50, x - 2, 55]);
+      L([44, 36, 60, 36, 57, 52, 47, 52, 44, 36]); L([46, 33, 52, 28, 58, 33]);
+      O(18, 22, 7); L([11, 22, 11, 34, 14, 31, 17, 34, 20, 31, 23, 34, 25, 22]); dot(15, 20, ink); dot(19, 20, ink); break;
+    case 1: // the cold room clock at 3:33
+      O(40, 30, 18); for (let a = 0; a < 12; a++) { const r = a * Math.PI / 6; L([40 + Math.cos(r) * 15, 30 + Math.sin(r) * 15, 40 + Math.cos(r) * 17, 30 + Math.sin(r) * 17]); }
+      L([40, 30, 40 + Math.cos(0.3) * 9, 30 + Math.sin(0.3) * 9]); c.strokeStyle = red; L([40, 30, 40 + Math.cos(1.89) * 14, 30 + Math.sin(1.89) * 14]); c.strokeStyle = ink;
+      L([60, 14, 66, 10]); L([62, 18, 70, 16]); break; // it hums
+    case 2: // the park's trees, still waiting: one has eyes
+      for (const [x, h] of [[16, 30], [40, 40], [64, 32]]) { L([x, 54, x, 54 - h]); L([x, 54 - h * 0.6, x - 9, 54 - h * 0.9]); L([x, 54 - h * 0.7, x + 8, 54 - h]); }
+      dot(36, 26); dot(42, 26); L([10, 54, 72, 54]); L([52, 54, 52, 46, 60, 46]); break; // and an empty bench
+    case 3: // 400 graves, 399 quiet: one is open
+      for (let n = 0; n < 4; n++) { const x = 8 + n * 18, open = n === 2; c.beginPath(); c.moveTo(x, 50); c.lineTo(x, 32); c.arc(x + 6, 32, 6, Math.PI, 0); c.lineTo(x + 12, 50); c.stroke(); if (open) { c.strokeStyle = red; L([x + 6, 27, x + 4, 36, x + 8, 42]); c.strokeStyle = ink; L([x - 2, 52, x + 14, 52]); } }
+      L([4, 50, 76, 50]); break;
+    case 4: // the dark is hungry; candles taste bad to it
+      for (let x = 4; x < 80; x += 6) L([x, 4, x - 20, 56]);
+      c.fillStyle = '#efe2c2'; c.fillRect(30, 18, 20, 38); c.fillStyle = ink;
+      c.strokeRect(35, 30, 10, 22); L([40, 30, 40, 26]); c.fillStyle = '#d07a20'; c.beginPath(); c.ellipse(40, 21, 4, 6, 0, 0, Math.PI * 2); c.fill(); c.fillStyle = ink; break;
+    case 5: // the sewers, older than the city: an arch under a street
+      L([4, 18, 76, 18]); for (let x = 10; x < 76; x += 14) L([x, 18, x, 12, x + 6, 12, x + 6, 18]);
+      c.beginPath(); c.arc(40, 50, 22, Math.PI, 0); c.stroke(); for (let a = 0; a < 6; a++) { const r = Math.PI + a * Math.PI / 5; L([40 + Math.cos(r) * 22, 50 + Math.sin(r) * 22, 40 + Math.cos(r) * 28, 50 + Math.sin(r) * 28]); }
+      dot(34, 40); dot(44, 40); break; // something looks back out
+    case 6: // the list of names; Milo's isn't on it yet
+      for (let y = 12; y < 50; y += 7) { if (y === 47) continue; L([10, y, 22 + ((y * 7) % 30), y]); }
+      c.strokeStyle = red; L([10, 50, 60, 50]); c.strokeStyle = ink; L([64, 44, 68, 40, 70, 46]); dot(66, 50, ink); break;
+    case 7: // the carnival, 1931: a carousel, and notes still playing
+      L([16, 24, 40, 8, 64, 24, 16, 24]); for (let x = 22; x < 64; x += 8) L([x, 24, x, 48]); L([12, 48, 68, 48]);
+      O(30, 38, 3); O(48, 34, 3); c.strokeStyle = red; L([66, 12, 66, 4, 72, 6]); O(64, 12, 2); c.strokeStyle = ink; break;
+    case 8: // a banshee, late for something
+      L([30, 52, 26, 20]); c.beginPath(); c.arc(38, 20, 12, Math.PI, 0); c.stroke(); L([50, 20, 54, 52, 46, 48, 40, 54, 34, 48, 30, 52]);
+      O(38, 24, 4); dot(33, 16, ink); dot(41, 16, ink); L([56, 14, 66, 10]); L([58, 22, 70, 22]); L([56, 30, 66, 34]); break;
+    case 9: // Boo can't hold on forever: a ghost's hand and a boy's hand
+      O(24, 18, 8); L([16, 18, 16, 30, 32, 30, 32, 18]); L([32, 26, 42, 32]); // Boo reaching
+      O(58, 30, 5); L([58, 35, 58, 48]); L([58, 48, 54, 56]); L([58, 48, 62, 56]); L([58, 40, 46, 34]); // Milo reaching back
+      c.strokeStyle = red; L([42, 32, 46, 34]); c.strokeStyle = ink; break;
+    case 10: // the door that forgot to close
+      c.strokeRect(26, 10, 26, 44); c.fillStyle = '#f6d880'; c.beginPath(); c.moveTo(52, 10); c.lineTo(78, 4); c.lineTo(78, 60); c.lineTo(52, 54); c.fill(); c.fillStyle = ink;
+      L([26, 10, 16, 14, 16, 58, 26, 54]); dot(18, 34, ink); break;
+    case 11: // the lights come back on. probably.
+      O(40, 24, 11); L([34, 34, 34, 42, 46, 42, 46, 34]); L([35, 45, 45, 45]); L([37, 48, 43, 48]);
+      for (let a = 0; a < 8; a++) { const r = a * Math.PI / 4; L([40 + Math.cos(r) * 15, 24 + Math.sin(r) * 15, 40 + Math.cos(r) * 20, 24 + Math.sin(r) * 20]); }
+      L([66, 50, 70, 46]); dot(64, 52); dot(70, 52); break; // (two red dots, in the corner)
+  }
+}
+
 export const END_T = { white: 2.6, pages: 3.4, face: 9.6, ward: 13.8, end: 19.4, out: 22.2 };
 const ENDING_LINES = [
   [4.6, 'BOO KEPT THE LIGHTS ON AT ST. MERCY.'],
@@ -68,6 +126,9 @@ export const EndingFeatures = {
     this.endLamps = this.add.graphics().setDepth(8.2);    // the ward's lamps, behind Milo and Boo
     this.endTop = this.add.graphics().setDepth(26.97);    // over the journal's picture: Boo's lit window
     this.endTiles = null; this.endFace = null; this.endText = null;
+    for (let i = 0; i < 12; i++) if (!this.textures.exists(`journal_page_${i}`)) {
+      const tex = this.textures.createCanvas(`journal_page_${i}`, 80, 60); drawJournalPage(tex.context, i); tex.refresh();
+    }
     // the journal's picture: the whole ward (every layer but the floor) in one texture
     if (!this.textures.exists('ward_journal')) {
       const tex = this.textures.createCanvas('ward_journal', 320, 180);
@@ -262,7 +323,8 @@ export const EndingFeatures = {
         const img = this.add.image(0, 0, 'ward_journal').setOrigin(0).setScale(TILES.scale).setDepth(26.9)
           .setCrop(c * TILES.tw, r * TILES.th, TILES.tw, TILES.th).setTint(0xc89a5a);
         const ang = (i * 2.399) % (Math.PI * 2);
-        this.endTiles.push({ img, c, r, sx: W / 2 + Math.cos(ang) * 420, sy: H / 2 + Math.sin(ang) * 300, rot: ((i % 5) - 2) * 0.06 });
+        const page = this.add.image(0, 0, `journal_page_${i}`).setOrigin(0).setScale(TILES.scale).setDepth(26.91);
+        this.endTiles.push({ img, page, c, r, sx: W / 2 + Math.cos(ang) * 420, sy: H / 2 + Math.sin(ang) * 300, rot: ((i % 5) - 2) * 0.06 });
       }
 
     }
@@ -273,10 +335,15 @@ export const EndingFeatures = {
         const k = Phaser.Math.Easing.Cubic.Out(clamp((t - T.pages - 0.15 * i) / 0.7));
         // setCrop keeps the image's origin at the full texture's corner, so place by the texture's 0,0
         const tx = ox, ty = oy, fx = p.sx - (p.c * TILES.tw + TILES.tw / 2) * TILES.scale, fy = p.sy - (p.r * TILES.th + TILES.th / 2) * TILES.scale;
-        p.img.setPosition(Phaser.Math.Linear(fx, tx, k), Phaser.Math.Linear(fy, ty, k)).setRotation(p.rot * (1 - k)).setAlpha(k > 0 ? 1 : 0).setVisible(inPages);
+        // first you see each page's own drawing; then, one by one, they turn into the piece of the picture they are
+        const turn = clamp((t - T.pages - 3.0 - 0.08 * i) / 0.45);
+        const ix = Phaser.Math.Linear(fx, tx, k), iy = Phaser.Math.Linear(fy, ty, k);
+        p.img.setPosition(ix, iy).setRotation(p.rot * (1 - k)).setAlpha(k > 0 ? turn : 0).setVisible(inPages);
+        p.page.setPosition(ix + p.c * TILES.tw * TILES.scale, iy + p.r * TILES.th * TILES.scale).setRotation(p.rot * (1 - k))
+          .setAlpha(k > 0 ? 1 - turn : 0).setVisible(inPages);
       }
       // once they fit, the picture comes alive: sepia to color, and one window lit (Boo's)
-      const whole = clamp((t - T.pages - 0.15 * 11 - 0.8) / 0.8);
+      const whole = clamp((t - T.pages - 4.4) / 0.8); // after the last page has turned
       const col = Phaser.Display.Color.Interpolate.ColorWithColor(Phaser.Display.Color.ValueToColor(0xc89a5a), Phaser.Display.Color.ValueToColor(0xffffff), 1, whole);
       this.endTiles.forEach((p) => p.img.setTint(Phaser.Display.Color.GetColor(col.r, col.g, col.b)));
       if (inPages) {
@@ -290,7 +357,7 @@ export const EndingFeatures = {
           G.fillStyle(0x1b1630, whole); G.fillRect(wx + 14, wy + 22, 3, 4); G.fillRect(wx + 22, wy + 22, 3, 4);
         }
       }
-      if (!inPages) { this.endTiles.forEach((p) => p.img.destroy()); this.endTiles = null; }
+      if (!inPages) { this.endTiles.forEach((p) => { p.img.destroy(); p.page.destroy(); }); this.endTiles = null; }
     }
     // THE STRETCH, close up: out of the black, too close, grinning; then the light reaches it
     const inFace = t >= T.face && t < T.ward;

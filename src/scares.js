@@ -122,6 +122,16 @@ export const ScareFeatures = {
     const out = Math.max(0, Math.min(1, (s.def.len - t) / 0.5)); // fade at the end
     const ease = (v) => Math.max(0, Math.min(1, v));
     const flick = this.settings.flicker;
+    // phase 4c: you can SEE the hush. The edges close in (under Milo and THE STRETCH), then let go after the hit
+    const close = k < 0 ? ease(t / h) : 1 - ease(k / 0.35);
+    if (close > 0) {
+      const a = 0.13 * close;
+      D.fillStyle(0x020205, a);
+      for (let i = 1; i <= 8; i++) {
+        D.fillRect(0, CEIL, W, i * 12 * close); D.fillRect(0, FLOOR - i * 8 * close, W, i * 8 * close);
+        D.fillRect(0, CEIL, i * 22 * close, FLOOR - CEIL); D.fillRect(W - i * 22 * close, CEIL, i * 22 * close, FLOOR - CEIL);
+      }
+    }
     switch (s.id) {
       case 'ward': {
         // every light dies (the room goes black, only Milo and IT stay), then one flickers back on:
@@ -226,18 +236,26 @@ export const ScareFeatures = {
         const wob = k < 0 ? Math.sin(t * 30) * (t / h) * 3 : 0;
         B.fillStyle(0xc0303a, out); B.fillRect(bx - 36 + wob, by - 10, 72, 50);
         B.fillStyle(0xffd75e, out); B.fillRect(bx - 36 + wob, by - 10, 72, 6); B.fillRect(bx - 4 + wob, by + 6, 8, 8);
-        if (k >= 0) {
-          const pop = ease(k / 0.1), bob = Math.sin(k * 18) * 10 * (1 - ease(k / 1.2));
-          const hy = by - 20 - 150 * pop + bob;
+        if (k >= 0) { // phase 4c: not a mascot. A long pale face, one eye too big, a grin too wide for it, teeth like a saw
+          const pop = ease(k / 0.1), bob = Math.sin(k * 18) * 10 * (1 - ease(k / 1.2)), tilt = 0.12 * Math.sin(k * 3);
+          const hy = by - 30 - 150 * pop + bob, hx = bx + tilt * 40;
           B.lineStyle(4, 0x8a8aa0, out);
           for (let i = 0; i < 6; i++) B.lineBetween(bx - 10, by - 10 + (hy - by + 10) * (i / 6), bx + 10, by - 10 + (hy - by + 10) * ((i + 0.5) / 6));
-          B.fillStyle(0xf4f0f4, out); B.fillCircle(bx, hy, 54 * pop);                       // the face
-          B.fillStyle(0xff4d8a, out); B.fillCircle(bx - 56 * pop, hy - 20, 20 * pop); B.fillCircle(bx + 56 * pop, hy - 20, 20 * pop); // hair
-          B.fillStyle(0xe0303a, out); B.fillCircle(bx, hy + 6, 9 * pop);                    // the nose
-          B.fillStyle(0x07060d, out); B.fillRect(bx - 24, hy - 22, 12, 10); B.fillRect(bx + 12, hy - 22, 12, 10); // eyes
-          B.fillStyle(0xff3a4a, out); B.fillRect(bx - 20, hy - 19, 4, 4); B.fillRect(bx + 16, hy - 19, 4, 4);
-          B.fillStyle(0xc0303a, out); B.fillRect(bx - 34, hy + 20, 68, 12);                 // the grin
-          B.fillStyle(0xffffff, out); for (let i = 0; i < 8; i++) B.fillRect(bx - 32 + i * 8, hy + 20, 5, 5);
+          B.fillStyle(0x5a6a2a, out); // hair, dirty green, uneven tufts
+          B.fillTriangle(hx - 46 * pop, hy - 30, hx - 80 * pop, hy - 62, hx - 34 * pop, hy - 54); B.fillTriangle(hx - 40 * pop, hy - 10, hx - 76 * pop, hy - 4, hx - 44 * pop, hy - 36);
+          B.fillTriangle(hx + 42 * pop, hy - 40, hx + 70 * pop, hy - 50, hx + 40 * pop, hy - 14);
+          B.fillStyle(0xe8e2dc, out); B.fillEllipse(hx, hy, 92 * pop, 128 * pop);                     // the face, long
+          B.fillStyle(0x07060d, out);
+          B.fillEllipse(hx - 20, hy - 26, 30 * pop, 26 * pop);                                       // one eye too big
+          B.fillEllipse(hx + 20, hy - 18, 13 * pop, 10 * pop);                                       // one too small, too low
+          B.fillRect(hx - 24, hy - 14, 3, 18); B.fillRect(hx + 21, hy - 13, 2, 12);                 // the makeup running
+          B.fillStyle(0xff3a4a, out); B.fillRect(hx - 21, hy - 26, 4, 4); B.fillRect(hx + 19, hy - 19, 3, 3);
+          B.fillStyle(0xb02030, out); B.fillCircle(hx + 4, hy - 2, 8 * pop);                        // the nose, off-center
+          B.fillStyle(0x2a0008, out);                                                                // the grin: wider than the face
+          B.fillTriangle(hx - 62 * pop, hy + 8, hx + 58 * pop, hy + 2, hx - 4, hy + 46 * pop);
+          B.fillStyle(0xf4f0e0, out);
+          for (let i = 0; i < 9; i++) { const x0 = hx - 56 * pop + i * 12.5 * pop, y0 = hy + 8 - (i / 9) * 6; B.fillTriangle(x0, y0, x0 + 10 * pop, y0 - 0.6, x0 + 5 * pop, y0 + 9 * pop); } // saw teeth
+          B.lineStyle(2, 0xb02030, out); B.lineBetween(hx - 62 * pop, hy + 8, hx - 70 * pop, hy - 4); B.lineBetween(hx + 58 * pop, hy + 2, hx + 66 * pop, hy - 10); // painted corners, up
         }
         break;
       }

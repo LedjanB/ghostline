@@ -44,7 +44,7 @@ if (phases.includes('pieces')) for (let w = 0; w < 8; w++) {
   await page.screenshot({ path: `${OUT}/piece-${w + 1}.png` });
 }
 if (phases.includes('door')) {
-  for (const [name, got, frames] of [['locked', 8, [1.0, 2.6]], ['ending', 99, [1.5, 4.5, 8.8, 10.6, 11.9, 15.2, 20.8]]]) {
+  for (const [name, got, frames] of [['locked', 8, [1.0, 2.6]], ['ending', 99, [1.5, 4.5, 6.2, 8.8, 10.6, 11.9, 15.2, 20.8]]]) {
     for (const f of frames) {
       await start({ version: 7, storySeen: true, runs: 12, tips: [], unlocks: { got, points: 0, fresh: 0 }, mode: 'normal' });
       await sim((s, f) => {
