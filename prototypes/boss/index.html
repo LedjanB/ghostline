@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Ghostline Boss Prototype</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0a10; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #game { width: 100%; height: 100%; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+<!-- BOSS PROTOTYPE (throwaway, prototype-fast skill). Not imported by the real game. -->
+<!-- QUESTION: is a short arena boss fight (move, jump, dodge, attack) fun on a phone in 60 to 90 s without help? -->
+<!-- KEEP IF: a new player wins or nearly wins in 60 to 90 s without being told, and wants another try. -->
+<!-- KILL IF: they only get it after it's explained, or the touch buttons get in the way of reading her attacks. -->
+<!-- Boss: THE NIGHT MATRON (world 1). She does her rounds: charge, curtain sweep, clipboards, and in phase 2 lights out. -->
+<!-- She stops at a bed to check it after every attack: that's the window to hit her. -->
+<script src="../../vendor/phaser.min.js"></script>
+<script>
+(() => {
+// ---------- tuning (spike: magic numbers welcome) ----------
+const W = 960, H = 540;
+const FLOOR = 430, WALL_L = 40, WALL_R = 920;
+const STEP = 1 / 120;
+const MILO_W = 26, MILO_H = 46;
+const MOVE = 300, ACCEL = 2600, AIR_ACCEL = 1700;
+const GRAVITY = 2700, JUMP_V = 860, JUMP_CUT = 0.45, COYOTE = 0.09, BUFFER = 0.13;
+const DODGE_T = 0.32, DODGE_V = 720, DODGE_CD = 0.55;      // a roll, invulnerable the whole time
+const HIT_T = 0.12, HIT_CD = 0.32, HIT_RANGE = 66, HIT_H = 44; // lantern swing
+const HEARTS = 5, HURT_INV = 1.0, KNOCK = 380;
+const BOSS_HP = 15, BOSS_W = 60, BOSS_H = 96;
+const HITS_PER_CHECK = 3; // after 3 hits she stands up and shoves you off (no damage)
+const BEDS = [200, 480, 760];
+const LAMPS = [140, 340, 620, 820];
+
+// ---------- input: keyboard, gamepad and touch buttons into one action map ----------
+const act = { left: false, right: false, jumpHeld: false, jump: false, dodge: false, hit: false };
+window.__act = act; // debug: bots drive the same action map
+const keyDown = new Set();
+const K = {
+  left: ['ArrowLeft', 'KeyA'], right: ['ArrowRight', 'KeyD'],
+  jump: ['Space', 'ArrowUp', 'KeyW'], dodge: ['ShiftLeft', 'ShiftRight', 'KeyK', 'ArrowDown', 'KeyS'], hit: ['KeyJ', 'KeyX', 'Enter'],
+};
+const isK = (kind, code) => K[kind].includes(code);
+window.addEventListener('keydown', (e) => {
+  for (const kind of Object.keys(K)) if (isK(kind, e.code)) e.preventDefault();
+  if (e.repeat) return;
+  keyDown.add(e.code);
+  if (isK('jump', e.code)) act.jump = true;
+  if (isK('dodge', e.code)) act.dodge = true;
+  if (isK('hit', e.code)) act.hit = true;
+}, true);
+window.addEventListener('keyup', (e) => keyDown.delete(e.code), true);
+let padPrev = {};
+function pollPad() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  for (const p of pads) {
+    if (!p) continue;
+    const b = (i) => !!(p.buttons[i] && p.buttons[i].pressed);
+    const now = { a: b(0), b: b(1), x: b(2) || b(3), l: b(14) || p.axes[0] < -0.4, r: b(15) || p.axes[0] > 0.4 };
+    if (now.a && !padPrev.a) act.jump = true;
+    if (now.b && !padPrev.b) act.dodge = true;
+    if (now.x && !padPrev.x) act.hit = true;
+    padPrev = now;
+    return now;
+  }
+  padPrev = {};
+  return null;
+}
+// touch buttons (game coords). Left thumb: move. Right thumb: jump, dodge, hit.
+const BTN = [
+  // all inside the floor band (y > FLOOR) so they never cover her or the beds
+  { id: 'left', x: 70, y: 486, r: 44, label: '<' },
+  { id: 'right', x: 178, y: 486, r: 44, label: '>' },
+  { id: 'dodge', x: 676, y: 490, r: 38, label: 'DODGE' },
+  { id: 'jump', x: 782, y: 486, r: 44, label: 'JUMP' },
+  { id: 'hit', x: 892, y: 486, r: 44, label: 'HIT' },
+];
+const touches = new Map(); // pointer id -> button id
+const touchHeld = () => new Set(touches.values());
+
+const overlap = (a, b) => a.r > b.l && a.l < b.r && a.b > b.t && a.t < b.b;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+let best = null;
+try { best = JSON.parse(localStorage.getItem('ghostline-boss-best') || 'null'); } catch (e) {}
+
+class Fight extends Phaser.Scene {
+  constructor() { super('fight'); }
+
+  init() {
+    this.t = 0; this.acc = 0; this.state = 'intro'; this.endT = 0;
+    // Milo
+    this.x = 300; this.y = 0; this.vx = 0; this.vy = 0; this.face = 1;
+    this.grounded = true; this.coyote = 0; this.buffer = 0;
+    this.dodgeT = 0; this.dodgeCd = 0; this.dodgeDir = 1;
+    this.hitT = 0; this.hitCd = 0; this.hitDone = false;
+    this.hearts = HEARTS; this.inv = 0; this.booUsed = false; this.booT = 0;
+    // boss
+    this.bx = 760; this.hp = BOSS_HP; this.bstate = 'idle'; this.bt = 1.4; this.bTarget = 760; this.bDir = -1;
+    this.flashB = 0; this.queue = []; this.lastAttack = '';
+    this.curtain = null; this.boards = [];
+    this.dark = 0; this.darkWant = 0; this.lampsOn = LAMPS.map(() => 1);
+    // juice + stats
+    this.shake = 0; this.freeze = 0; this.redEdge = 0;
+    this.stats = { hits: 0, swings: 0, dodges: 0, dodgedThrough: 0, taken: 0 };
+    this.say = { text: '', t: 0 };
+  }
+
+  create() {
+    this.input.addPointer(4);
+    this.g = this.add.graphics();
+    this.ui = this.add.graphics();
+    this.debug = this.add.text(12, 8, '', { fontFamily: 'monospace', fontSize: '13px', color: '#7fae7a' });
+    this.big = this.add.text(W / 2, 130, '', { fontFamily: 'monospace', fontSize: '30px', color: '#e9e4ff', align: 'center' }).setOrigin(0.5);
+    this.small = this.add.text(W / 2, 190, '', { fontFamily: 'monospace', fontSize: '15px', color: '#a49ccc', align: 'center' }).setOrigin(0.5);
+    this.line = this.add.text(W / 2, 80, '', { fontFamily: 'monospace', fontSize: '18px', color: '#d9d3f5', align: 'center' }).setOrigin(0.5);
+    this.labels = BTN.map((b) => this.add.text(b.x, b.y, b.label, { fontFamily: 'monospace', fontSize: b.label.length > 1 ? '13px' : '26px', color: '#cfc8f0' }).setOrigin(0.5));
+    this.touch = matchMedia('(pointer: coarse)').matches;
+    this.showButtons = this.touch;
+    this.big.setText('THE NIGHT MATRON');
+    this.small.setText(this.touch
+      ? 'tap to start'
+      : 'A D / arrows move   W / SPACE jump   SHIFT / S dodge   J / X hit\npress any key');
+
+    const pick = (p) => {
+      for (const b of BTN) if (Math.hypot(p.x - b.x, p.y - b.y) < b.r + 14) return b.id;
+      return null;
+    };
+    this.input.on('pointerdown', (p) => {
+      this.showButtons = true;
+      if (this.state === 'intro') { this.begin(); return; }
+      if (this.state === 'won' || this.state === 'lost') { if (this.endT > 0.9) this.scene.restart(); return; }
+      const id = pick(p);
+      if (!id) return;
+      touches.set(p.id, id);
+      if (id === 'jump') act.jump = true;
+      if (id === 'dodge') act.dodge = true;
+      if (id === 'hit') act.hit = true;
+    });
+    this.input.on('pointermove', (p) => {
+      if (!p.isDown) return;
+      const cur = touches.get(p.id);
+      if (cur !== 'left' && cur !== 'right') return; // only the move thumb slides between buttons
+      const id = pick(p);
+      if (id === 'left' || id === 'right') touches.set(p.id, id);
+    });
+    const up = (p) => touches.delete(p.id);
+    this.input.on('pointerup', up);
+    this.input.on('pointerupoutside', up);
+    this.keyStart = () => {
+      if (this.state === 'intro') this.begin();
+      else if ((this.state === 'won' || this.state === 'lost') && this.endT > 0.9) this.scene.restart();
+    };
+    window.addEventListener('keydown', this.keyStart);
+    this.events.once('shutdown', () => window.removeEventListener('keydown', this.keyStart));
+  }
+
+  begin() {
+    this.state = 'fight'; this.big.setText(''); this.small.setText('');
+    this.talk('LIGHTS OUT. EVERYONE IN BED.', 2.2);
+    for (const k of Object.keys(act)) act[k] = false;
+  }
+
+  talk(text, t = 1.6) { this.say = { text, t }; }
+
+  update(_time, delta) {
+    const pad = pollPad();
+    const held = touchHeld();
+    act.left = K.left.some((c) => keyDown.has(c)) || held.has('left') || !!(pad && pad.l);
+    act.right = K.right.some((c) => keyDown.has(c)) || held.has('right') || !!(pad && pad.r);
+    act.jumpHeld = K.jump.some((c) => keyDown.has(c)) || held.has('jump') || !!(pad && pad.a);
+    this.acc += Math.min(delta / 1000, 0.1);
+    let stepped = false;
+    while (this.acc >= STEP) { this.step(STEP); this.acc -= STEP; stepped = true; }
+    if (stepped) { act.jump = false; act.dodge = false; act.hit = false; }
+    this.render();
+  }
+
+  // ---------------- simulation ----------------
+  step(dt) {
+    this.say.t = Math.max(0, this.say.t - dt);
+    this.shake = Math.max(0, this.shake - dt * 2.2);
+    this.redEdge = Math.max(0, this.redEdge - dt * 2.5);
+    if (this.state === 'won' || this.state === 'lost') { this.endT += dt; this.dark = Math.max(0, this.dark - dt); return; }
+    if (this.state !== 'fight') return;
+    if (this.freeze > 0) { this.freeze -= dt; return; } // hit-stop
+    this.t += dt;
+    this.stepMilo(dt);
+    this.stepBoss(dt);
+    this.stepHazards(dt);
+    this.dark += (this.darkWant - this.dark) * Math.min(1, dt * 5);
+  }
+
+  miloBox() {
+    const h = this.dodgeT > 0 ? 24 : MILO_H;
+    return { l: this.x - MILO_W / 2, r: this.x + MILO_W / 2, t: FLOOR - this.y - h, b: FLOOR - this.y };
+  }
+  bossBox() {
+    const h = this.bstate === 'check' ? 70 : BOSS_H;
+    return { l: this.bx - BOSS_W / 2, r: this.bx + BOSS_W / 2, t: FLOOR - h, b: FLOOR };
+  }
+
+  stepMilo(dt) {
+    this.inv = Math.max(0, this.inv - dt);
+    this.dodgeCd = Math.max(0, this.dodgeCd - dt);
+    this.hitCd = Math.max(0, this.hitCd - dt);
+    if (this.booT > 0) { // Boo is carrying Milo out of the way
+      this.booT -= dt;
+      this.y = Math.min(150, this.y + 600 * dt); this.vy = 0;
+      this.x += (this.booX - this.x) * Math.min(1, dt * 4);
+      if (this.booT <= 0) { this.vy = -50; this.grounded = false; }
+      return;
+    }
+    const dir = (act.right ? 1 : 0) - (act.left ? 1 : 0);
+    if (dir) this.face = dir;
+
+    if (act.dodge && this.dodgeCd <= 0 && this.dodgeT <= 0) {
+      this.dodgeT = DODGE_T; this.dodgeCd = DODGE_CD + DODGE_T; this.dodgeDir = dir || this.face;
+      this.stats.dodges++;
+    }
+    if (this.dodgeT > 0) {
+      this.dodgeT -= dt;
+      this.vx = this.dodgeDir * DODGE_V;
+      if (!this.grounded) this.vy = Math.max(this.vy, -120); // a roll in the air floats a little
+    } else {
+      const target = dir * MOVE;
+      const a = this.grounded ? ACCEL : AIR_ACCEL;
+      this.vx += clamp(target - this.vx, -a * dt, a * dt);
+    }
+
+    // jump: buffer + coyote + variable height
+    this.buffer = act.jump ? BUFFER : Math.max(0, this.buffer - dt);
+    this.coyote = this.grounded ? COYOTE : Math.max(0, this.coyote - dt);
+    if (this.buffer > 0 && this.coyote > 0 && this.dodgeT <= 0) {
+      this.vy = JUMP_V; this.grounded = false; this.buffer = 0; this.coyote = 0;
+    }
+    if (!act.jumpHeld && this.vy > 0 && !this.grounded) this.vy *= Math.pow(JUMP_CUT, dt * 20);
+    if (!this.grounded) this.vy -= GRAVITY * dt;
+    this.y += this.vy * dt;
+    if (this.y <= 0) { this.y = 0; this.vy = 0; this.grounded = true; }
+    this.x = clamp(this.x + this.vx * dt, WALL_L + MILO_W / 2, WALL_R - MILO_W / 2);
+
+    // lantern swing
+    if (act.hit && this.hitCd <= 0 && this.dodgeT <= 0) {
+      this.hitT = HIT_T; this.hitCd = HIT_CD; this.hitDone = false; this.stats.swings++;
+    }
+    if (this.hitT > 0) {
+      this.hitT -= dt;
+      if (!this.hitDone) {
+        const m = this.miloBox();
+        const hb = this.face > 0
+          ? { l: this.x, r: this.x + HIT_RANGE, t: m.t - 6, b: m.t + HIT_H }
+          : { l: this.x - HIT_RANGE, r: this.x, t: m.t - 6, b: m.t + HIT_H };
+        if (overlap(hb, this.bossBox())) { this.hitDone = true; this.damageBoss(); }
+      }
+    }
+  }
+
+  damageBoss() {
+    const open = this.bstate === 'check';
+    const dmg = open ? 1 : 0;
+    this.stats.hits += dmg;
+    this.flashB = 0.14;
+    if (!open) { this.shake = Math.max(this.shake, 0.15); return; } // clang: she's not open
+    this.hp -= dmg; this.checkHits = (this.checkHits || 0) + 1;
+    this.freeze = 0.05; this.shake = Math.max(this.shake, 0.3);
+    if (this.hp > 0 && this.checkHits >= HITS_PER_CHECK) this.shove();
+    if (this.hp === Math.ceil(BOSS_HP / 2)) { this.talk('NO. NO RUNNING ON MY WARD.', 1.8); this.bt = Math.min(this.bt, 0.25); }
+    if (this.hp <= 0) this.win();
+  }
+
+  shove() {
+    this.bstate = 'idle'; this.bt = 0.45; this.flashB = 0.2;
+    const d = this.x < this.bx ? -1 : 1;
+    if (this.dodgeT <= 0) { this.vx = d * 520; this.vy = 300; this.grounded = false; }
+    this.talk('BACK TO BED.', 0.9);
+  }
+
+  hurt(fromX, cause) {
+    if (this.inv > 0 || this.dodgeT > 0 || this.booT > 0) return false;
+    this.causes = this.causes || {}; if (cause) this.causes[cause] = (this.causes[cause] || 0) + 1;
+    if (this.hearts === 1 && !this.booUsed) { // Boo comes once, and only when it would end you
+      this.booUsed = true; this.booT = 1.0;
+      this.booX = clamp(fromX > this.x ? this.x - 260 : this.x + 260, WALL_L + 40, WALL_R - 40);
+      this.inv = 1.4; this.talk('GOT YOU. GO.', 1.2);
+      return true;
+    }
+    this.hearts--; this.stats.taken++;
+    this.inv = HURT_INV; this.redEdge = 1; this.shake = 0.5; this.freeze = 0.06;
+    this.vx = (this.x < fromX ? -1 : 1) * KNOCK; this.vy = 380; this.grounded = false;
+    if (this.hearts <= 0) this.lose();
+    return true;
+  }
+
+  // ---- the Matron: an attack, then she stops at a bed to check it (the window) ----
+  stepBoss(dt) {
+    this.flashB = Math.max(0, this.flashB - dt);
+    this.bt -= dt;
+    const p2 = this.hp <= Math.ceil(BOSS_HP / 2);
+    const s = this.bstate;
+    if (s === 'idle' && this.bt <= 0) this.nextAttack(p2);
+    else if (s === 'tellRoll' && this.bt <= 0) { this.bstate = 'roll'; }
+    else if (s === 'roll') {
+      const v = p2 ? 760 : 620;
+      this.bx += Math.sign(this.bTarget - this.bx) * v * dt;
+      if (Math.abs(this.bTarget - this.bx) < v * dt) { this.bx = this.bTarget; this.check(p2); }
+    } else if (s === 'tellCurtain' && this.bt <= 0) {
+      this.bstate = 'curtain';
+      const fromLeft = this.bx > W / 2 ? false : true;
+      const v = p2 ? 600 : 500;
+      this.curtain = { x: fromLeft ? WALL_L : WALL_R, dir: fromLeft ? 1 : -1, v, h: 32, len: 120, second: p2 };
+    } else if (s === 'curtain' && !this.curtain) { this.check(p2); }
+    else if (s === 'tellBoards' && this.bt <= 0) {
+      this.bstate = 'boards'; this.bt = 0.5;
+      const n = p2 ? 5 : 3;
+      for (let i = 0; i < n; i++) {
+        const tx = clamp(this.x + (i - (n - 1) / 2) * 90, WALL_L + 20, WALL_R - 20);
+        const flight = 0.9;
+        this.boards.push({ x: this.bx, y: FLOOR - 90, vx: (tx - this.bx) / flight, vy: (90 - 600 * flight * flight) / flight, spin: 0 });
+      }
+    } else if (s === 'boards' && this.bt <= 0 && this.boards.length === 0) { this.check(p2); }
+    else if (s === 'check' && this.bt <= 0) {
+      this.bstate = 'idle'; this.bt = p2 ? 0.35 : 0.6;
+      if (this.darkWant > 0 && Math.random() < 0.5) { this.darkWant = 0; this.lampsOn = LAMPS.map(() => 1); }
+    } else if (s === 'lights' && this.bt <= 0) {
+      this.darkWant = 0.9; this.lampsOn = LAMPS.map(() => 0);
+      this.bstate = 'idle'; this.bt = 0.5; this.queue.unshift(this.pick(['roll', 'curtain'], true));
+    }
+
+    // touching her only hurts while she charges (standing next to her is fair)
+    if (this.bstate === 'roll' && overlap(this.miloBox(), this.bossBox())) {
+      if (this.hurt(this.bx, 'roll')) { /* contact */ }
+      else if (this.dodgeT > 0 && this.bstate === 'roll' && !this.passedThisRoll) { this.passedThisRoll = true; this.stats.dodgedThrough++; }
+    }
+  }
+
+  pick(list, avoidLast) {
+    const pool = avoidLast ? list.filter((a) => a !== this.lastAttack) : list;
+    return pool[Math.floor(Math.random() * pool.length)] || list[0];
+  }
+
+  nextAttack(p2) {
+    if (p2 && this.darkWant === 0 && Math.random() < 0.45) {
+      this.bstate = 'lights'; this.bt = 1.0; this.talk('LIGHTS OUT.', 1.0);
+      return;
+    }
+    const a = this.queue.shift() || this.pick(['roll', 'curtain', 'boards'], true);
+    this.lastAttack = a;
+    if (a === 'roll') {
+      // charge through Milo to the bed on his far side
+      const side = this.x > this.bx ? 1 : -1;
+      const beyond = BEDS.filter((b) => (b - this.x) * side > 60);
+      this.bTarget = beyond.length ? (side > 0 ? beyond[0] : beyond[beyond.length - 1]) : (side > 0 ? BEDS[2] : BEDS[0]);
+      if (Math.abs(this.bTarget - this.bx) < 30) this.bTarget = this.bx > W / 2 ? BEDS[0] : BEDS[2];
+      this.bDir = Math.sign(this.bTarget - this.bx) || 1;
+      this.bstate = 'tellRoll'; this.bt = p2 ? 0.45 : 0.65; this.passedThisRoll = false;
+    } else if (a === 'curtain') {
+      this.bstate = 'tellCurtain'; this.bt = p2 ? 0.55 : 0.75;
+    } else {
+      this.bstate = 'tellBoards'; this.bt = p2 ? 0.4 : 0.55;
+    }
+  }
+
+  check(p2) {
+    this.bstate = 'check'; this.bt = p2 ? 1.15 : 1.6; this.checkHits = 0;
+    // snap to the nearest bed and bend over it
+    let nb = BEDS[0];
+    for (const b of BEDS) if (Math.abs(b - this.bx) < Math.abs(nb - this.bx)) nb = b;
+    if (Math.abs(nb - this.bx) < 80) this.bx = nb;
+  }
+
+  stepHazards(dt) {
+    const m = this.miloBox();
+    if (this.curtain) {
+      const c = this.curtain;
+      c.x += c.dir * c.v * dt;
+      const box = { l: Math.min(c.x, c.x - c.dir * c.len), r: Math.max(c.x, c.x - c.dir * c.len), t: FLOOR - c.h, b: FLOOR };
+      if (overlap(m, box)) this.hurt(c.x, 'curtain');
+      const out = c.dir > 0 ? c.x - c.len > WALL_R : c.x + c.len < WALL_L;
+      if (out) {
+        if (c.second) { this.curtain = { ...c, dir: -c.dir, x: c.dir > 0 ? WALL_R : WALL_L, second: false, v: c.v * 1.1 }; }
+        else this.curtain = null;
+      }
+    }
+    for (const b of this.boards) {
+      b.vy += 1200 * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.spin += dt * 14;
+      if (overlap(m, { l: b.x - 12, r: b.x + 12, t: b.y - 8, b: b.y + 8 })) { if (this.hurt(b.x, 'board')) b.gone = true; }
+      if (b.y > FLOOR) { b.gone = true; this.shake = Math.max(this.shake, 0.08); }
+    }
+    this.boards = this.boards.filter((b) => !b.gone);
+  }
+
+  win() {
+    this.state = 'won'; this.endT = 0; this.curtain = null; this.boards = []; this.darkWant = 0;
+    this.bstate = 'sit';
+    const time = this.t;
+    const rec = { time, taken: this.stats.taken };
+    if (!best || time < best.time) { best = rec; try { localStorage.setItem('ghostline-boss-best', JSON.stringify(best)); } catch (e) {} }
+    this.big.setText('SHE SITS ON THE LAST BED.');
+    this.small.setText(`${time.toFixed(1)} s   hits taken ${this.stats.taken}   Boo ${this.booUsed ? 'helped' : 'not needed'}\n\n${this.touch ? 'tap' : 'press a key'} to fight again`);
+  }
+  lose() {
+    this.state = 'lost'; this.endT = 0;
+    this.big.setText('LIGHTS OUT.');
+    this.small.setText(`she had ${this.hp} of ${BOSS_HP} left   ${this.t.toFixed(1)} s\n\n${this.touch ? 'tap' : 'press a key'} to try again`);
+  }
+
+  // ---------------- drawing (greybox) ----------------
+  render() {
+    const g = this.g; g.clear();
+    const sk = this.shake * this.shake * 10;
+    const ox = sk ? Math.sin(this.t * 61) * sk : 0, oy = sk ? Math.cos(this.t * 47) * sk * 0.6 : 0;
+    this.cameras.main.setScroll(ox, oy);
+
+    // room
+    g.fillStyle(0x1c1a26, 1); g.fillRect(-20, -20, W + 40, H + 40);
+    g.fillStyle(0x24212f, 1); g.fillRect(WALL_L, 90, WALL_R - WALL_L, FLOOR - 90);
+    g.fillStyle(0x2f2b3a, 1); g.fillRect(-20, FLOOR, W + 40, H - FLOOR + 20);
+    g.fillStyle(0x15131c, 1); g.fillRect(-20, -20, WALL_L + 20, H + 40); g.fillRect(WALL_R, -20, W - WALL_R + 20, H + 40);
+    // curtain rail
+    g.fillStyle(0x4a4558, 1); g.fillRect(WALL_L, 120, WALL_R - WALL_L, 4);
+    // the clock at 3:33
+    g.lineStyle(3, 0x6d6680, 1); g.strokeCircle(W / 2, 104, 18);
+    g.lineStyle(2, 0x6d6680, 1); g.lineBetween(W / 2, 104, W / 2 + 7, 112); g.lineBetween(W / 2, 104, W / 2 - 1, 90);
+    // lamps and their pools of light
+    LAMPS.forEach((lx, i) => {
+      const on = this.lampsOn[i];
+      g.fillStyle(on ? 0xfff1c2 : 0x3a3646, 1); g.fillRect(lx - 14, 92, 28, 6);
+      if (on) { g.fillStyle(0xfff1c2, 0.05); g.fillTriangle(lx - 12, 98, lx + 12, 98, lx + 70, FLOOR); g.fillTriangle(lx - 12, 98, lx - 70, FLOOR, lx + 70, FLOOR); }
+    });
+    // beds
+    for (const bx of BEDS) {
+      g.fillStyle(0x5d5870, 1); g.fillRect(bx - 50, FLOOR - 34, 100, 14);
+      g.fillStyle(0xd8d3e6, 1); g.fillRect(bx - 48, FLOOR - 40, 96, 8);
+      g.fillStyle(0x4a4558, 1); g.fillRect(bx - 50, FLOOR - 20, 5, 20); g.fillRect(bx + 45, FLOOR - 20, 5, 20); g.fillRect(bx - 50, FLOOR - 60, 5, 40);
+    }
+
+    // curtain sweep tell: the rail shakes on the side it comes from
+    if (this.bstate === 'tellCurtain') {
+      const fromLeft = this.bx <= W / 2;
+      const jit = Math.sin(this.t * 80) * 3;
+      g.fillStyle(0xff5a5a, 0.85); g.fillRect(fromLeft ? WALL_L : WALL_R - 160, 116 + jit, 160, 10);
+      g.fillStyle(0xff5a5a, 0.35); g.fillRect(fromLeft ? WALL_L : WALL_R - 14, FLOOR - 60, 14, 60);
+    }
+    if (this.curtain) {
+      const c = this.curtain;
+      const l = Math.min(c.x, c.x - c.dir * c.len);
+      g.fillStyle(0xbfc7d8, 1); g.fillRect(l, FLOOR - c.h, c.len, c.h);
+      g.lineStyle(2, 0x8d95a8, 1);
+      for (let i = 1; i < 6; i++) g.lineBetween(l + (i * c.len) / 6, FLOOR - c.h, l + (i * c.len) / 6, FLOOR);
+      g.lineStyle(2, 0x6d6680, 0.8); g.lineBetween(c.x, 124, c.x, FLOOR - c.h); // pulled from the rail
+    }
+
+    // the Matron
+    this.drawBoss(g);
+    // clipboards
+    for (const b of this.boards) {
+      g.fillStyle(0xe8dcc0, 1);
+      const a = b.spin, cx = Math.cos(a) * 12, sy = Math.sin(a) * 8;
+      g.fillTriangle(b.x - cx, b.y - sy, b.x + cx, b.y + sy, b.x - sy, b.y + cx * 0.6);
+      g.fillTriangle(b.x - cx, b.y - sy, b.x + cx, b.y + sy, b.x + sy, b.y - cx * 0.6);
+    }
+
+    // Milo
+    this.drawMilo(g);
+
+    // lights out: only Milo's lantern
+    if (this.dark > 0.02) {
+      const my = FLOOR - this.y - 24;
+      // a ring of quads from the lantern's radius out past the screen edge (a huge stroke leaves streaks)
+      g.fillStyle(0x000000, this.dark);
+      const R = 120, FAR = 1400, N = 48;
+      for (let i = 0; i < N; i++) {
+        const a0 = (i / N) * Math.PI * 2, a1 = ((i + 1) / N) * Math.PI * 2;
+        const ix0 = this.x + Math.cos(a0) * R, iy0 = my + Math.sin(a0) * R, ix1 = this.x + Math.cos(a1) * R, iy1 = my + Math.sin(a1) * R;
+        const ox0 = this.x + Math.cos(a0) * FAR, oy0 = my + Math.sin(a0) * FAR, ox1 = this.x + Math.cos(a1) * FAR, oy1 = my + Math.sin(a1) * FAR;
+        g.fillTriangle(ix0, iy0, ox0, oy0, ox1, oy1); g.fillTriangle(ix0, iy0, ox1, oy1, ix1, iy1);
+      }
+      g.fillStyle(0x000000, this.dark * 0.35); g.fillCircle(this.x, my, 120);
+      // what you can still read in the dark: her eyes, the curtain edge, the boards
+      g.fillStyle(0xff4040, 1); g.fillRect(this.bx - 10, FLOOR - BOSS_H + 14, 5, 4); g.fillRect(this.bx + 5, FLOOR - BOSS_H + 14, 5, 4);
+      if (this.curtain) { g.fillStyle(0xffffff, 0.8); g.fillRect(this.curtain.x - 2, FLOOR - this.curtain.h, 4, this.curtain.h); }
+      if (this.bstate === 'tellRoll') { g.fillStyle(0xff4040, 0.9); g.fillRect(this.bx - 30, FLOOR - 4, 60, 4); }
+    }
+
+    // red edge when hurt
+    if (this.redEdge > 0) {
+      g.lineStyle(26, 0xff2a2a, this.redEdge * 0.55); g.strokeRect(13, 13, W - 26, H - 26);
+    }
+
+    this.renderUI();
+  }
+
+  drawBoss(g) {
+    const s = this.bstate;
+    const bend = s === 'check' || s === 'sit';
+    const h = bend ? 70 : BOSS_H;
+    let x = this.bx;
+    if (s === 'tellRoll') x -= this.bDir * 6 + Math.sin(this.t * 70) * 2; // leans back before the charge
+    const top = FLOOR - h;
+    // IV pole frame
+    g.fillStyle(0x6d6680, 1); g.fillRect(x - 30, FLOOR - 8, 60, 6);
+    g.fillCircle(x - 26, FLOOR - 2, 4); g.fillCircle(x + 26, FLOOR - 2, 4);
+    g.fillRect(x + 22 * this.bDir - 2, top - 26, 3, h + 20);
+    g.fillRect(x + 22 * this.bDir - 10, top - 26, 18, 3);
+    // body
+    const lit = this.flashB > 0;
+    g.fillStyle(lit ? 0xffffff : bend ? 0xd9d0a8 : 0xa79cb8, 1); g.fillRect(x - 22, top + 18, 44, h - 26);
+    g.fillStyle(lit ? 0xffffff : 0xe7e2f0, 1); g.fillRect(x - 13, top, 26, 22); // head
+    g.fillStyle(0xf4f0fa, 1); g.fillRect(x - 16, top - 6, 32, 8); // cap
+    g.fillStyle(0x1c1a26, 1); g.fillRect(x - 8, top + 9, 4, 3); g.fillRect(x + 4, top + 9, 4, 3);
+    if (bend) { // the window: a soft gold outline
+      g.lineStyle(2, 0xffd36b, 0.6 + 0.3 * Math.sin(this.t * 10)); g.strokeRect(x - 25, top - 9, 50, h + 4);
+    }
+    if (s === 'tellBoards') { g.fillStyle(0xe8dcc0, 1); g.fillRect(x - 36, top - 10, 16, 22); } // arm up, clipboard
+  }
+
+  drawMilo(g) {
+    if (this.inv > 0 && this.booT <= 0 && Math.floor(this.t * 20) % 2) return;
+    const m = this.miloBox();
+    const rolling = this.dodgeT > 0;
+    g.fillStyle(rolling ? 0x8fb6ff : 0xcfe0ff, rolling ? 0.6 : 1);
+    g.fillRect(m.l, m.t, MILO_W, m.b - m.t);
+    g.fillStyle(0x1c1a26, 1); if (!rolling) g.fillRect(this.x + this.face * 5 - 2, m.t + 9, 4, 4);
+    // lantern + swing
+    const lx = this.x + this.face * 18, ly = m.t + 22;
+    g.fillStyle(0xffd36b, 1); g.fillRect(lx - 4, ly - 5, 8, 10);
+    if (this.hitT > 0) {
+      const k = 1 - this.hitT / HIT_T;
+      const a0 = this.face > 0 ? -1.1 : Math.PI - 1.1;
+      g.fillStyle(0xffd36b, 0.5 * (1 - k)); g.beginPath(); g.slice(this.x, m.t + 18, HIT_RANGE, a0, a0 + 2.2, false); g.fillPath();
+    }
+    // Boo carrying him
+    if (this.booT > 0) {
+      g.fillStyle(0xeaf6ff, 0.9); g.fillCircle(this.x, m.t - 22, 18); g.fillRect(this.x - 18, m.t - 22, 36, 16);
+      g.fillStyle(0x1c1a26, 1); g.fillRect(this.x - 8, m.t - 26, 4, 5); g.fillRect(this.x + 4, m.t - 26, 4, 5);
+    }
+  }
+
+  renderUI() {
+    const u = this.ui; u.clear();
+    // hearts
+    for (let i = 0; i < HEARTS; i++) { u.fillStyle(i < this.hearts ? 0xff6b7d : 0x3a3646, 1); u.fillRect(W - 190 + i * 22, 18, 16, 14); }
+    // boss bar
+    u.fillStyle(0x3a3646, 1); u.fillRect(W / 2 - 160, 50, 320, 8);
+    u.fillStyle(0xd9d0a8, 1); u.fillRect(W / 2 - 160, 50, 320 * Math.max(0, this.hp) / BOSS_HP, 8);
+    // Boo badge (once per fight)
+    u.fillStyle(this.booUsed ? 0x3a3646 : 0xeaf6ff, 1); u.fillCircle(W - 210, 25, 7);
+    // touch buttons
+    const vis = this.showButtons && this.state === 'fight';
+    const held = touchHeld();
+    BTN.forEach((b, i) => {
+      this.labels[i].setVisible(vis);
+      if (!vis) return;
+      const on = held.has(b.id);
+      u.fillStyle(0xffffff, on ? 0.22 : 0.09); u.fillCircle(b.x, b.y, b.r);
+      u.lineStyle(2, 0xffffff, on ? 0.5 : 0.22); u.strokeCircle(b.x, b.y, b.r);
+    });
+    this.line.setText(this.say.t > 0 ? this.say.text : '');
+    this.line.setAlpha(Math.min(1, this.say.t * 3));
+    this.debug.setText(
+      `t ${this.t.toFixed(1)}s  boss ${this.bstate} ${Math.max(0, this.bt).toFixed(2)}  hp ${this.hp}/${BOSS_HP}  hearts ${this.hearts}\n` +
+      `swings ${this.stats.swings} hits ${this.stats.hits}  dodges ${this.stats.dodges} through ${this.stats.dodgedThrough}  taken ${this.stats.taken}` +
+      (best ? `  best ${best.time.toFixed(1)}s` : ''));
+  }
+}
+
+window.__game = new Phaser.Game({
+  type: Phaser.AUTO, parent: 'game', width: W, height: H, backgroundColor: '#0b0a10',
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  input: { activePointers: 5 },
+  scene: [Fight],
+});
+})();
+</script>
+</body>
+</html>
