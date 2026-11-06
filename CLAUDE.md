@@ -1,82 +1,45 @@
 # Ghostline
 
-Horror-themed (spooky fun) Jetpack Joyride-style runner. Phaser 4.2.1, plain ES modules, no build step.
-Phaser is vendored at `vendor/phaser.min.js` and loaded by `<script>` in `index.html` (the `package.json`
-dependency is there so tools can detect the engine and version).
+Horror (spooky fun) 2D runner with boss arenas. Phaser 4.2.1 (vendored `vendor/phaser.min.js`), plain ES modules, no build step.
+Work happens on branch `v6-runner`; `main` (v5) stays untouched. Commit as Ledjan <ledibajrami15@gmail.com>.
+Story, names, voice: `docs/story.md` (short). Don't open the full Claude Doc unless story.md lacks it.
+Game dev skills in `.claude/skills/` (start with `router`); engine skills `phaser-core`, `phaser-arcade-physics`.
 
-## Game dev skills
-This repo ships game dev skills in `.claude/skills/` (from
-https://github.com/gamedev-skills/awesome-gamedev-agent-skills, Apache-2.0).
-For ANY game change, start with the `router` skill, then read the skills it picks before writing code.
-Engine skills: `phaser-core`, `phaser-arcade-physics`.
+## Saving tokens
+- Read only the files the task names; use Grep to find a method before reading a file.
+- Screenshots and AI testers only when asked. No subagents unless asked.
+- Run the tests for what changed (`npx playwright test -g "<name>"`); the full suite and bots once at the end.
 
-## Layout
-- `src/main.js` boot + game config
-- `src/scenes/` story, menu, play, hud, pause, settings, stats, over, unlocks
-- `src/zones.js` the 8 zones (data + painted 5-layer parallax art via `Buf`, gates, `ZoneLayers` seam swap); `ZONE_LENGTH_M` = 400
-- `src/art.js` all pixel art drawn in code; `docs/art-direction.md` is the visual contract
-- `src/audio.js` Web Audio synth: buses, music layers, SFX
-- `src/input.js` action map (float, pause, confirm, back, nav) for keyboard, pointer, gamepad
-- `src/save.js` versioned save with migration + backup
-- `src/pacing.js` difficulty curve, speed curve and spawn tables
-- `src/missions.js` mission pool, levels, per-run tracker
-- `src/unlocks.js` score multiplier, combo tiers + points, unlock track (hats, trails, journal pages), character LOOKS
-- `src/run-score.js` mixed into PlayScene: score, combo, ecto spray, thrust, speed lines, hat, world tint
-- `src/looks.js` `WorldLook`: per-character color grade + signature effect (used by play and menu)
-- `src/run-features.js` mixed into PlayScene: pickups, lasers, ghouls, weather, giants, opening, daily ghost, Spirit Rush, Dark Chase, Boo quips, tips, spin/revive/finalize
-- `src/scenes/spin.js` Grave Spin; `missions.js`, `charms.js` menu overlays
-- `src/runner.js` (v6, branch `v6-runner`) mixed into PlayScene last: run/jump/slide, THE STRETCH chaser, ground traps, Boo flights (a chasm in every world + a rare 8 s orb; the v5 hazards are the air traps), one trap per world (`WORLD_TRAPS`), weapons (`WEAPONS`: salt, flame, holy, bone; each only aims at what it answers, `ANSWERS`; the pickup is the answer to the world, `WORLD_WEAPON`; Boo's ecto blaster in flight). Tuning in `RUN`; `lateK()` makes worlds 5 to 8 harder
-- `src/tricks.js` (phase 3) THE STRETCH's trick per world (`TRICKS`): tell, then one answer (jump or slide); lives in `this.traps` as kind `trick`
-- `src/patterns.js` (phase 3) hand-made ground trap patterns, shared + per world; `patternFair()` checks them against the jump/slide metrics
-- `src/setpieces.js` (phase 3) a hand-made flight set piece per world (`SET_PIECES`: gate, pinch, sway, wave, laser, wheel, track segments)
-- `src/ending.js` (phase 3) the door at the end of world 8 (needs every journal page), the ending scene, endless mode (`save.ending.seen`, mode `endless`)
-- `src/scares.js` (phase 4) one scare per world (`SCARES`): hush, sting, release; waits for a clear screen (`scareHold` stops the spawner), never hurts you
-- `scripts/bot.mjs` bot players (casual, regular, expert): `node scripts/bot.mjs 6 all` for full runs, `--pieces` for each world's flight
-- `src/runner-art.js` THE STRETCH (3 stages by distance: `_m`, `_n` frames via `hungry()`; near stays upright), its big ending face `stretch_face`, ground and world traps, weapons, HUD face icon (pixel art)
-- `scripts/phase3-shots.mjs`, `scripts/phase4-shots.mjs`, `scripts/v8-shots.mjs` screenshots (v8: the shadow, the stumble arm, shadow tricks, Ansel, the Coroner)
-- `node scripts/bot.mjs 8 all --arena` fights every boss arena with the bot profiles (wins, time, hearts left, what hit them)
-- `src/story.js` (v8) The Story of Vigil in the run: `ALLIES` (met once, each gives a power; `save.story.met`) and `STORY_BOSS` (an arena at the end of a world, fought until beaten once; `save.story.beaten`). `storyHold` keeps traps, tricks and scares off while a story beat has the screen
-- `src/scenes/boss.js` (v8) the boss arena scene (`BOSSES`, `POWERS`): play pauses, HUD sleeps, the arena hands back `{ won, ... }` via `onEnd`. World 1: THE NIGHT MATRON with Ivy's PENLIGHT. World 2: THE CORONER (toe tags file you = slow 2 s, drawers out of the walls = pushers then platforms, his lamp = a sweep only Ansel's SHEET gets you through). `window.__boss` + `bot` for tests. Story, names and voice: the Claude Doc "Ghostline: The Story of Vigil"
+## Files
+- `src/main.js` boot. `src/data.js` sizes (W, H, FLOOR, CEIL, PLAYER_X). `src/input.js` action map. `src/save.js` versioned save. `src/audio.js` synth + SFX.
+- `src/scenes/play.js` the run (fixed 120 Hz `step()`, `render()`); `hud.js`, `menu.js`, `over.js`, `pause.js`, `settings.js`, `stats.js`, `unlocks.js`, `spin.js`, `story.js` (intro cards).
+- Mixins into PlayScene: `run-features.js` (pickups, Boo quips, opening, revive), `run-score.js` (score, combo), `runner.js` (v6 core: init, run/jump/slide, spawning, world traps, collisions, headlines, drawing) which spreads in `runner-stretch.js` (THE STRETCH: chase, shadow, sounds, stumble arm, grab scene, Boo's lantern), `runner-flight.js` (Boo's flights + set pieces), `runner-weapons.js` (salt, flame, holy, bone). Shared tuning/constants: `runner-const.js` (`RUN`, `WEAPONS`, difficulty helpers). `lateK()` (worlds 5 to 8 harder) is in runner-flight.js.
+- `zones.js` 8 zones (painted parallax, gates; `ZONE_LENGTH_M` 400). `art.js`, `runner-art.js` pixel art in code (`docs/art-direction.md`). `looks.js` color grade.
+- `tricks.js` THE STRETCH's trick per world. `patterns.js` hand-made trap patterns (`patternFair()`). `setpieces.js` flight set pieces. `scares.js` one scare per world. `ending.js` the door at 3,200 m, ending, endless.
+- `story.js` (v8) `ALLIES` (met once, gives a power; `save.story.met`), `STORY_BOSS` (arena at a world's end until beaten; `save.story.beaten`), ally art. `scenes/boss.js` arenas (`BOSSES`, `POWERS`): world 1 THE NIGHT MATRON, world 2 THE CORONER.
+- `scripts/bot.mjs` bots: `node scripts/bot.mjs 6 all` full runs, `--pieces` flights, `8 all --arena` boss fights. `scripts/v8-shots.mjs` (and phase3/4) screenshots.
 
 ## Rules
-- Run state is reset in `init()`, never the constructor.
-- Simulation runs on a fixed 120 Hz step in `PlayScene.step()`; drawing happens in `render()`.
-- Gameplay reads actions from `src/input.js`, never raw keys.
-- Bump `SAVE_VERSION` and add a migration when the save shape changes (now v7: v5 fields plus `bestScore`, `bestCombo`, `unlocks` {got, points, fresh}, `boo` {hat, trail}; v7 adds `ending` {seen, runs} and mode `endless`).
-- Creative mode: `PlayScene.rebirth()` replaces death; `saveCheckpoint()` writes the creative slot.
-- iPhone fullscreen = home screen web app (`manifest.webmanifest`, apple meta tags, `icons/`).
-- Offline via `sw.js`: bump `CACHE` and add new files to its list whenever files change.
-- Zones are one-way: a gate set piece swaps layers at its seam. Never fade or loop zones.
-- Darkness covers backgrounds only (depth 4.5); hazards must stay readable. Hazard colors come from `this.hz` (high contrast setting).
-- Character looks stay below hazards: tint goes on zone layers, the color wash sits at depth 4.4, effects at depth 2 (scanlines 4.6, faint).
-- HUD x 120-180 on row 2 stays empty: the player hugs the ceiling there.
-- Anything good the player does should call `addCombo(kind)`; getting hit calls `breakCombo()`.
-- Phase 4: the runner's meter shows closeness (fills toward red as THE STRETCH gets nearer); `play.light` itself still means distance (1 = far).
-- v6: `hit()` is a stumble on the ground (two in a row = caught) and costs landing distance in the air. The LIGHT bar shows how close THE STRETCH is.
-- v6: every ground trap must be beatable by jump or slide alone (Milo can't change speed). Slide fits under anything whose bottom is above FLOOR-20; standing Milo's head is FLOOR-44 (Milo is drawn at 2.5x, `MILO_SCALE`).
-- v6: ground traps live in world px (`t.wx`, drawn at `sx(wx)`); v5 hazards stay in screen px and only spawn while flying.
-- v6: one new system per run (`runnerInit`): run 1 missions only, run 2 power-ups, run 3 B-O-O letters, run 5 souls and Grave Spin.
-- v6: every flight section is hand-made (`SET_PIECES` in setpieces.js, per zone id); it replaces the random air spawner. The chasm opens early enough that you land before the gate (`chasmAtM`).
-- v6: a trick or pattern needs the screen to itself: no traps spawn while `this.trick` runs, patterns only use traps already seen this run (teach, then test).
-- v6: the door at 3,200 m only opens with every journal page; after the ending it stays open and the run goes on beyond it (endless, `this.beyond`, a new depth every 400 m).
-- v6: a gate is a passage (`renderGate`): the door art stands 150 px before the seam, the seam sits inside a black stretch, the next world fades in after it.
-- v6: one popup at a time (`popup(str, color, y, prio)`): a newer one replaces the old unless the old is more important and under 0.6 s old.
-- Phase 4: ONE message on screen at a time. The headline (one short line), the popup and Boo's bubble share a slot: a headline clears the others, a popup waits out a headline unless prio >= 2 (danger). Second lines and tips go to the small corner note (`note(str)`, HUD bottom-left). No floating +points in the runner.
-- Phase 4 round 6: the runner's top bar shows only distance, the meter (centered), score and pause. Candles, souls and B-O-O letters peek in on change (`peek()` in hud.js) and fade; the weapon timer is bottom-right. Don't add always-on HUD items.
-- Phase 4: scares and the RNG: never call `this.rand` from scares (it would change the run's layout).
-- v6: getting caught plays the grab scene (`stepGrab`/`renderGrab`); a pit death keeps the fall.
-- v8: save v8 adds `story` {met, beaten}. Bots' saves mark the bosses beaten so full runs aren't stopped by an arena.
-- v8: boss arenas use the same 4 actions on every device: move, jump (`float`), dodge (`slide`), light (`light`: E/J, pad X/Y). Attacks are automatic. Touch in the arena: left half hold-and-slide to move, right half tap = jump, swipe = dodge, the LIGHT button only when charged (`createInput(scene, { pointers: false })`). A new power upgrades one of the 4 actions, never adds a button.
-- v8: a boss is open (takes hits) only while it checks/stuns; after 3 hits in one window it shoves Milo off. Boo saves Milo once per fight, only at his last heart.
-- v8: Milo keeps every power: the penlight is the LIGHT button in every later arena; THE SHEET upgrades the dodge (unseen 0.6 s, ready every 1.5 s: attacks pass through, the boss aims where it last saw you). A light attack (`hurt(x, true)`) ignores a plain dodge. Each boss is built to need its world's new power.
-- v8: THE STRETCH is heard, not seen. While running only its shadow shows (`stretchShadow`, depth 4.55, feet off the left edge, head where the gap says), plus steps, keys (`keys`), breath and at the near stage a hum (`hum`). Its body shows only when you fail: the arm on a stumble (`renderLungeArm`), all of it when caught (the grab comes in from the left edge). Tricks are a shadow (`shadeStretch`) and a sound tell; a trick that hits you shows the real thing. The `stretch` sprite still runs the stage anims (hidden).
-- v8: Boo only comes when he's needed (`booNeeded()` in play.js: the opening, flights, saves, ally scenes, gates, the ending, `booUntil`). The rest of the time Milo carries Boo's lantern (`renderLantern`, lit when Boo is near) and only a few lines come, as text by the lantern.
+- Run state resets in `init()`, never the constructor. Gameplay reads actions from `input.js`, never raw keys.
+- Save shape change: bump `SAVE_VERSION` + migration (now v8: `story` {met, beaten}). Bots' saves mark bosses beaten.
+- Any file change: bump `CACHE` in `sw.js`; add new files to its list.
+- Creative mode: `rebirth()` replaces death; `saveCheckpoint()` writes the slot. iPhone fullscreen = home screen web app.
+- Zones are one-way: a gate swaps layers at its seam (`renderGate`: door 150 px before the seam, black stretch, next world fades in). Never fade or loop zones.
+- Depths: darkness covers backgrounds only (4.5); tint on zone layers, wash 4.4, effects 2, scanlines 4.6. Hazards stay readable; hazard colors from `this.hz`.
+- HUD: top bar = distance, meter (centered, fills red as THE STRETCH nears; `play.light` 1 = far), score, pause. Other counters `peek()` and fade. HUD x 120-180 row 2 stays empty.
+- ONE message at a time: headline, popup (`popup(str, color, y, prio)`) and Boo's bubble share a slot; second lines go to `note()`. No floating +points.
+- Good moves call `addCombo(kind)`; getting hit calls `breakCombo()`. Scares never call `this.rand`.
+- Runner: `hit()` = stumble (two in a row = caught; in the air it costs distance). Every ground trap is beatable by jump or slide alone (slide fits under bottoms above FLOOR-20; standing head FLOOR-44; Milo at 2.5x). Ground traps in world px (`t.wx`), v5 air hazards in screen px, only while flying.
+- One new system per run (`runnerInit`): run 1 missions, 2 power-ups, 3 B-O-O letters, 5 souls + Grave Spin.
+- Flights are hand-made (`SET_PIECES`); the chasm opens early enough to land before the gate (`chasmAtM`). A trick or pattern gets the screen to itself; patterns only use traps seen this run.
+- Door at 3,200 m opens with every journal page; after the ending the run goes on (endless, `this.beyond`).
+- Caught = grab scene (`stepGrab`/`renderGrab`, it comes in from the left edge); a pit death keeps the fall.
+- v8 THE STRETCH is heard, not seen: only its shadow (`stretchShadow`, depth 4.55) and sounds (steps, `keys`, breath, `hum` near). Body only on failure (`renderLungeArm` on a stumble, all of it when caught). Tricks are shadow + sound tells (`shadeStretch`); a trick that hits you shows the real thing. The hidden `stretch` sprite still runs the stage anims.
+- v8 Boo only when needed (`booNeeded()`: opening, flights, saves, ally scenes, gates, ending, `booUntil`). Otherwise Milo carries the lantern (`renderLantern`) and only a few lines show, by the lantern.
+- v8 arenas: same 4 actions everywhere: move, jump (`float`), dodge (`slide`), light (`light`). Attacks automatic. Touch: left half move, right tap jump, swipe dodge, LIGHT button when charged (`createInput(scene, { pointers: false })`). A power upgrades an action, never adds a button. Milo keeps every power (penlight = LIGHT; THE SHEET = dodge unseen 0.6 s every 1.5 s). A light attack (`hurt(x, true)`) ignores a plain dodge. Each boss needs its world's new power.
+- v8 arenas: a boss takes hits only while open (gold outline: check/stun); 3 hits in one window = it shoves Milo off. Boo saves once per fight at the last heart. First time an attack comes it's slower with one line (`teach()`); "!" before every attack; losing shows how close and TRY AGAIN / GIVE UP.
 
 ## Test
-Serve the folder (`python -m http.server 8000`) and open http://localhost:8000.
-Debug: `window.__game` exposes the Phaser game.
-Automated: `npm test` (Playwright, `tests/ghostline.spec.js`; set `CHROME_PATH` to use a system Chrome).
-AI testers (they cost the most tokens, images are expensive): by default ONE tester on the `sonnet` model, shown ONLY the screenshots
-of what changed (use `ONLY=` / the phase args of the shot scripts), once at the end of a round, not after every fix. All three testers
-on every screenshot only at a roadmap gate (end of a phase), or when the user asks.
-Store: `npm run build:itch` makes `dist/ghostline-itch.zip`; `scripts/screenshots.mjs` refreshes `docs/store/`; shipping steps in `docs/SHIPPING.md`.
+Serve (`python -m http.server 8000`), open http://localhost:8000. Debug: `window.__game`, `window.__boss`.
+`npm test` (Playwright, `tests/ghostline.spec.js`; `CHROME_PATH` for a system Chrome).
+Store: `npm run build:itch`; `scripts/screenshots.mjs`; `docs/SHIPPING.md`.
