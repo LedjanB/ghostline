@@ -32,27 +32,38 @@ const GRAVITY = 2700, JUMP_V = 860, JUMP_CUT = 0.45, COYOTE = 0.09, BUFFER = 0.1
 const DODGE_T = 0.32, DODGE_V = 720, DODGE_CD = 0.55;      // a roll, invulnerable the whole time
 const HIT_T = 0.12, HIT_CD = 0.32, HIT_RANGE = 66, HIT_H = 44; // lantern swing
 const HEARTS = 5, HURT_INV = 1.0, KNOCK = 380;
-const BOSS_HP = 15, BOSS_W = 60, BOSS_H = 96;
+const BOSS_HP = 21, BOSS_W = 60, BOSS_H = 96;
+const CHARGE_TIME = 18;      // s for the penlight to fill on its own
+const CHARGE_DODGE = 0.25, CHARGE_CLEAN = 0.15; // a dodge through her charge, an attack you got through clean
+const STUN_T = 1.3;
 const HITS_PER_CHECK = 3; // after 3 hits she stands up and shoves you off (no damage)
 const BEDS = [200, 480, 760];
 const LAMPS = [140, 340, 620, 820];
 
-// ---------- input: keyboard, gamepad and touch buttons into one action map ----------
-const act = { left: false, right: false, jumpHeld: false, jump: false, dodge: false, hit: false };
+// ---------- input: one action map for every device (input-systems skill) ----------
+// The same 4 actions everywhere: move, jump, dodge, power. Attacks are automatic, like the runner's weapons,
+// so a thumb, a keyboard and a gamepad all play the same fight.
+//   touch:    left half = hold and slide to move.  right half = tap to jump (hold = higher), swipe to dodge.
+//             the POWER button shows only when the Penlight is charged.
+//   keyboard: A D / arrows move, W / UP / SPACE jump, SHIFT / S / DOWN dodge, E / J power.
+//   gamepad:  stick or d-pad move, A jump, B dodge, X / Y / RT power.
+const act = { left: false, right: false, jumpHeld: false, jump: false, dodge: false, dodgeDir: 0, power: false };
 window.__act = act; // debug: bots drive the same action map
+let device = matchMedia('(pointer: coarse)').matches ? 'touch' : 'keyboard';
 const keyDown = new Set();
 const K = {
   left: ['ArrowLeft', 'KeyA'], right: ['ArrowRight', 'KeyD'],
-  jump: ['Space', 'ArrowUp', 'KeyW'], dodge: ['ShiftLeft', 'ShiftRight', 'KeyK', 'ArrowDown', 'KeyS'], hit: ['KeyJ', 'KeyX', 'Enter'],
+  jump: ['Space', 'ArrowUp', 'KeyW'], dodge: ['ShiftLeft', 'ShiftRight', 'ArrowDown', 'KeyS'], power: ['KeyE', 'KeyJ', 'Enter'],
 };
 const isK = (kind, code) => K[kind].includes(code);
 window.addEventListener('keydown', (e) => {
   for (const kind of Object.keys(K)) if (isK(kind, e.code)) e.preventDefault();
+  device = 'keyboard';
   if (e.repeat) return;
   keyDown.add(e.code);
   if (isK('jump', e.code)) act.jump = true;
   if (isK('dodge', e.code)) act.dodge = true;
-  if (isK('hit', e.code)) act.hit = true;
+  if (isK('power', e.code)) act.power = true;
 }, true);
 window.addEventListener('keyup', (e) => keyDown.delete(e.code), true);
 let padPrev = {};
@@ -61,27 +72,23 @@ function pollPad() {
   for (const p of pads) {
     if (!p) continue;
     const b = (i) => !!(p.buttons[i] && p.buttons[i].pressed);
-    const now = { a: b(0), b: b(1), x: b(2) || b(3), l: b(14) || p.axes[0] < -0.4, r: b(15) || p.axes[0] > 0.4 };
+    const ax = Math.abs(p.axes[0] || 0) > 0.35 ? p.axes[0] : 0; // deadzone
+    const now = { a: b(0), b: b(1), x: b(2) || b(3) || b(7), l: b(14) || ax < 0, r: b(15) || ax > 0 };
+    if (Object.values(now).some(Boolean)) device = 'gamepad';
     if (now.a && !padPrev.a) act.jump = true;
     if (now.b && !padPrev.b) act.dodge = true;
-    if (now.x && !padPrev.x) act.hit = true;
+    if (now.x && !padPrev.x) act.power = true;
     padPrev = now;
     return now;
   }
   padPrev = {};
   return null;
 }
-// touch buttons (game coords). Left thumb: move. Right thumb: jump, dodge, hit.
-const BTN = [
-  // all inside the floor band (y > FLOOR) so they never cover her or the beds
-  { id: 'left', x: 70, y: 486, r: 44, label: '<' },
-  { id: 'right', x: 178, y: 486, r: 44, label: '>' },
-  { id: 'dodge', x: 676, y: 490, r: 38, label: 'DODGE' },
-  { id: 'jump', x: 782, y: 486, r: 44, label: 'JUMP' },
-  { id: 'hit', x: 892, y: 486, r: 44, label: 'HIT' },
-];
-const touches = new Map(); // pointer id -> button id
-const touchHeld = () => new Set(touches.values());
+// touch: one pointer per thumb
+const POWER_BTN = { x: 880, y: 486, r: 42 };
+const SWIPE = 36;           // px (game coords) before a right-thumb drag counts as a swipe
+const STICK_DEAD = 14;      // px before the left thumb counts as a move
+const thumbs = { move: null, act: null }; // { id, x0, y0, x, y, swiped }
 
 const overlap = (a, b) => a.r > b.l && a.l < b.r && a.b > b.t && a.t < b.b;
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -98,6 +105,7 @@ class Fight extends Phaser.Scene {
     this.grounded = true; this.coyote = 0; this.buffer = 0;
     this.dodgeT = 0; this.dodgeCd = 0; this.dodgeDir = 1;
     this.hitT = 0; this.hitCd = 0; this.hitDone = false;
+    this.charge = 0.35; this.beamT = 0; this.cleanAttack = true; // Ivy gave him the penlight earlier in the world
     this.hearts = HEARTS; this.inv = 0; this.booUsed = false; this.booT = 0;
     // boss
     this.bx = 760; this.hp = BOSS_HP; this.bstate = 'idle'; this.bt = 1.4; this.bTarget = 760; this.bDir = -1;
@@ -106,7 +114,7 @@ class Fight extends Phaser.Scene {
     this.dark = 0; this.darkWant = 0; this.lampsOn = LAMPS.map(() => 1);
     // juice + stats
     this.shake = 0; this.freeze = 0; this.redEdge = 0;
-    this.stats = { hits: 0, swings: 0, dodges: 0, dodgedThrough: 0, taken: 0 };
+    this.stats = { hits: 0, swings: 0, dodges: 0, dodgedThrough: 0, taken: 0, lights: 0 };
     this.say = { text: '', t: 0 };
   }
 
@@ -115,40 +123,38 @@ class Fight extends Phaser.Scene {
     this.g = this.add.graphics();
     this.ui = this.add.graphics();
     this.debug = this.add.text(12, 8, '', { fontFamily: 'monospace', fontSize: '13px', color: '#7fae7a' });
-    this.big = this.add.text(W / 2, 130, '', { fontFamily: 'monospace', fontSize: '30px', color: '#e9e4ff', align: 'center' }).setOrigin(0.5);
-    this.small = this.add.text(W / 2, 190, '', { fontFamily: 'monospace', fontSize: '15px', color: '#a49ccc', align: 'center' }).setOrigin(0.5);
+    this.big = this.add.text(W / 2, 112, '', { fontFamily: 'monospace', fontSize: '30px', color: '#e9e4ff', align: 'center' }).setOrigin(0.5);
+    this.small = this.add.text(W / 2, 150, '', { fontFamily: 'monospace', fontSize: '15px', color: '#a49ccc', align: 'center' }).setOrigin(0.5, 0);
     this.line = this.add.text(W / 2, 80, '', { fontFamily: 'monospace', fontSize: '18px', color: '#d9d3f5', align: 'center' }).setOrigin(0.5);
-    this.labels = BTN.map((b) => this.add.text(b.x, b.y, b.label, { fontFamily: 'monospace', fontSize: b.label.length > 1 ? '13px' : '26px', color: '#cfc8f0' }).setOrigin(0.5));
-    this.touch = matchMedia('(pointer: coarse)').matches;
-    this.showButtons = this.touch;
+    this.powerLabel = this.add.text(POWER_BTN.x, POWER_BTN.y, 'LIGHT', { fontFamily: 'monospace', fontSize: '13px', color: '#2a2410' }).setOrigin(0.5);
+    this.hintLine = this.add.text(W / 2, 516, '', { fontFamily: 'monospace', fontSize: '12px', color: '#8a83a8', align: 'center' }).setOrigin(0.5);
     this.big.setText('THE NIGHT MATRON');
-    this.small.setText(this.touch
-      ? 'tap to start'
-      : 'A D / arrows move   W / SPACE jump   SHIFT / S dodge   J / X hit\npress any key');
+    this.introHint();
 
-    const pick = (p) => {
-      for (const b of BTN) if (Math.hypot(p.x - b.x, p.y - b.y) < b.r + 14) return b.id;
-      return null;
-    };
     this.input.on('pointerdown', (p) => {
-      this.showButtons = true;
+      if (p.pointerType === 'touch' || p.wasTouch) device = 'touch'; else if (device !== 'touch') device = 'mouse';
       if (this.state === 'intro') { this.begin(); return; }
       if (this.state === 'won' || this.state === 'lost') { if (this.endT > 0.9) this.scene.restart(); return; }
-      const id = pick(p);
-      if (!id) return;
-      touches.set(p.id, id);
-      if (id === 'jump') act.jump = true;
-      if (id === 'dodge') act.dodge = true;
-      if (id === 'hit') act.hit = true;
+      if (this.charge >= 1 && Math.hypot(p.x - POWER_BTN.x, p.y - POWER_BTN.y) < POWER_BTN.r + 16) { act.power = true; return; }
+      if (p.x < W / 2) { if (!thumbs.move) thumbs.move = { id: p.id, x0: p.x, y0: p.y, x: p.x, y: p.y }; }
+      else if (!thumbs.act) { thumbs.act = { id: p.id, x0: p.x, y0: p.y, x: p.x, y: p.y, swiped: false }; act.jump = true; }
     });
     this.input.on('pointermove', (p) => {
-      if (!p.isDown) return;
-      const cur = touches.get(p.id);
-      if (cur !== 'left' && cur !== 'right') return; // only the move thumb slides between buttons
-      const id = pick(p);
-      if (id === 'left' || id === 'right') touches.set(p.id, id);
+      if (thumbs.move && thumbs.move.id === p.id) { thumbs.move.x = p.x; thumbs.move.y = p.y; }
+      const t = thumbs.act;
+      if (t && t.id === p.id && !t.swiped) {
+        t.x = p.x; t.y = p.y;
+        const dx = p.x - t.x0, dy = p.y - t.y0;
+        if (Math.hypot(dx, dy) > SWIPE) {
+          t.swiped = true; act.dodge = true; act.cancelJump = true;
+          act.dodgeDir = Math.abs(dx) > Math.abs(dy) * 0.7 ? Math.sign(dx) : 0; // sideways swipe = that way, down = the way you face
+        }
+      }
     });
-    const up = (p) => touches.delete(p.id);
+    const up = (p) => {
+      if (thumbs.move && thumbs.move.id === p.id) thumbs.move = null;
+      if (thumbs.act && thumbs.act.id === p.id) thumbs.act = null;
+    };
     this.input.on('pointerup', up);
     this.input.on('pointerupoutside', up);
     this.keyStart = () => {
@@ -157,6 +163,18 @@ class Fight extends Phaser.Scene {
     };
     window.addEventListener('keydown', this.keyStart);
     this.events.once('shutdown', () => window.removeEventListener('keydown', this.keyStart));
+  }
+
+  introHint() {
+    const d = device;
+    this.small.setText(
+      (d === 'touch'
+        ? 'LEFT THUMB: hold and slide to move\nRIGHT THUMB: tap to jump, swipe to dodge'
+        : d === 'gamepad'
+          ? 'STICK move   A jump   B dodge   X light'
+          : 'A D move   W / SPACE jump   SHIFT / S dodge   E light') +
+      '\n\nMilo swings his lantern on his own when she stops.\nDodge her rounds. Ivy\'s penlight charges as you do.\n\n' +
+      (d === 'touch' ? 'tap to start' : d === 'gamepad' ? 'press A' : 'press any key'));
   }
 
   begin() {
@@ -169,14 +187,16 @@ class Fight extends Phaser.Scene {
 
   update(_time, delta) {
     const pad = pollPad();
-    const held = touchHeld();
-    act.left = K.left.some((c) => keyDown.has(c)) || held.has('left') || !!(pad && pad.l);
-    act.right = K.right.some((c) => keyDown.has(c)) || held.has('right') || !!(pad && pad.r);
-    act.jumpHeld = K.jump.some((c) => keyDown.has(c)) || held.has('jump') || !!(pad && pad.a);
+    const mv = thumbs.move ? thumbs.move.x - thumbs.move.x0 : 0;
+    act.left = K.left.some((c) => keyDown.has(c)) || mv < -STICK_DEAD || !!(pad && pad.l);
+    act.right = K.right.some((c) => keyDown.has(c)) || mv > STICK_DEAD || !!(pad && pad.r);
+    act.jumpHeld = K.jump.some((c) => keyDown.has(c)) || !!(thumbs.act && !thumbs.act.swiped) || !!(pad && pad.a);
+    if (this.state === 'intro' && device !== this.lastHintDevice) { this.lastHintDevice = device; this.introHint(); }
+    if (this.state === 'intro' && pad && pad.a) this.begin();
     this.acc += Math.min(delta / 1000, 0.1);
     let stepped = false;
     while (this.acc >= STEP) { this.step(STEP); this.acc -= STEP; stepped = true; }
-    if (stepped) { act.jump = false; act.dodge = false; act.hit = false; }
+    if (stepped) { act.jump = false; act.dodge = false; act.dodgeDir = 0; act.power = false; act.cancelJump = false; }
     this.render();
   }
 
@@ -219,7 +239,8 @@ class Fight extends Phaser.Scene {
     if (dir) this.face = dir;
 
     if (act.dodge && this.dodgeCd <= 0 && this.dodgeT <= 0) {
-      this.dodgeT = DODGE_T; this.dodgeCd = DODGE_CD + DODGE_T; this.dodgeDir = dir || this.face;
+      this.dodgeT = DODGE_T; this.dodgeCd = DODGE_CD + DODGE_T; this.dodgeDir = act.dodgeDir || dir || this.face;
+      if (act.cancelJump && !this.grounded && this.y < 40) this.vy = Math.min(this.vy, 120); // a swipe started as a tap: keep it a roll, not a hop
       this.stats.dodges++;
     }
     if (this.dodgeT > 0) {
@@ -244,8 +265,12 @@ class Fight extends Phaser.Scene {
     if (this.y <= 0) { this.y = 0; this.vy = 0; this.grounded = true; }
     this.x = clamp(this.x + this.vx * dt, WALL_L + MILO_W / 2, WALL_R - MILO_W / 2);
 
-    // lantern swing
-    if (act.hit && this.hitCd <= 0 && this.dodgeT <= 0) {
+    // lantern swing: automatic when she's open and in reach (same on every device)
+    this.charge = Math.min(1, this.charge + dt / CHARGE_TIME);
+    const open = this.bstate === 'check' || this.bstate === 'stunned';
+    const reach = HIT_RANGE + BOSS_W / 2 - 6;
+    if (open && this.hitCd <= 0 && this.dodgeT <= 0 && Math.abs(this.bx - this.x) < reach) {
+      this.face = Math.sign(this.bx - this.x) || this.face;
       this.hitT = HIT_T; this.hitCd = HIT_CD; this.hitDone = false; this.stats.swings++;
     }
     if (this.hitT > 0) {
@@ -258,17 +283,32 @@ class Fight extends Phaser.Scene {
         if (overlap(hb, this.bossBox())) { this.hitDone = true; this.damageBoss(); }
       }
     }
+    // Ivy's penlight: stuns her wherever she is, and puts the lamps back on
+    this.beamT = Math.max(0, this.beamT - dt);
+    if (act.power && this.charge >= 1 && this.booT <= 0) this.penlight();
+  }
+
+  penlight() {
+    this.charge = 0; this.beamT = 0.35; this.stats.lights++;
+    this.face = Math.sign(this.bx - this.x) || this.face;
+    this.shake = Math.max(this.shake, 0.25); this.freeze = 0.04;
+    if (this.darkWant > 0) { this.darkWant = 0; this.lampsOn = LAMPS.map(() => 1); }
+    if (this.bstate !== 'sit' && this.bstate !== 'check') {
+      this.bstate = 'stunned'; this.bt = STUN_T; this.checkHits = 0; this.flashB = 0.25;
+      this.curtain = null; this.boards = [];
+      this.talk('MY EYES. MY EYES.', 1.0);
+    }
   }
 
   damageBoss() {
-    const open = this.bstate === 'check';
+    const open = this.bstate === 'check' || this.bstate === 'stunned';
     const dmg = open ? 1 : 0;
     this.stats.hits += dmg;
     this.flashB = 0.14;
     if (!open) { this.shake = Math.max(this.shake, 0.15); return; } // clang: she's not open
     this.hp -= dmg; this.checkHits = (this.checkHits || 0) + 1;
     this.freeze = 0.05; this.shake = Math.max(this.shake, 0.3);
-    if (this.hp > 0 && this.checkHits >= HITS_PER_CHECK) this.shove();
+    if (this.hp > 0 && this.checkHits >= HITS_PER_CHECK && this.bstate === 'check') this.shove();
     if (this.hp === Math.ceil(BOSS_HP / 2)) { this.talk('NO. NO RUNNING ON MY WARD.', 1.8); this.bt = Math.min(this.bt, 0.25); }
     if (this.hp <= 0) this.win();
   }
@@ -289,7 +329,7 @@ class Fight extends Phaser.Scene {
       this.inv = 1.4; this.talk('GOT YOU. GO.', 1.2);
       return true;
     }
-    this.hearts--; this.stats.taken++;
+    this.hearts--; this.stats.taken++; this.cleanAttack = false;
     this.inv = HURT_INV; this.redEdge = 1; this.shake = 0.5; this.freeze = 0.06;
     this.vx = (this.x < fromX ? -1 : 1) * KNOCK; this.vy = 380; this.grounded = false;
     if (this.hearts <= 0) this.lose();
@@ -323,6 +363,7 @@ class Fight extends Phaser.Scene {
         this.boards.push({ x: this.bx, y: FLOOR - 90, vx: (tx - this.bx) / flight, vy: (90 - 600 * flight * flight) / flight, spin: 0 });
       }
     } else if (s === 'boards' && this.bt <= 0 && this.boards.length === 0) { this.check(p2); }
+    else if (s === 'stunned' && this.bt <= 0) { this.bstate = 'idle'; this.bt = 0.45; }
     else if (s === 'check' && this.bt <= 0) {
       this.bstate = 'idle'; this.bt = p2 ? 0.35 : 0.6;
       if (this.darkWant > 0 && Math.random() < 0.5) { this.darkWant = 0; this.lampsOn = LAMPS.map(() => 1); }
@@ -334,7 +375,7 @@ class Fight extends Phaser.Scene {
     // touching her only hurts while she charges (standing next to her is fair)
     if (this.bstate === 'roll' && overlap(this.miloBox(), this.bossBox())) {
       if (this.hurt(this.bx, 'roll')) { /* contact */ }
-      else if (this.dodgeT > 0 && this.bstate === 'roll' && !this.passedThisRoll) { this.passedThisRoll = true; this.stats.dodgedThrough++; }
+      else if (this.dodgeT > 0 && this.bstate === 'roll' && !this.passedThisRoll) { this.passedThisRoll = true; this.stats.dodgedThrough++; this.charge = Math.min(1, this.charge + CHARGE_DODGE); }
     }
   }
 
@@ -349,7 +390,7 @@ class Fight extends Phaser.Scene {
       return;
     }
     const a = this.queue.shift() || this.pick(['roll', 'curtain', 'boards'], true);
-    this.lastAttack = a;
+    this.lastAttack = a; this.cleanAttack = true;
     if (a === 'roll') {
       // charge through Milo to the bed on his far side
       const side = this.x > this.bx ? 1 : -1;
@@ -366,6 +407,7 @@ class Fight extends Phaser.Scene {
   }
 
   check(p2) {
+    if (this.cleanAttack && this.lastAttack !== 'roll') this.charge = Math.min(1, this.charge + CHARGE_CLEAN);
     this.bstate = 'check'; this.bt = p2 ? 1.15 : 1.6; this.checkHits = 0;
     // snap to the nearest bed and bend over it
     let nb = BEDS[0];
@@ -401,12 +443,12 @@ class Fight extends Phaser.Scene {
     const rec = { time, taken: this.stats.taken };
     if (!best || time < best.time) { best = rec; try { localStorage.setItem('ghostline-boss-best', JSON.stringify(best)); } catch (e) {} }
     this.big.setText('SHE SITS ON THE LAST BED.');
-    this.small.setText(`${time.toFixed(1)} s   hits taken ${this.stats.taken}   Boo ${this.booUsed ? 'helped' : 'not needed'}\n\n${this.touch ? 'tap' : 'press a key'} to fight again`);
+    this.small.setText(`${time.toFixed(1)} s   hits taken ${this.stats.taken}   lights ${this.stats.lights}   Boo ${this.booUsed ? 'helped' : 'not needed'}\n\n${device === 'touch' ? 'tap' : 'press a key'} to fight again`);
   }
   lose() {
     this.state = 'lost'; this.endT = 0;
     this.big.setText('LIGHTS OUT.');
-    this.small.setText(`she had ${this.hp} of ${BOSS_HP} left   ${this.t.toFixed(1)} s\n\n${this.touch ? 'tap' : 'press a key'} to try again`);
+    this.small.setText(`she had ${this.hp} of ${BOSS_HP} left   ${this.t.toFixed(1)} s\n\n${device === 'touch' ? 'tap' : 'press a key'} to try again`);
   }
 
   // ---------------- drawing (greybox) ----------------
@@ -497,7 +539,7 @@ class Fight extends Phaser.Scene {
 
   drawBoss(g) {
     const s = this.bstate;
-    const bend = s === 'check' || s === 'sit';
+    const bend = s === 'check' || s === 'sit' || s === 'stunned';
     const h = bend ? 70 : BOSS_H;
     let x = this.bx;
     if (s === 'tellRoll') x -= this.bDir * 6 + Math.sin(this.t * 70) * 2; // leans back before the charge
@@ -550,16 +592,31 @@ class Fight extends Phaser.Scene {
     u.fillStyle(0xd9d0a8, 1); u.fillRect(W / 2 - 160, 50, 320 * Math.max(0, this.hp) / BOSS_HP, 8);
     // Boo badge (once per fight)
     u.fillStyle(this.booUsed ? 0x3a3646 : 0xeaf6ff, 1); u.fillCircle(W - 210, 25, 7);
-    // touch buttons
-    const vis = this.showButtons && this.state === 'fight';
-    const held = touchHeld();
-    BTN.forEach((b, i) => {
-      this.labels[i].setVisible(vis);
-      if (!vis) return;
-      const on = held.has(b.id);
-      u.fillStyle(0xffffff, on ? 0.22 : 0.09); u.fillCircle(b.x, b.y, b.r);
-      u.lineStyle(2, 0xffffff, on ? 0.5 : 0.22); u.strokeCircle(b.x, b.y, b.r);
-    });
+    // penlight charge (every device): a bar under the hearts, gold when ready
+    const ready = this.charge >= 1;
+    u.fillStyle(0x3a3646, 1); u.fillRect(W - 190, 38, 104, 6);
+    u.fillStyle(ready ? 0xffd36b : 0x8c7a4a, 1); u.fillRect(W - 190, 38, 104 * this.charge, 6);
+    const fighting = this.state === 'fight';
+    // touch: the left thumb's stick, and the LIGHT button only when it's charged
+    const showTouch = fighting && device === 'touch';
+    if (showTouch && thumbs.move) {
+      const t = thumbs.move, dx = clamp(t.x - t.x0, -60, 60);
+      u.lineStyle(2, 0xffffff, 0.25); u.strokeCircle(t.x0, t.y0, 60);
+      u.fillStyle(0xffffff, 0.22); u.fillCircle(t.x0 + dx, t.y0, 24);
+    }
+    const showPower = fighting && ready && (device === 'touch' || device === 'mouse');
+    this.powerLabel.setVisible(showPower);
+    if (showPower) {
+      const pulse = 0.75 + 0.25 * Math.sin(this.t * 8);
+      u.fillStyle(0xffd36b, pulse); u.fillCircle(POWER_BTN.x, POWER_BTN.y, POWER_BTN.r);
+    }
+    this.hintLine.setText(fighting && ready && !showPower ? (device === 'gamepad' ? 'X  LIGHT' : 'E  LIGHT') : '');
+    // the beam
+    if (this.beamT > 0) {
+      const m = this.miloBox(), y0 = m.t + 22, a = this.beamT / 0.35;
+      u.fillStyle(0xfff6d0, 0.55 * a);
+      u.fillTriangle(this.x, y0, this.x + this.face * 700, y0 - 90, this.x + this.face * 700, y0 + 90);
+    }
     this.line.setText(this.say.t > 0 ? this.say.text : '');
     this.line.setAlpha(Math.min(1, this.say.t * 3));
     this.debug.setText(
