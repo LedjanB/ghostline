@@ -30,8 +30,10 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 - `src/patterns.js` (phase 3) hand-made ground trap patterns, shared + per world; `patternFair()` checks them against the jump/slide metrics
 - `src/setpieces.js` (phase 3) a hand-made flight set piece per world (`SET_PIECES`: gate, pinch, sway, wave, laser, wheel, track segments)
 - `src/ending.js` (phase 3) the door at the end of world 8 (needs every journal page), the ending scene, endless mode (`save.ending.seen`, mode `endless`)
+- `src/scares.js` (phase 4) one scare per world (`SCARES`): hush, sting, release; waits for a clear screen (`scareHold` stops the spawner), never hurts you
 - `scripts/bot.mjs` bot players (casual, regular, expert): `node scripts/bot.mjs 6 all` for full runs, `--pieces` for each world's flight
-- `src/runner-art.js` THE STRETCH, ground and world traps, weapons, HUD face icon (pixel art)
+- `src/runner-art.js` THE STRETCH (3 stages by distance: `_m`, `_n` frames via `hungry()`), its big ending face `stretch_face`, ground and world traps, weapons, HUD face icon (pixel art)
+- `scripts/phase3-shots.mjs`, `scripts/phase4-shots.mjs` screenshots for the AI testers
 
 ## Rules
 - Run state is reset in `init()`, never the constructor.
@@ -55,6 +57,8 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 - v6: the door at 3,200 m only opens with every journal page; after the ending it stays open and the run goes on beyond it (endless, `this.beyond`, a new depth every 400 m).
 - v6: a gate is a passage (`renderGate`): the door art stands 150 px before the seam, the seam sits inside a black stretch, the next world fades in after it.
 - v6: one popup at a time (`popup(str, color, y, prio)`): a newer one replaces the old unless the old is more important and under 0.6 s old.
+- Phase 4: ONE message on screen at a time. The headline (one short line), the popup and Boo's bubble share a slot: a headline clears the others, a popup waits out a headline unless prio >= 2 (danger). Second lines and tips go to the small corner note (`note(str)`, HUD bottom-left). No floating +points in the runner.
+- Phase 4: scares and the RNG: never call `this.rand` from scares (it would change the run's layout).
 - v6: getting caught plays the grab scene (`stepGrab`/`renderGrab`); a pit death keeps the fall.
 
 ## Test

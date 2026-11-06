@@ -408,3 +408,74 @@ test('phase 3: with every page the door opens, the ending plays once, then endle
   expect(e.depth).toBeGreaterThanOrEqual(1);
   expect(errors).toEqual([]);
 });
+
+test('phase 4: one message on screen at a time (a headline clears the popup; only danger beats a headline)', async ({ page }) => {
+  const errors = await startRun(page, {});
+  const r = await play(page, (s) => {
+    s.openingDone = true; s.started = true;
+    const up = () => (s.popups || []).filter((o) => o.active).length + (s.headlineUp() ? 1 : 0) + (s.bubble ? 1 : 0);
+    s.popup('SMASH!', '#ffd0a0');
+    s.headline('THE WARD', 'A SECOND LINE', 1.0, true);
+    const afterHead = up();
+    s.popup('POOF!', '#c8ffc0'); // not important: waits out the headline
+    const afterPoof = { n: up(), head: s.headlineUp() };
+    s.popup('STUMBLE!', '#ff8a9a'); // danger: clears the headline
+    const afterDanger = { n: up(), head: s.headlineUp() };
+    return { afterHead, afterPoof, afterDanger, subLine: s.headObjs ? s.headObjs.length : 0 };
+  });
+  expect(r.afterHead).toBe(1);
+  expect(r.afterPoof).toEqual({ n: 1, head: true });
+  expect(r.afterDanger).toEqual({ n: 1, head: false });
+  expect(errors).toEqual([]);
+});
+
+test('phase 4: every world has a scare, it never spawns a trap or hurts you, and it ends', async ({ page }) => {
+  const errors = await startRun(page, {});
+  const r = await play(page, (s) => {
+    s.openingDone = true; s.started = true;
+    const out = {};
+    for (let w = 0; w < 8; w++) {
+      s.zoneIndex = w; s.traps.forEach((t) => s.dropTrap(t)); s.traps = []; s.trick = null; s.scare = null;
+      const id = ['ward', 'morgue', 'woods', 'graveyard', 'sewer', 'catacombs', 'carnival', 'otherside'][w];
+      s.startScare(id);
+      const before = s.traps.length, gap0 = s.gap;
+      let n = 0, spawned = 0, hit = false;
+      for (; n < 120 * 5 && s.scare; n++) { s.step(1 / 120, false); spawned = Math.max(spawned, s.traps.filter((t) => !t.gone).length - before); if (s.scare?.hit) hit = true; }
+      out[id] = { ended: !s.scare, hit, spawned, dead: s.dead, gapKept: s.gap >= gap0 - 5 };
+    }
+    return out;
+  });
+  for (const v of Object.values(r)) expect(v).toEqual({ ended: true, hit: true, spawned: 0, dead: false, gapKept: true });
+  expect(Object.keys(r).length).toBe(8);
+  expect(errors).toEqual([]);
+});
+
+test('phase 4: THE STRETCH changes as it gets closer (far, middle, near)', async ({ page }) => {
+  const errors = await startRun(page, {});
+  const r = await play(page, (s) => {
+    s.openingDone = true; s.started = true; s.nextTrapX = s.worldX + 1e6;
+    const at = (gap) => { s.gap = gap; s.lastStumble = -99; s.catchUpT = 0; for (let i = 0; i < 30; i++) { s.invuln = 1e9; s.step(1 / 120, false); } s.render(0); return { st: s.stretchSt, anim: s.stretch.anims.currentAnim.key }; };
+    return [at(118), at(70), at(34)];
+  });
+  expect(r.map((x) => x.st)).toEqual(['f', 'm', 'n']);
+  expect(r[0].anim).toBe('stretch_walk');
+  expect(r[1].anim).toBe('stretch_walk_m');
+  expect(r[2].anim).toBe('stretch_crawl_n');
+  expect(errors).toEqual([]);
+});
+
+test('phase 4: the ending plays its beats: the journal, the close-up, the lit ward', async ({ page }) => {
+  const errors = await startRun(page, { unlocks: { got: 33, points: 0, fresh: 0 } });
+  const r = await play(page, (s) => {
+    s.openingDone = true;
+    s.worldX = 3150 * 24; s.zoneIndex = 7; s.chasmZones.add(7); s.nextTrapX = s.worldX + 1e6;
+    const seen = { tiles: false, face: false, ward: false };
+    for (let n = 0; n < 120 * 40 && !s.ended; n++) {
+      s.invuln = 1e9; s.trickZone = 7; s.nextTrickT = 99; s.step(1 / 120, false);
+      if (n % 12 === 0) { s.render(0); if (s.endTiles) seen.tiles = true; if (s.endFace) seen.face = true; if (s.finish?.wardIn) seen.ward = s.layers.A.far.texture.key === 'ward_far'; }
+    }
+    return { ...seen, ended: s.ended };
+  });
+  expect(r).toEqual({ tiles: true, face: true, ward: true, ended: true });
+  expect(errors).toEqual([]);
+});

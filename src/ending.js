@@ -5,6 +5,7 @@
 // is open in every run, and beyond it the Other Side never ends (endless mode, also a menu mode
 // that starts right at the door).
 import { W, H, CEIL, FLOOR, PLAYER_X, PX_PER_METER, ZONE_LENGTH_M, ZONES } from './data.js';
+import { LAYER_KEYS } from './zones.js';
 import { Audio } from './audio.js';
 import { Save } from './save.js';
 import { text } from './ui.js';
@@ -12,11 +13,23 @@ import { owned, PAGES, TRACK, costFor } from './unlocks.js';
 
 export const DOOR_M = ZONES.length * ZONE_LENGTH_M; // 3200
 export const DEPTH_M = ZONE_LENGTH_M;              // beyond the door: a new depth every 400 m
+// phase 4: the ending scene, in four beats (testers: "what did it all mean?"):
+//   the door opens and the light takes you (0 to 3.4 s);
+//   THE JOURNAL: the twelve pages fly together into one picture, and say what they add up to;
+//   THE STRETCH, close up, and the light reaching it;
+//   THE WARD, lit up: every lamp comes back on, and Boo can finally clock out.
+// One line of text at a time, like the rest of the game.
+export const END_T = { white: 2.6, pages: 3.4, face: 9.6, ward: 13.8, end: 19.4, out: 22.2 };
 const ENDING_LINES = [
-  ['THE DOOR KNEW YOUR NAME.', 3.4],
-  ['BOO HELD ON. SO DID YOU.', 5.6],
-  ['AND THE LIGHTS CAME BACK ON.', 7.8],
+  [4.6, 'BOO KEPT THE LIGHTS ON AT ST. MERCY.'],
+  [6.2, 'THE NIGHT HE DIED, THEY ALL WENT OUT.'],
+  [7.8, 'A DOOR OPENED. IT NEVER CLOSED.'],
+  [10.0, 'THE STRETCH CAME THROUGH IT.'],
+  [11.9, 'IT WAS ONLY EVER THE DARK.'],
+  [14.8, 'THE LIGHTS ARE BACK ON.'],
+  [16.8, 'BOO CAN CLOCK OUT NOW.'],
 ];
+const TILES = { cols: 4, rows: 3, tw: 80, th: 60, scale: 1.45 }; // the journal picture: 12 pages = 12 tiles of the ward
 
 // points that take the unlock bar up to (and including) the next journal page
 function pointsToNextPage(save = Save.get()) {
@@ -51,6 +64,16 @@ export const EndingFeatures = {
     this.doorGfx = this.add.graphics().setDepth(8.1);
     this.doorLight = this.add.graphics().setDepth(20.5);
     this.finishDim = this.add.graphics().setDepth(26);
+    this.endGfx = this.add.graphics().setDepth(26.8);     // the ending's paper, black and light
+    this.endLamps = this.add.graphics().setDepth(8.2);    // the ward's lamps, behind Milo and Boo
+    this.endTop = this.add.graphics().setDepth(26.97);    // over the journal's picture: Boo's lit window
+    this.endTiles = null; this.endFace = null; this.endText = null;
+    // the journal's picture: the whole ward (every layer but the floor) in one texture
+    if (!this.textures.exists('ward_journal')) {
+      const tex = this.textures.createCanvas('ward_journal', 320, 180);
+      for (const k of ['sky', 'far', 'mid', 'near']) tex.context.drawImage(this.textures.get(`ward_${k}`).getSourceImage(), 0, 0);
+      tex.refresh();
+    }
   },
 
   // the door comes into view at the end of world 8
@@ -76,6 +99,7 @@ export const EndingFeatures = {
 
   startFinish(kind) {
     this.finish = { kind, t: 0, said: 0, x0: this.worldX };
+    if (this.scare) this.endScare();
     this.dead = true; // stops spawns, collisions and the chaser; stepDeath hands over to stepFinish
     this.lastHitKind = kind === 'ending' ? 'ending' : 'door';
     this.heads = [];
@@ -86,6 +110,10 @@ export const EndingFeatures = {
     for (const t of this.traps) if (t.kind !== 'chasm') this.dropTrap(t);
     this.traps = this.traps.filter((t) => !t.gone); this.trick = null;
     if (this.weapon) { this.weapon = null; this.events.emit('power', null); }
+    for (const p of [...this.runPickups, ...(this.pickups || [])]) { p.s.destroy(); p.glow.destroy(); }
+    this.runPickups = []; this.pickups = [];
+    if (this.tutorial?.active) this.tutorial.setVisible(false);
+    if (this.tutorial2?.active) this.tutorial2.setVisible(false);
     Audio.thrust(false);
     if (kind === 'ending') { Audio.sfx('rebirth'); Audio.music('otherside'); }
     else { Audio.sfx('stumble'); this.shake(200, 0.008); this.doorPoints = pointsToNextPage(); }
@@ -107,15 +135,40 @@ export const EndingFeatures = {
       if (f.t > 3.4 && f.said === 3) { f.said = 4; this.say('BOO PULLS YOU BACK. FIND THE REST.', 194, '#a99fd0', 8); Audio.sfx('grab'); }
       if (f.t > 4.6 && !this.ended) { this.ended = true; this.time.delayedCall(200, () => this.afterDeath()); }
     } else {
-      for (let i = 0; i < ENDING_LINES.length; i++) if (f.said === i && f.t > ENDING_LINES[i][1]) { f.said++; this.say(ENDING_LINES[i][0], 140 + i * 26, '#2a1f4a', i === 2 ? 16 : 8, true, '#fff6d8'); }
-      if (f.t > 10.2 && f.said === ENDING_LINES.length) { f.said++; this.say('THE END', H / 2 + 10, '#2a1f4a', 24, true, '#fff6d8'); Audio.sfx('zone'); }
-      if (f.t > 11.4 && f.said === ENDING_LINES.length + 1) { f.said++; this.say('(PROBABLY.)', H / 2 + 44, '#6a5a8a', 8, true, '#fff6d8'); }
-      if (f.t > 13.4 && !this.ended) {
+      const T = END_T;
+      for (let i = 0; i < ENDING_LINES.length; i++) if (f.said === i && f.t > ENDING_LINES[i][0]) {
+        f.said++;
+        const dark = ENDING_LINES[i][0] >= T.face && ENDING_LINES[i][0] < T.ward;
+        this.endLine(ENDING_LINES[i][1], dark ? '#ece8f2' : '#2a1f4a', dark ? '#07060d' : '#fff6d8');
+      }
+      if (f.t > T.pages && !f.pagesIn) { f.pagesIn = true; Audio.sfx('unlock'); }
+      if (f.t > T.face && !f.faceIn) { f.faceIn = true; Audio.sfx('breath', { v: 1 }); Audio.hush(1.6); }
+      if (f.t > 11.4 && !f.lit) { f.lit = true; Audio.sfx('holy'); Audio.sfx('scream'); this.shake(300, 0.01); }
+      if (f.t > T.ward && !f.wardIn) { f.wardIn = true; this.endWard(); Audio.music('ward'); }
+      if (f.t > T.end && f.said === ENDING_LINES.length) { f.said++; this.endLine('THE END', '#2a1f4a', '#fff6d8', 24, H / 2 - 20); Audio.sfx('zone'); }
+      if (f.t > T.end + 1.2 && f.said === ENDING_LINES.length + 1) { f.said++; this.say('(PROBABLY.)', H / 2 + 14, '#6a5a8a', 8, true, '#fff6d8'); Audio.sfx('creak'); }
+      if (f.t > T.out && !this.ended) {
         this.ended = true;
         Save.update((s) => { s.ending.seen = true; s.ending.runs = s.runs + 1; });
         this.time.delayedCall(300, () => this.afterDeath());
       }
     }
+  },
+
+  // one line at a time: the new one replaces the old
+  endLine(str, color, stroke, size = 16, y = H - 36) {
+    if (this.endText) { this.tweens.killTweensOf(this.endText); this.endText.destroy(); }
+    this.endText = this.say(str, y, color, size, true, stroke);
+    this.endText.setDepth(28);
+  },
+
+  // the ward, lit: the world behind becomes St. Mercy again
+  endWard() {
+    LAYER_KEYS.forEach((k) => this.layers.A[k].setTexture(`ward_${k}`));
+    this.layers.setLook(0xfff0d8);
+    this.dark?.setVisible(false);
+    this.setWeather('ward');
+    this.doorGfx.clear(); this.doorLight.clear();
   },
 
   say(str, y, color, size = 8, over = false, stroke = '#07060d') {
@@ -132,6 +185,7 @@ export const EndingFeatures = {
     const x = Math.round(this.sx(this.doorWX) - lead);
     if (x < -120 || x > W + 120) { if (!this.finish) return; }
     const f = this.finish;
+    if (f && f.kind === 'ending' && f.t > END_T.ward) { this.renderFinish(x, CEIL + 30, 74, 1); return; } // the door is gone: the ward
     const open = this.doorOpen || (f && f.kind === 'ending');
     const k = f && f.kind === 'ending' ? Math.min(1, f.t / 2.2) : this.doorOpen ? 1 : 0; // how far it has opened
     const top = CEIL + 30, w = 74;
@@ -178,16 +232,110 @@ export const EndingFeatures = {
     this.ghostGlow.setPosition(mx - 4, FLOOR - 68 - lift);
     // THE STRETCH: it stops at the edge of the light; at the ending it waves goodbye
     const s = this.stretch;
+    s.clearTint().setRotation(0);
     if (f.kind === 'ending') {
+      const T = END_T;
       s.anims.stop(); s.setTexture(f.t > 4 && Math.floor(f.t * 3) % 2 ? 'stretch_reach' : 'stretch_grab');
-      s.setPosition(Math.round(PLAYER_X - 90 - Math.max(0, f.t - 6) * 20), FLOOR + 2).setAlpha(Math.max(0, 1 - Math.max(0, f.t - 7) / 1.5)).setVisible(true);
-      // the light fills the screen, then the room comes back, lit
-      const white = Math.min(1, Math.max(0, f.t - 2.4) / 1.0) * (f.t > 9.4 ? Math.max(0.35, 1 - (f.t - 9.4) / 1.2) : 1);
+      s.setPosition(Math.round(PLAYER_X - 90), FLOOR + 2).setAlpha(f.t < T.white ? 1 : 0).setVisible(f.t < T.pages);
+      // the light fills the screen
+      const white = f.t < T.face ? Math.min(1, Math.max(0, f.t - 2.4) / 1.0) : 0;
       d.fillStyle(0xfff6d8, white); d.fillRect(0, 0, W, H);
+      this.renderEndBeats(f);
     } else {
       s.setAlpha(1).setVisible(true);
       const dark = Math.max(0, f.t - 3.4) / 1.2;
       d.fillStyle(0x07060d, Math.min(0.9, dark)); d.fillRect(0, 0, W, H);
+    }
+  },
+
+  // the journal, the close-up and the lit ward
+  renderEndBeats(f) {
+    const T = END_T, g = this.endGfx, L = this.endLamps, t = f.t;
+    g.clear(); L.clear(); this.endTop.clear();
+    const clamp = (v) => Math.max(0, Math.min(1, v));
+    // THE JOURNAL: twelve pages, each one piece of the same picture, fly in and fit together
+    const inPages = t > T.pages && t < T.face;
+    if (inPages && !this.endTiles) {
+      this.endTiles = [];
+      for (let i = 0; i < TILES.cols * TILES.rows; i++) {
+        const c = i % TILES.cols, r = Math.floor(i / TILES.cols);
+        const img = this.add.image(0, 0, 'ward_journal').setOrigin(0).setScale(TILES.scale).setDepth(26.9)
+          .setCrop(c * TILES.tw, r * TILES.th, TILES.tw, TILES.th).setTint(0xc89a5a);
+        const ang = (i * 2.399) % (Math.PI * 2);
+        this.endTiles.push({ img, c, r, sx: W / 2 + Math.cos(ang) * 420, sy: H / 2 + Math.sin(ang) * 300, rot: ((i % 5) - 2) * 0.06 });
+      }
+
+    }
+    if (this.endTiles) {
+      const pw = TILES.cols * TILES.tw * TILES.scale, ph = TILES.rows * TILES.th * TILES.scale;
+      const ox = (W - pw) / 2, oy = 22;
+      for (const [i, p] of this.endTiles.entries()) {
+        const k = Phaser.Math.Easing.Cubic.Out(clamp((t - T.pages - 0.15 * i) / 0.7));
+        // setCrop keeps the image's origin at the full texture's corner, so place by the texture's 0,0
+        const tx = ox, ty = oy, fx = p.sx - (p.c * TILES.tw + TILES.tw / 2) * TILES.scale, fy = p.sy - (p.r * TILES.th + TILES.th / 2) * TILES.scale;
+        p.img.setPosition(Phaser.Math.Linear(fx, tx, k), Phaser.Math.Linear(fy, ty, k)).setRotation(p.rot * (1 - k)).setAlpha(k > 0 ? 1 : 0).setVisible(inPages);
+      }
+      // once they fit, the picture comes alive: sepia to color, and one window lit (Boo's)
+      const whole = clamp((t - T.pages - 0.15 * 11 - 0.8) / 0.8);
+      const col = Phaser.Display.Color.Interpolate.ColorWithColor(Phaser.Display.Color.ValueToColor(0xc89a5a), Phaser.Display.Color.ValueToColor(0xffffff), 1, whole);
+      this.endTiles.forEach((p) => p.img.setTint(Phaser.Display.Color.GetColor(col.r, col.g, col.b)));
+      if (inPages) {
+        g.fillStyle(0xf3e9cf, clamp((t - T.pages) / 0.4)); g.fillRect(0, 0, W, H);                    // the journal's paper
+        g.lineStyle(3, 0x8a6a3a, whole); g.strokeRect(ox - 4, oy - 4, pw + 8, ph + 8);                  // and its frame
+        if (whole > 0) { const G = this.endTop; // Boo's window, lit, with him in it
+          const wx = ox + pw * 0.56, wy = oy + ph * 0.2;
+          G.fillStyle(0xfff2b0, whole * 0.25); G.fillRect(wx - 16, wy - 16, 70, 92);
+          G.fillStyle(0xfff2b0, whole * (0.85 + 0.15 * Math.sin(t * 6))); G.fillRect(wx, wy, 38, 60);
+          G.fillStyle(0x9fb8e8, whole); G.fillCircle(wx + 19, wy + 26, 10); G.fillRect(wx + 9, wy + 26, 20, 18);
+          G.fillStyle(0x1b1630, whole); G.fillRect(wx + 14, wy + 22, 3, 4); G.fillRect(wx + 22, wy + 22, 3, 4);
+        }
+      }
+      if (!inPages) { this.endTiles.forEach((p) => p.img.destroy()); this.endTiles = null; }
+    }
+    // THE STRETCH, close up: out of the black, too close, grinning; then the light reaches it
+    const inFace = t >= T.face && t < T.ward;
+    if (inFace) {
+      if (!this.endFace) this.endFace = this.add.image(W / 2, H / 2 - 20, 'stretch_face').setDepth(26.85);
+      const k = (t - T.face) / (T.ward - T.face);
+      const lit = clamp((t - 11.4) / 0.25);
+      g.fillStyle(0x020205, 1); g.fillRect(0, 0, W, H);
+      const jit = lit < 1 ? (Math.random() - 0.5) * 3 : 0;
+      const sc = 7 + k * 4 - lit * 2;
+      this.endFace.setTexture(lit > 0.5 ? 'stretch_face_lit' : 'stretch_face').setScale(sc).setPosition(W / 2 + jit - (1 - clamp(k * 4)) * 200, H / 2 - 24 + jit)
+        .setAlpha(clamp(k * 5) * (1 - clamp((t - 12.6) / 1.0))).setVisible(true);
+      if (t > 11.2) { // the light: a wedge from the right, from the open door
+        const w = W * clamp((t - 11.2) / 0.3);
+        g.fillStyle(0xfff6d8, 0.85); g.fillRect(W - w, 0, w, H);
+        g.fillStyle(0xfff6d8, 0.35); g.fillRect(W - w - 40, 0, 40, H);
+      }
+      if (lit > 0) { // it cracks in the light
+        g.lineStyle(4, 0x07060d, lit * (1 - clamp((t - 12.6) / 1.0)));
+        const cx = W / 2, cy = H / 2 - 24 - 9 * sc;
+        g.lineBetween(cx, cy, cx - 10, cy + 40 * lit); g.lineBetween(cx - 10, cy + 40 * lit, cx + 8, cy + 80 * lit); g.lineBetween(cx + 8, cy + 80 * lit, cx - 4, cy + 120 * lit);
+      }
+    } else if (this.endFace) { this.endFace.destroy(); this.endFace = null; }
+    // THE WARD, lit up: it comes out of the dark, the lamps come on one by one, Boo waves and floats away
+    if (t >= T.ward) {
+      const k = t - T.ward;
+      g.fillStyle(0x020205, 1 - clamp(k / 0.9)); g.fillRect(0, 0, W, H);
+      for (let i = 0; i < 6; i++) {
+        const lx = 50 + i * 108, on = k > 0.7 + i * 0.32;
+        const off = i === 5 && t > T.end + 1.2 && t < T.end + 1.7; // (probably): the last one flickers off...
+        L.fillStyle(0x3a3450, 1); L.fillRect(lx - 14, CEIL, 28, 6);
+        if (on && !off) {
+          L.fillStyle(0xfff2b0, 1); L.fillRect(lx - 10, CEIL + 6, 20, 3);
+          L.fillStyle(0xfff2b0, 0.16); L.fillTriangle(lx - 10, CEIL + 9, lx + 10, CEIL + 9, lx + 60, FLOOR); L.fillTriangle(lx - 10, CEIL + 9, lx - 60, FLOOR, lx + 60, FLOOR);
+        }
+        if (off) { L.fillStyle(0xff3a4a, 1); L.fillRect(lx - 8, CEIL + 130, 3, 3); L.fillRect(lx + 5, CEIL + 130, 3, 3); } // ...and something's still there
+        if (on && (f.lamps || 0) <= i) { f.lamps = i + 1; Audio.sfx('tick'); }
+      }
+      const mx = W / 2 - 30;
+      this.player.anims.stop(); this.player.setTexture(`${this.char.id}_run0`).setAlpha(1).setVisible(true).setPosition(mx, FLOOR - 22);
+      const up = clamp((t - 17.4) / 1.6);
+      const wave = t > 16.8 && t < 17.6 ? Math.sin((t - 16.8) * 20) * 6 : 0;
+      this.ghost.setVisible(true).setAlpha(0.92 * (1 - up)).setPosition(mx + 40 + wave, FLOOR - 70 - up * 160);
+      this.ghostGlow.setPosition(mx + 40 + wave, FLOOR - 70 - up * 160);
+      this.stretch.setVisible(false);
     }
   },
 };

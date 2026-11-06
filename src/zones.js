@@ -8,35 +8,35 @@ export const ZONE_LENGTH_M = 400;
 
 export const ZONES = [
   {
-    id: 'ward', name: 'ST. MERCY WARD', flavor: '3:33 AM. THE LIGHTS ARE DYING.', song: 'ward',
+    id: 'ward', short: 'THE WARD', name: 'ST. MERCY WARD', flavor: '3:33 AM. THE LIGHTS ARE DYING.', song: 'ward',
     swing: 'lamp', weather: 'dust', ghoul: 0xffffff, giant: 'shadow', accent: 0xb8d8ff, // v6: off the hazard green
   },
   {
-    id: 'morgue', name: 'THE COLD ROOM', flavor: 'EVERYONE HERE IS VERY QUIET.', song: 'morgue',
+    id: 'morgue', short: 'THE MORGUE', name: 'THE COLD ROOM', flavor: 'EVERYONE HERE IS VERY QUIET.', song: 'morgue',
     swing: 'hook', weather: 'frost', ghoul: 0xb8d8ff, giant: 'shadow', accent: 0x9fe8ff,
   },
   {
-    id: 'woods', name: 'THE HOLLOW WOODS', flavor: 'THE TREES ARE WATCHING. REALLY.', song: 'woods',
+    id: 'woods', short: 'THE WOODS', name: 'THE HOLLOW WOODS', flavor: 'THE TREES ARE WATCHING. REALLY.', song: 'woods',
     swing: 'axe', weather: 'fireflies', ghoul: 0xd0c0ff, giant: 'eyes', accent: 0xffd75e,
   },
   {
-    id: 'graveyard', name: 'CROWSREST CEMETERY', flavor: 'BLOOD MOON. OF COURSE.', song: 'graveyard',
+    id: 'graveyard', short: 'THE GRAVEYARD', name: 'CROWSREST CEMETERY', flavor: 'BLOOD MOON. OF COURSE.', song: 'graveyard',
     swing: 'axe', weather: 'leaves', ghoul: 0xffb0b0, giant: 'eyes', accent: 0xff6b6b,
   },
   {
-    id: 'sewer', name: 'THE DRIPPING DARK', flavor: 'DO NOT LICK ANYTHING.', song: 'sewer',
+    id: 'sewer', short: 'THE SEWER', name: 'THE DRIPPING DARK', flavor: 'DO NOT LICK ANYTHING.', song: 'sewer',
     swing: 'hook', weather: 'drips', ghoul: 0xb0ffb0, giant: 'tentacle', accent: 0x9cff6b,
   },
   {
-    id: 'catacombs', name: 'THE BONE HALLS', flavor: 'SIX MILLION ROOMMATES.', song: 'catacombs',
+    id: 'catacombs', short: 'THE CATACOMBS', name: 'THE BONE HALLS', flavor: 'SIX MILLION ROOMMATES.', song: 'catacombs',
     swing: 'lamp', weather: 'embers', ghoul: 0xffd8a0, giant: 'shadow', accent: 0xffb040,
   },
   {
-    id: 'carnival', name: 'THE DEAD CARNIVAL', flavor: 'NO REFUNDS. NO EXITS.', song: 'carnival',
+    id: 'carnival', short: 'THE CARNIVAL', name: 'THE DEAD CARNIVAL', flavor: 'NO REFUNDS. NO EXITS.', song: 'carnival',
     swing: 'lamp', weather: 'confetti', ghoul: 0xffc0f0, giant: 'eyes', accent: 0xff6bb5,
   },
   {
-    id: 'otherside', name: 'THE OTHER SIDE', flavor: 'YOU WERE NEVER SUPPOSED TO GET THIS FAR.', song: 'otherside',
+    id: 'otherside', short: 'THE OTHER SIDE', name: 'THE OTHER SIDE', flavor: 'YOU WERE NEVER SUPPOSED TO GET THIS FAR.', song: 'otherside',
     swing: 'hook', weather: 'sparkles', ghoul: 0xc0fff8, giant: 'tentacle', accent: 0x7ff0ff,
   },
 ];

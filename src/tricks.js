@@ -41,6 +41,7 @@ export const TrickFeatures = {
   stepTricks(dt, meters, toGate) {
     if (this.dead || this.flying || this.chasm || this.gate || this.grab || !this.started || this.finish) return false;
     if (this.trick) return true;
+    if (this.scare) return false;
     const zoneM = meters % ZONE_LENGTH_M;
     if (this.safeRun && meters < 300) return false; // first runs: learn the traps first
     const zoneEnd = this.beyond ? Infinity : toGate;
@@ -74,8 +75,8 @@ export const TrickFeatures = {
     this.nextTrapX = Math.max(this.nextTrapX, this.worldX + v * (tell + 2.2));
     Audio.sfx('roar'); this.shake(120, 0.004);
     // it needs saying now: if a headline is up, the popup takes it
-    if (this.clock < this.headUntil) this.popup(def.name, '#ff8a9a', 120, 3);
-    else this.headline(def.name, teach ? this.trickHow(def) : '', teach ? 1.4 : 0.7, true);
+    // phase 4: one line. The first time: what to do (the corner tip says why); after that: its name.
+    this.headline(teach ? this.trickHow(def) : def.name, '', teach ? 1.4 : 0.7, true);
     this.tip(def.tip);
     const edge = this.worldX + (W - PLAYER_X); // world x of the right edge of the screen
     switch (def.id) {
@@ -99,7 +100,7 @@ export const TrickFeatures = {
     this.traps.push(t);
   },
 
-  trickHow(def) { return def.need === 'slide' ? 'SLIDE!' : def.need === 'jump' ? 'JUMP!' : 'HIGH: SLIDE. LOW: JUMP.'; },
+  trickHow(def) { return def.need === 'slide' ? 'SLIDE!' : def.need === 'jump' ? 'JUMP!' : 'WATCH IT BOUNCE!'; },
 
   // screen-space hitbox of a trick right now (null = can't hurt you this step)
   trickBox(t) {

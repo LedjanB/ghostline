@@ -43,10 +43,10 @@ export const RUN = {
 // Phase 3: each weapon is the answer to something (ANSWERS); it only aims at what it answers, and the
 // pickup you get is the answer to the world you're in (WORLD_WEAPON).
 export const WEAPONS = {
-  salt: { name: 'SALT SHOTGUN', icon: 'salt_gun', ammo: 24, time: 16, cd: 0.32, range: 230, answer: 'BREAKS CRATES, GHOULS AND WHEELS' },       // short, wide spread
-  flame: { name: 'CANDLE FLAMETHROWER', icon: 'flame_gun', ammo: Infinity, time: 9, cd: 0.045, range: 125, answer: 'BURNS HANDS, ROOTS, DRAWERS, WRECKS' }, // constant stream
-  holy: { name: 'HOLY WATER SLINGSHOT', icon: 'sling', ammo: 12, time: 18, cd: 0.7, range: 420, answer: 'BLINDS EYES, DOUSES STEAM, HURTS IT' },  // long range, pierces
-  bone: { name: 'BONE BOOMERANG', icon: 'bone', ammo: 8, time: 18, cd: 0.25, range: 270, answer: 'HITS IT BEHIND YOU. KNOCKS IT BACK' },   // comes back, hits behind you
+  salt: { name: 'SALT SHOTGUN', short: 'SALT!', icon: 'salt_gun', ammo: 24, time: 16, cd: 0.32, range: 230, answer: 'SALT BREAKS CRATES AND GHOULS' },       // short, wide spread
+  flame: { name: 'CANDLE FLAMETHROWER', short: 'FIRE!', icon: 'flame_gun', ammo: Infinity, time: 9, cd: 0.045, range: 125, answer: 'FIRE BURNS HANDS AND ROOTS' }, // constant stream
+  holy: { name: 'HOLY WATER SLINGSHOT', short: 'HOLY WATER!', icon: 'sling', ammo: 12, time: 18, cd: 0.7, range: 420, answer: 'HOLY WATER: EYES, STEAM, IT' },  // long range, pierces
+  bone: { name: 'BONE BOOMERANG', short: 'BONE!', icon: 'bone', ammo: 8, time: 18, cd: 0.25, range: 270, answer: 'THE BONE HITS IT BEHIND YOU' },   // comes back, hits behind you
 };
 export const ANSWERS = {
   salt: ['crate', 'ghoul', 'gurney', 'cart'],
@@ -104,6 +104,7 @@ export const RunnerFeatures = {
     this.chasmZones = new Set(); this.chasm = null;
     this.seenKinds = new Set(); this.lastPattern = ''; this.patterns = 0;
     this.tricksInit();
+    this.scaresInit();
     this.nextOrbX = this.worldX + RUN.ORB_FIRST_M * PX_PER_METER;
     this.cleanFromX = this.worldX;
     this.stepT = 0; this.breathT = 0;
@@ -132,7 +133,7 @@ export const RunnerFeatures = {
     this.heads = []; this.headUntil = 0; this.quietUntil = 0; this.lastStrike = undefined; this.lungeT = 9; this.lastHitKind = '';
     this.nextWeaponX = this.worldX + 90 * PX_PER_METER;
     this.crFlyT = 0; this.crFlyX = 0; this.crEnter = 1; this.catchUpT = 0;
-    this.caughtBy = false; this.stumbleT = 0; this.grab = null; this.setPiece = null;
+    this.caughtBy = false; this.stumbleT = 0; this.grab = null; this.setPiece = null; this.stretchSt = 'f';
     // v5 systems the runner replaces or doesn't use
     this.nextRushX = Infinity;   // Spirit Rush: off (flying is the rare treat now)
     this.nextGhoul = Infinity;   // v5 floor ghouls: replaced by runner ghouls you shoot
@@ -145,6 +146,7 @@ export const RunnerFeatures = {
     this.trickGfx = this.add.graphics().setDepth(9.45); // THE STRETCH's tricks: arms, mounds, its face
     this.aimGfx = this.add.graphics().setDepth(21.65);  // brackets on what the weapon will shoot
     this.endingCreate();
+    this.scaresCreate();
     this.stretch = this.add.sprite(PLAYER_X - this.gap, FLOOR + 2, 'stretch_walk0').setScale(STRETCH_SCALE).setOrigin(0.5, 1).setDepth(9.4);
     this.edgeGfx = this.add.graphics().setDepth(4.45);
     this.gateGfx = this.add.graphics().setDepth(4.46); // the dark passage you run through at a world gate
@@ -309,6 +311,7 @@ export const RunnerFeatures = {
 
   caught(cause) {
     if (this.dead) return;
+    if (this.scare) this.endScare();
     // first runs: until 300 m, Boo shoves it back (or pulls you out of the pit) instead of game over
     if (this.safeRun && this.worldX / PX_PER_METER < RUN.SAFE_M) { this.rescue(cause); return; }
     if (this.creative) { // creative: Boo pulls you free, the creature is shoved back
@@ -383,6 +386,7 @@ export const RunnerFeatures = {
     // the creature steps up to its full height, a little behind Milo
     const cx = Phaser.Math.Linear(g.cx0, PLAYER_X - 70, ease.Cubic.Out(Math.min(1, t / 0.25))) - drag;
     const s = this.stretch;
+    s.clearTint().setRotation(0); s.anims.timeScale = 1;
     s.setVisible(true).setPosition(Math.round(cx), FLOOR + 2).setScale(STRETCH_SCALE, STRETCH_SCALE + (t > 0.8 && t < 1.2 ? 0.08 : 0));
     const sh = { x: cx + 9, y: FLOOR + 2 - s.displayHeight + 26 }; // its right shoulder
     // Milo: frozen where he was, then lifted up and back, kicking
@@ -557,27 +561,40 @@ export const RunnerFeatures = {
 
   flyPop(str) { this.headline(str, '', 0.9, true); },
 
-  // ONE headline slot up top. Queued; urgent ones (flight moments) jump the queue.
+  // phase 4: ONE message on screen at a time. The headline (up top) and the popup (by Milo) share
+  // one slot: a headline clears the popup and Boo's bubble; a popup waits out a headline unless it
+  // is a danger call (prio 2+), which clears the headline. A headline is one short line; what used
+  // to be its second line goes to the small corner note (note()).
   headline(main, sub = '', hold = 2.0, urgent = false) {
     const h = { main, sub, hold };
     if (urgent && this.headObjs && this.clock < this.headUntil) { // it matters now: it replaces what's up
-      this.headObjs.forEach((o) => { this.tweens.killTweensOf(o); o.destroy(); });
-      this.headObjs = null; this.headUntil = 0;
+      this.clearHeadline();
     }
     if (urgent) this.heads.unshift(h); else this.heads.push(h);
     this.nextHeadline();
   },
+  clearHeadline() {
+    if (this.headObjs) this.headObjs.forEach((o) => { this.tweens.killTweensOf(o); o.destroy(); });
+    this.headObjs = null; this.headUntil = 0;
+  },
+  headlineUp() { return !!this.headObjs && this.clock < this.headUntil; },
+  clearMessages() { // the popup, Boo's bubble and floating points: whatever is up by Milo
+    (this.popups || []).forEach((o) => o.destroy()); this.popups = [];
+    (this.gains || []).forEach((o) => o.destroy()); this.gains = [];
+    if (this.bubble) { this.bubble.forEach((o) => o.destroy()); this.bubble = null; }
+  },
+  note(str) { if (str && !this.dead) this.events.emit('note', str); },
   nextHeadline() {
-    if (this.clock < this.headUntil || !this.heads.length || !this.started || this.dead) return;
+    if (this.clock < this.headUntil || !this.heads.length || !this.started || this.dead || this.scare) return; // a scare owns the screen
     const h = this.heads.shift();
     this.headUntil = this.clock + h.hold + 0.3;
     this.quietUntil = this.headUntil;
+    this.clearMessages();
     const a = text(this, W / 2, 132, h.main, 24, '#e6f0ff').setDepth(31).setStroke('#07060d', 6).setScale(0.7).setAlpha(0);
-    const b = h.sub ? text(this, W / 2, 156, h.sub, 8, '#a99fd0').setDepth(31).setStroke('#07060d', 3).setAlpha(0) : null;
-    const objs = b ? [a, b] : [a];
-    this.headObjs = objs;
+    this.headObjs = [a];
+    if (h.sub) this.note(h.sub);
     this.tweens.add({ targets: a, scaleX: 1, scaleY: 1, duration: 220, ease: 'Back.easeOut' });
-    this.tweens.add({ targets: objs, alpha: 1, duration: 180, yoyo: true, hold: h.hold * 1000, onComplete: () => objs.forEach((o) => o.destroy()) });
+    this.tweens.add({ targets: a, alpha: 1, duration: 160, yoyo: true, hold: h.hold * 1000, onComplete: () => a.destroy() });
   },
 
   // ---------------- ground spawning ----------------
@@ -603,7 +620,7 @@ export const RunnerFeatures = {
     const runway = !this.chasm && !this.chasmZones.has(chasmKey) && zoneM > at - v * 1.4 / PX_PER_METER && zoneM < at;
     if (this.chasm || runway) return;
     if (this.gate || (toGate < 22 && !this.beyond)) return; // gates (and the door) stay clear
-    if (this.trick) return; // THE STRETCH has the screen to itself
+    if (this.trick || this.scare || this.scareHold) return; // THE STRETCH (or a scare) has the screen to itself
 
     // pickups: a weapon (salt first, then a different one each time) and the (rare) Boo orb
     if (this.worldX >= this.nextWeaponX && !this.weapon) {
@@ -813,7 +830,7 @@ export const RunnerFeatures = {
   // ---------------- world: traps, monsters, pickups, the salt shotgun ----------------
   stepRunnerWorld(dt) {
     if (this.trick && this.trick.gone) { this.trick = null; this.crEnter = Math.min(this.crEnter, 0.25); }
-    this.stepTricks(dt, this.worldX / PX_PER_METER, ZONE_LENGTH_M - ((this.worldX / PX_PER_METER) % ZONE_LENGTH_M));
+    if (!this.stepScares(dt, this.worldX / PX_PER_METER)) this.stepTricks(dt, this.worldX / PX_PER_METER, ZONE_LENGTH_M - ((this.worldX / PX_PER_METER) % ZONE_LENGTH_M));
     for (const t of this.traps) {
       if (t.gone) continue;
       if (t.kind === 'trick') { if (!this.dead) this.stepTrick(t, dt); continue; } // tricks run on their own clock (tricks.js)
@@ -908,7 +925,7 @@ export const RunnerFeatures = {
     this.lastWeapon = kind;
     this.gunImg.setTexture(def.icon);
     Audio.sfx('powerup');
-    this.headline(def.name + '!', def.answer, 1.3, true); // what it's for, every time
+    this.headline(def.short, def.answer, 1.0, true); // what it's for, every time (in the corner)
     this.tip(kind === 'bone' ? 'bone' : 'weapon');
     this.addCombo('power', PLAYER_X + 40, this.py - 40);
     this.events.emit('power', { kind: 'weapon', icon: def.icon, left: 1 });
@@ -993,8 +1010,12 @@ export const RunnerFeatures = {
     if (wp.kind === 'bone' && this.pellets.some((p) => p.type === 'bone')) return; // one boomerang at a time
     const mx = PLAYER_X + 12, my = this.py - 2;
     const tg = this.nearest(this.targets(wp.kind), mx, my, def.range, wp.kind === 'bone');
+    const ref = tg && (tg.t || tg.b || tg.h);
+    if (ref !== this.aimRef) { this.aimRef = ref || null; if (ref) Audio.sfx('tick'); } // phase 4: you hear it lock on
     if (!tg) return;
     const a = Math.atan2(tg.cy - my, tg.cx - mx);
+    this.gunKick = 1; // recoil: the gun jumps back, a flash at the muzzle
+    if (wp.kind !== 'flame') this.burst(mx + 10, my, wp.kind === 'holy' ? 0x9fd0ff : 0xfff2b0, 2, 8, 90, 2);
     const shot = (type, ang, speed, life, dmg, extra = {}) => this.pellets.push({ type, x: mx, y: my, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, life, dmg, hits: new Set(), ...extra });
     if (wp.kind === 'salt') {
       for (const sp of [-0.12, 0, 0.12]) shot('salt', a + sp, 720, def.range / 720 + 0.05, 1, { once: true });
@@ -1100,6 +1121,7 @@ export const RunnerFeatures = {
       this.addCandle(tg.cx, FLOOR - 30);
       this.addCombo('splat', tg.cx, tg.cy - 30);
       this.popup(t.kind === 'drawer' ? 'BURNED SHUT!' : 'BURNED!', '#ffb060', Math.min(tg.cy - 30, FLOOR - 70));
+      this.hitStop = Math.max(this.hitStop || 0, 0.03);
       this.tracker?.add('burns', 1); this.kills++; this.tracker?.add('kills', 1);
       this.dropTrap(t);
       return;
@@ -1111,6 +1133,8 @@ export const RunnerFeatures = {
 
   smash(t, x) {
     const cx = x + t.w / 2, cy = t.kind === 'eye' ? t.y : FLOOR - t.h / 2;
+    this.hitStop = Math.max(this.hitStop || 0, 0.035); // phase 4: a kill lands (game-feel: hit-stop for impact)
+    this.shake(60, 0.003);
     this.burst(cx, cy, t.kind === 'ghoul' ? 0xc8ffc0 : t.kind === 'eye' ? 0xd8b0ff : 0xb07a3a, 12, 36, 420);
     this.kills++;
     this.tracker?.add('kills', 1);
@@ -1206,6 +1230,7 @@ export const RunnerFeatures = {
     tg.clear();
     this.trickGfx.clear();
     this.renderDoor(lead);
+    this.renderScare();
     for (const t of this.traps) {
       if (t.gone) continue;
       const x = Math.round(this.sx(t.wx) - lead);
@@ -1294,8 +1319,10 @@ export const RunnerFeatures = {
         this.player.setPosition(PLAYER_X, py);
       }
     }
+    this.gunKick = Math.max(0, (this.gunKick || 0) - 0.25);
     this.gunImg.setVisible(!!this.weapon && !this.dead)
-      .setPosition(PLAYER_X + 14, (this.slide > 0 && this.grounded ? FLOOR - 16 : py + 4));
+      .setPosition(PLAYER_X + 14 - this.gunKick * 4, (this.slide > 0 && this.grounded ? FLOOR - 16 : py + 4) - this.gunKick * 2)
+      .setRotation(-this.gunKick * 0.25);
     this.renderAim();
     this.renderGate(lead);
 
@@ -1430,10 +1457,11 @@ export const RunnerFeatures = {
     if (!wp || this.dead || this.flying) return;
     const range = WEAPONS[wp.kind].range;
     const a = 0.5 + 0.3 * Math.sin(this.clock * 10);
-    g.lineStyle(2, 0xffffff, a);
     for (const tg of this.targets(wp.kind)) {
       if (Math.hypot(tg.cx - PLAYER_X, tg.cy - this.py) > range + 120 || tg.cx > W) continue;
-      const { l, r, t, b } = tg.box, k = 5;
+      const locked = (tg.t || tg.b || tg.h) === this.aimRef; // phase 4: the one it's firing at reads solid
+      g.lineStyle(locked ? 3 : 2, locked ? 0xfff2b0 : 0xffffff, locked ? 1 : a * 0.7);
+      const { l, r, t, b } = tg.box, k = locked ? 7 : 5;
       g.lineBetween(l - 2, t - 2, l - 2 + k, t - 2); g.lineBetween(l - 2, t - 2, l - 2, t - 2 + k);
       g.lineBetween(r + 2, t - 2, r + 2 - k, t - 2); g.lineBetween(r + 2, t - 2, r + 2, t - 2 + k);
       g.lineBetween(l - 2, b + 2, l - 2 + k, b + 2); g.lineBetween(l - 2, b + 2, l - 2, b + 2 - k);
@@ -1441,11 +1469,24 @@ export const RunnerFeatures = {
     }
   },
 
+  // f (far) / m (middle) / n (near): the HUD face and the sounds follow it
+  stretchStage(near) {
+    const st = near > 0.6 ? 'n' : near > 0.32 ? 'm' : 'f';
+    if (st !== this.stretchSt) {
+      const closer = (this.stretchSt === 'f' && st !== 'f') || (this.stretchSt === 'm' && st === 'n');
+      this.stretchSt = st;
+      this.events.emit('stretchStage', st);
+      if (closer && this.started && !this.dead) Audio.sfx(st === 'n' ? 'hiss' : 'click2');
+    }
+    return st;
+  },
+
   renderStretch() {
     const s = this.stretch;
-    if (this.trick && !this.trick.gone && this.trick.ownsStretch && !this.flying) { this.renderEdge(1 - this.light); return; }
+    if (this.trick && !this.trick.gone && this.trick.ownsStretch && !this.flying) { s.clearTint().setRotation(0); s.anims.timeScale = 1; this.renderEdge(1 - this.light); return; }
     this.resetStretchSprite();
     if (this.flying) {
+      s.clearTint().setRotation(0); s.anims.timeScale = 1;
       this.edgeGfx.clear();
       // it can't follow: it jumps and reaches up with its long arms, then falls behind
       const t = this.crFlyT;
@@ -1457,8 +1498,13 @@ export const RunnerFeatures = {
     const near = 1 - this.light;
     this.renderEdge(near);
     const fast = this.catchUpT > 0 || this.clock - this.lastStumble < 1.2 || near > 0.6 || this.dead;
-    const want = fast ? 'stretch_crawl' : 'stretch_walk';
+    // phase 4: it looks and moves differently as it closes in. Far: upright, slow, half lost in the dark.
+    // Middle: red pupils, quicker, its head twitches. Near: on all fours, the grin wide open, it jitters.
+    const stage = this.stretchStage(near);
+    const want = (fast ? 'stretch_crawl' : 'stretch_walk') + (stage === 'f' ? '' : `_${stage}`);
     if (!this.dead || this.caughtBy) { if (s.anims.currentAnim?.key !== want) s.play(want); }
+    s.anims.timeScale = stage === 'f' ? 0.85 : 1;
+    if (stage === 'f') s.setTint(0x4a4458); else s.clearTint(); // far: a dark shape; closer: pale, lit
     // honest position: the creature's FRONT edge (not its centre) is where the gap says it is
     const half = (fast ? 28 : 12) * STRETCH_SCALE / 2;
     const target = PLAYER_X - 8 - this.gapVis * 0.72 - half; // 0.72: always on screen, still in step with the bar
@@ -1466,9 +1512,15 @@ export const RunnerFeatures = {
     // never parked: it sways, and it lunges at you when you stumble
     const lunge = this.lungeT < 0.45 ? Math.sin((this.lungeT / 0.45) * Math.PI) * 34 : 0;
     const sway = Math.sin(this.clock * 1.7) * 6 + Math.sin(this.clock * 4.3) * 2;
-    const x = Phaser.Math.Linear(-60, target, enter) + lunge + sway;
+    // the twitch (middle): every so often the whole thing jerks a few px and tilts, then snaps back
+    const tw = stage === 'm' && (this.clock % 1.7) < 0.09 ? 1 : 0;
+    // the jitter (near): never still, and it surges at you in short lurches
+    const jit = stage === 'n' ? (Math.random() - 0.5) * 3 + Math.max(0, Math.sin(this.clock * 5.3)) ** 6 * 10 : 0;
+    const x = Phaser.Math.Linear(-60, target, enter) + lunge + sway + tw * 5 + jit;
     s.setVisible(true).setPosition(Math.round(x), FLOOR + 2 + (fast ? 0 : Math.sin(this.clock * 14) * 1.5));
-    s.setScale(STRETCH_SCALE, fast ? STRETCH_SCALE : STRETCH_SCALE + Math.sin(this.clock * 7) * 0.05); // a slight, wrong breathing stretch
+    s.setRotation(tw * 0.07 + (stage === 'n' ? (Math.random() - 0.5) * 0.03 : 0));
+    const grow = 1 + 0.1 * near + (stage === 'n' ? 0.15 : 0); // it looms as it gets closer (on all fours it would read smaller)
+    s.setScale(STRETCH_SCALE * grow, (fast ? STRETCH_SCALE : STRETCH_SCALE + Math.sin(this.clock * 7) * 0.05) * grow); // a slight, wrong breathing stretch
   },
 };
 

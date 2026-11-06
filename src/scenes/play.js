@@ -18,6 +18,7 @@ import { RunnerFeatures } from '../runner.js';
 import { TrickFeatures } from '../tricks.js';
 import { SetPieceFeatures } from '../setpieces.js';
 import { EndingFeatures } from '../ending.js';
+import { ScareFeatures } from '../scares.js';
 
 const STEP = 1 / 120;
 const MAX_STEPS = 12;
@@ -186,7 +187,7 @@ export class PlayScene extends Phaser.Scene {
     this.tweens.add({ targets: [this.tutorial, this.tutorial2], alpha: 0.35, duration: 500, yoyo: true, repeat: -1 });
     this.offDevice = Device.onChange(() => { if (!this.started && this.tutorial.active) this.tutorial.setText(prompt('float')); });
 
-    this.banner(zone.name, zone.flavor);
+    this.banner(zone.name, zone.flavor, zone.short);
     Audio.music(zone.song);
     Audio.duck(false);
     Audio.danger(false);
@@ -850,7 +851,7 @@ export class PlayScene extends Phaser.Scene {
       Audio.sfx('zone');
       Audio.music(zone.song);
       this.setWeather(zone.id);
-      this.banner(zone.name, zone.flavor);
+      this.banner(zone.name, zone.flavor, zone.short);
       this.saveCheckpoint();
       this.addCombo('gate', PLAYER_X + 40, H / 2);
       this.onZoneEnter?.(zone);
@@ -873,8 +874,8 @@ export class PlayScene extends Phaser.Scene {
     if (blink !== this.lastBlink) { this.lastBlink = blink; this.events.emit('lightLow', blink); }
   }
 
-  banner(name, flavor = '') {
-    if (this.runner) { this.headline(name, flavor, 1.6); return; } // v6: one headline at a time, up top, short // v6: one headline at a time, up top
+  banner(name, flavor = '', short = name) {
+    if (this.runner) { this.headline(short, '', 1.3); return; } // phase 4: the world's short title, one line, nothing under it
     const t = text(this, W / 2, H / 2 + 30, name, 24, '#cfe0ff').setDepth(31).setStroke('#07060d', 6).setAlpha(0);
     const f = text(this, W / 2, H / 2 + 60, flavor, 16, '#a99fd0').setDepth(31).setStroke('#07060d', 4).setAlpha(0);
     this.tweens.add({ targets: [t, f], alpha: 1, duration: 300, yoyo: true, hold: 1800, onComplete: () => { t.destroy(); f.destroy(); } });
@@ -1023,4 +1024,4 @@ export class PlayScene extends Phaser.Scene {
   }
 }
 
-Object.assign(PlayScene.prototype, Features, ScoreFeatures, RunnerFeatures, TrickFeatures, SetPieceFeatures, EndingFeatures);
+Object.assign(PlayScene.prototype, Features, ScoreFeatures, RunnerFeatures, TrickFeatures, SetPieceFeatures, EndingFeatures, ScareFeatures);

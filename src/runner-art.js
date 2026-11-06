@@ -28,7 +28,27 @@ function px(scene, key, rows, pal) {
   tex.refresh();
 }
 
-const STRETCH_PAL = { B: '#2c2540', S: '#463c63', F: '#ece8f2', G: '#b9b2c8', E: '#0b0918', T: '#ffffff' };
+const STRETCH_PAL = { B: '#2c2540', S: '#463c63', F: '#ece8f2', G: '#b9b2c8', E: '#0b0918', T: '#ffffff', R: '#ff3a4a', C: '#8a8298' };
+
+// phase 4: it changes as it gets closer. 'm' (middle): pin-prick red pupils. 'n' (near): red pupils,
+// a crack down the porcelain and the grin opened all the way (every tooth). Same rows, swapped pixels,
+// so every frame (walk, crawl) gets the same face.
+function hungry(rows, stage) {
+  let eye = 0;
+  return rows.map((r) => {
+    if (r.includes('FEEFFEEF')) { // the two eye rows: red in the inner bottom corner of each eye
+      eye++;
+      if (eye === 2) r = r.replace('FEEFFEEF', 'FERFFREF');
+      if (eye === 1 && stage === 'n') r = r.replace('FEEFFEEF', 'FEEFCEEF');
+      return r;
+    }
+    if (stage !== 'n') return r;
+    if (r.includes('FFFFFFFF') && eye === 0) return r.replace('FFFFFFFF', 'FFFCFFFF'); // the crack
+    if (r.includes('FETETETETF')) return r.replace('FETETETETF', 'FTTTTTTTTF'); // the grin, wide open
+    if (r.includes('FEEEEEEF')) return r.replace('FEEEEEEF', 'FETETETF'); // and a lower row of teeth
+    return r;
+  });
+}
 
 // head: porcelain mask with hollow eyes and a too-wide grin
 const HEAD = [
@@ -361,7 +381,8 @@ const BONE = [ // bone boomerang
 ];
 const BONE_PAL = { F: '#ece8dc', S: '#b8b0a0' };
 // HUD: THE STRETCH's face for the danger meter
-const STRETCH_ICON = [
+const STRETCH_ICON = STRETCH_ICON_ROWS();
+function STRETCH_ICON_ROWS() { return [
   '.FFFFFF.',
   'FEEFFEEF',
   'FEEFFEEF',
@@ -369,6 +390,31 @@ const STRETCH_ICON = [
   'EEEEEEEE',
   'ETETETET',
   '.EEEEEE.',
+]; }
+
+
+// the ending close-up: THE STRETCH's porcelain face, 24 x 20, a crack, red pin-prick pupils, the grin
+const FACE_BIG = [
+  '.......FFFFFFFFFF.......',
+  '.....FFFFFFFFFFFFFF.....',
+  '....FFFFFFFFCFFFFFFF....',
+  '...FFFFFFFFFCFFFFFFFF...',
+  '..FFFEEEEFFFCCFEEEEFFF..',
+  '..FFEEEEEEFFFCEEEEEEFF..',
+  '.FFFEEEEEEFFFFEEEEEEFFF.',
+  '.FFFEEEEREFFFFERAEEEFFF.',
+  '.FFFFEEEEFFFFFFEEEEFFFF.',
+  '.FFFFFFFFFFFFFFFFFFFFFF.',
+  '.GFFFFFFFFFGGFFFFFFFFFG.',
+  'FFEEEEEEEEEEEEEEEEEEEEFF',
+  'FEETTETTETTETTETTETTEEFF',
+  'FEETTETTETTETTETTETTEEF.',
+  '.FEEEEEEEEEEEEEEEEEEEEF.',
+  '.FEETTETTETTETTETTETEF..',
+  '..FEEEEEEEEEEEEEEEEEF...',
+  '...GFFFFFFFFFFFFFFFG....',
+  '.....GFFFFFFFFFFFG......',
+  '........GGGGGGG.........',
 ];
 
 export function makeRunnerArt(scene) {
@@ -395,6 +441,19 @@ export function makeRunnerArt(scene) {
   px(scene, 'sling', SLING, SLING_PAL);
   px(scene, 'bone', BONE, BONE_PAL);
   px(scene, 'stretch_icon', STRETCH_ICON, STRETCH_PAL);
+  // phase 4: the closer it is, the hungrier it looks
+  for (const st of ['m', 'n']) {
+    px(scene, `stretch_walk0_${st}`, hungry([...HEAD, ...TORSO, ...LEGS0], st), STRETCH_PAL);
+    px(scene, `stretch_walk1_${st}`, hungry([...HEAD_LEAN, ...TORSO, ...LEGS1], st), STRETCH_PAL);
+    px(scene, `stretch_walk2_${st}`, hungry([...HEAD, ...TORSO_B, ...LEGS2], st), STRETCH_PAL);
+    px(scene, `stretch_walk3_${st}`, hungry([...HEAD_LEAN, ...TORSO_B, ...LEGS3], st), STRETCH_PAL);
+    px(scene, `stretch_crawl0_${st}`, hungry(CRAWL0, st), STRETCH_PAL);
+    px(scene, `stretch_crawl1_${st}`, hungry(CRAWL1, st), STRETCH_PAL);
+    px(scene, `stretch_icon_${st}`, ['.FFFFFF.', st === 'n' ? 'FEEFCEEF' : 'FEEFFEEF', 'FERFFREF', 'FFFFFFFF', 'EEEEEEEE', st === 'n' ? 'TTTTTTTT' : 'ETETETET', st === 'n' ? '.ETETET.' : '.EEEEEE.'], STRETCH_PAL);
+  }
+  // the ending close-up: its face, big (2x the head rows, hand-drawn so it reads at full screen)
+  px(scene, 'stretch_face', FACE_BIG, STRETCH_PAL);
+  px(scene, 'stretch_face_lit', FACE_BIG.map((r) => r.replace(/R/g, 'E')), { ...STRETCH_PAL, F: '#fff6d8', G: '#e8d8b0', C: '#c0a878' });
 }
 
 export function makeRunnerAnims(scene) {
@@ -404,6 +463,10 @@ export function makeRunnerAnims(scene) {
   };
   mk('stretch_walk', ['stretch_walk0', 'stretch_walk1', 'stretch_walk2', 'stretch_walk3'], 9);
   mk('stretch_crawl', ['stretch_crawl0', 'stretch_crawl1'], 12);
+  for (const st of ['m', 'n']) {
+    mk(`stretch_walk_${st}`, [0, 1, 2, 3].map((i) => `stretch_walk${i}_${st}`), st === 'm' ? 11 : 13);
+    mk(`stretch_crawl_${st}`, [`stretch_crawl0_${st}`, `stretch_crawl1_${st}`], st === 'm' ? 13 : 16);
+  }
 }
 
 // row-width check for tests/tools: every sprite's rows must be the same width
@@ -413,5 +476,5 @@ export const RUNNER_SPRITES = {
   reach: [...REACH_ARMS, ...HEAD, ...TORSO_UP, ...LEGS0], crawl0: CRAWL0, crawl1: CRAWL1,
   grave: GRAVE, crate: CRATE, salt: SALT_GUN,
   gurney: GURNEY, wetfloor: WET_FLOOR, drawer: DRAWER, chandelier: CHANDELIER, cart: CART, eye: EYE, vent: VENT,
-  flame: FLAME_GUN, sling: SLING, bone: BONE, icon: STRETCH_ICON,
+  flame: FLAME_GUN, sling: SLING, bone: BONE, icon: STRETCH_ICON, face: FACE_BIG,
 };

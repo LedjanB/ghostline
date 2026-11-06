@@ -12,7 +12,7 @@ async function start(save) {
   await page.waitForFunction(() => window.__game && window.__game.scene.getScenes(true).length > 0);
   await page.evaluate(() => { const g = window.__game; g.scene.getScenes(true).forEach((sc) => sc.scene.key !== 'play' && sc.scene.stop()); g.scene.start('play'); });
   await page.waitForFunction(() => window.__game.scene.getScene('play')?.runner && window.__game.scene.isActive('play'));
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(1400); // the opening '!' and the controls fade out first
 }
 const sim = (fn, arg) => page.evaluate(([src, a]) => (0, eval)(src)(window.__game.scene.getScene('play'), a), [fn.toString(), arg]);
 const base = (w, extra = {}) => ({ version: 7, storySeen: true, runs: 12, tips: [], mode: 'creative', creative: { x: (w * 400 + 40) * 24, rebirths: 0 }, ...extra });
@@ -29,7 +29,7 @@ if (phases.includes('tricks')) for (let w = 0; w < 7; w++) {
       const tr = s.trick; let n = 0;
       while (tr.t < tr.tell * at + (at > 1 ? 0.15 : 0) && n++ < 2000) { s.invuln = 9; s.step(1 / 120, true); }
     }, at);
-    await page.waitForTimeout(120);
+    await page.waitForTimeout(600);
     await page.screenshot({ path: `${OUT}/trick-${TR[w]}-${at}.png` });
   }
 }
@@ -40,11 +40,11 @@ if (phases.includes('pieces')) for (let w = 0; w < 8; w++) {
     let n = 0; while (!s.flying && n++ < 40000) { s.invuln = 9; s.jumpLatch = false; s.step(1 / 120, true); }
     n = 0; while (n++ < 120 * 2.6) { s.invuln = 9; s.step(1 / 120, s.py > 180); }
   });
-  await page.waitForTimeout(120);
+  await page.waitForTimeout(600);
   await page.screenshot({ path: `${OUT}/piece-${w + 1}.png` });
 }
 if (phases.includes('door')) {
-  for (const [name, got, frames] of [['locked', 8, [1.0, 2.6]], ['ending', 99, [1.5, 4.5, 8.5, 11.8]]]) {
+  for (const [name, got, frames] of [['locked', 8, [1.0, 2.6]], ['ending', 99, [1.5, 4.5, 8.8, 10.6, 11.9, 15.2, 20.8]]]) {
     for (const f of frames) {
       await start({ version: 7, storySeen: true, runs: 12, tips: [], unlocks: { got, points: 0, fresh: 0 }, mode: 'normal' });
       await sim((s, f) => {
@@ -54,7 +54,7 @@ if (phases.includes('door')) {
         let n = 0; while (!s.finish && n++ < 9000) { s.invuln = 9; s.step(1 / 120, true); }
         n = 0; while (s.finish && s.finish.t < f && n++ < 9000) s.step(1 / 120, false);
       }, f);
-      await page.waitForTimeout(150);
+      await page.waitForTimeout(600);
       await page.screenshot({ path: `${OUT}/door-${name}-${f}.png` });
     }
   }
@@ -68,7 +68,7 @@ if (phases.includes('weapons')) for (const [kind, w, trap] of [['salt', 0, 'gurn
     if (trap === 'trick') s.startTrick(false); else { s.addTrap(trap, s.worldX + 330); s.addTrap('crate', s.worldX + 520); }
     for (let i = 0; i < 45; i++) { s.invuln = 9; s.step(1 / 120, true); }
   }, [kind, trap]);
-  await page.waitForTimeout(150);
+  await page.waitForTimeout(600);
   await page.screenshot({ path: `${OUT}/weapon-${kind}.png` });
 }
 console.log('errors', errs);

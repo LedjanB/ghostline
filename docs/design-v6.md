@@ -31,7 +31,7 @@ v5 plays almost exactly like Jetpack Joyride. v6 makes it its own game:
 | Jump (hold = higher) | tap / hold | Space, Up, W | A |
 | Slide | swipe down | Down, S | B or stick down |
 | Rise while flying | hold | hold Space | hold A |
-| Shoot | **automatic** | automatic | automatic |
+| Shoot | **automatic** (kept in phase 4, see below) | automatic | automatic |
 | Pause | II button | P, Esc | Start |
 
 Weapons aim and fire on their own at the nearest target ahead. You only steer, so it plays the same with a thumb, a keyboard or a controller.
@@ -115,6 +115,24 @@ If both prototypes pass, the real build reuses the v5 systems and replaces the r
   (a new depth every 400 m), and ENDLESS mode appears in the menu (starts at the door, score counts only what you run).
 - Worlds 5 to 8 are the hard half (`lateK`): tighter gaps, more patterns, more tricks, a longer two-stumble window, a slower recovery.
 - Bots (`scripts/bot.mjs`): casual, regular, expert. They read traps better than people, so they are a floor check, not a difficulty target.
+
+## Phase 4 (polish), Nov 6
+AI testers after phase 3: 7, 6.5, 7 out of 10, all would run again. Phase 4 fixes what they flagged:
+- **One message on screen at a time.** The headline, popups and Boo's bubble share one slot (a headline clears the others; only a
+  danger call like STUMBLE! beats a headline). Headlines are one short line; world titles are short (THE WARD, THE SEWER); the weapon
+  pickup just says SALT!, FIRE!, HOLY WATER!, BONE!. Tips and mission toasts are a small note in the bottom-left corner. No floating +points.
+- **A real ending** (`src/ending.js`, about 22 s): the light; THE JOURNAL (the twelve pages fly together into one picture of the ward and
+  say what they add up to: Boo kept the lights on at St. Mercy, the night he died they went out, a door opened and never closed);
+  THE STRETCH close up (it came through that door; it was only ever the dark; the light cracks it); THE WARD lit up (lamps click on, Boo
+  clocks out), THE END, (PROBABLY.) and the last lamp flickers off over two red dots.
+- **Weapons stay automatic.** Decision: tap is jump, and a fire button would break one-thumb play on phones and make the game play
+  differently per device. They now feel like yours: a tick when it locks on, the target's brackets go solid gold, recoil and a muzzle
+  flash, a tiny hit-stop on a kill.
+- **One scare per world** (`src/scares.js`): hush, held breath, sting, release. Never hurts you; traps hold off until the screen is clear.
+  Ward LIGHTS OUT (its face in the window), morgue SIT UP, woods EYES, graveyard THE ANKLE, sewer THE OTHER ONE (a grin ahead of you),
+  catacombs THEY TURN (every skull), carnival JACK, the Other Side DON'T TURN AROUND (its face, full screen, a blink).
+- **THE STRETCH changes with distance**: far (upright, slow, half in the dark), middle (red pupils, quicker, it twitches, clicking joints),
+  near (on all fours, the grin wide open, a crack, it jitters and lurches, a hiss). It looms as it closes in; the HUD face follows.
 
 ## Open questions
 - The creature's final name and look

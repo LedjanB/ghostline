@@ -43,12 +43,18 @@ export class HudScene extends Phaser.Scene {
     this.letters = ['B', 'O', 'O'].map((l, i) => this.add.image(24 + i * 24, 50, `letter_${l}`).setScale(1.6).setAlpha(0.25).setVisible(showMeta));
     this.powerIcon = this.add.image(540, 18, 'orb_magnet').setScale(1.4).setVisible(false);
     this.powerBar = this.add.graphics();
-    // v6: tips and mission toasts share ONE strip at the bottom (over the floor band), one at a time
-    const ty = this.runner ? 84 : 90; // v6: top band, never over the ground lane where traps come from
-    this.toastBg = this.add.rectangle(W / 2, ty, 560, 42, 0x140f24).setStrokeStyle(2, 0xffd75e).setAlpha(0);
+    // phase 4: tips and mission toasts are ONE small note in the bottom-left corner (over the floor band,
+    // under Milo's feet), one at a time. The middle of the screen belongs to the one message that matters now.
+    const ty = this.runner ? H - 13 : 90;
+    this.toastBg = this.add.rectangle(8, ty, 10, 18, 0x140f24, 0.85).setOrigin(0, 0.5).setStrokeStyle(1, 0x9fb8e8).setAlpha(0);
     this.toastTitle = text(this, W / 2, ty - 11, '', 8, '#ffd75e').setAlpha(0);
-    this.toastText = text(this, W / 2, ty + 8, '', 16, '#e6f0ff').setAlpha(0);
-    this.toastIcon = this.add.image(W / 2 - 262, ty, 'ghost0').setAlpha(0);
+    this.toastText = text(this, 26, ty + 1, '', 8, '#e6f0ff', 0).setAlpha(0);
+    this.toastIcon = this.add.image(17, ty, 'ghost0').setScale(0.5).setAlpha(0);
+    if (!this.runner) { // v5 keeps its big strip
+      this.toastBg.setOrigin(0.5).setPosition(W / 2, ty).setSize(560, 42).setStrokeStyle(2, 0xffd75e);
+      this.toastText.setOrigin(0.5).setPosition(W / 2, ty + 8).setFontSize(16);
+      this.toastIcon.setScale(1).setPosition(W / 2 - 262, ty);
+    }
     this.toasts = [];
 
     const ev = play.events;
@@ -75,6 +81,7 @@ export class HudScene extends Phaser.Scene {
       g.fillStyle(0x07060d, 1); g.fillRect(W - 14 - w, 58, w, 5);
       g.fillStyle(Phaser.Display.Color.HexStringToColor(cols[c.tier]).color, 1); g.fillRect(W - 14 - w + 1, 59, Math.round((w - 2) * c.left), 3);
     });
+    on('stretchStage', (st) => { if (this.runner) this.flame.setTexture(st === 'f' ? 'stretch_icon' : `stretch_icon_${st}`); }); // phase 4: its face on the meter changes too
     on('light', (v) => { this.light = v; this.drawLight(false); });
     on('lightLow', (blink) => this.drawLight(blink));
     on('shield', (has) => this.shieldIcon.setVisible(has));
@@ -94,6 +101,7 @@ export class HudScene extends Phaser.Scene {
       this.powerBar.fillStyle(0xffb0d0, 1); this.powerBar.fillRect(526, 30, Math.round(28 * p.left), 4);
     });
     on('toast', (msg) => { this.toasts.push({ kind: 'mission', msg }); if (this.toasts.length === 1) this.showToast(); });
+    on('note', (msg) => { if (this.toasts.some((t) => t.msg === msg) || this.toasts.length > 1) return; this.toasts.push({ kind: 'tip', msg }); if (this.toasts.length === 1) this.showToast(); });
     on('tip', (msg) => { if (this.toasts.some((t) => t.msg === msg)) return; this.toasts.push({ kind: 'tip', msg }); if (this.toasts.length === 1) this.showToast(); });
     on('hush', () => { // caught: nothing new pops up over the death
       this.toasts = [];
@@ -125,13 +133,21 @@ export class HudScene extends Phaser.Scene {
     const item = this.toasts[0];
     if (!item) return;
     const tip = item.kind === 'tip';
-    this.toastTitle.setText(tip ? '' : 'MISSION COMPLETE!');
-    this.toastText.setText(item.msg).setY(this.toastBg.y + (tip ? 1 : 8)).setX(W / 2 + (tip ? 12 : 0));
-    this.toastBg.setStrokeStyle(2, tip ? 0x9fb8e8 : 0xffd75e);
-    const items = [this.toastBg, this.toastTitle, this.toastText];
-    if (tip) items.push(this.toastIcon);
+    const items = [this.toastBg, this.toastText];
+    if (this.runner) {
+      this.toastText.setText(tip ? item.msg : `MISSION DONE: ${item.msg}`).setColor(tip ? '#e6f0ff' : '#ffd75e');
+      this.toastBg.setSize(this.toastText.width + 26, 18).setStrokeStyle(1, tip ? 0x9fb8e8 : 0xffd75e);
+      items.push(this.toastIcon);
+    } else {
+      this.toastTitle.setText(tip ? '' : 'MISSION COMPLETE!');
+      this.toastText.setText(item.msg).setY(this.toastBg.y + (tip ? 1 : 8)).setX(W / 2 + (tip ? 12 : 0));
+      this.toastBg.setStrokeStyle(2, tip ? 0x9fb8e8 : 0xffd75e);
+      items.push(this.toastTitle);
+      if (tip) items.push(this.toastIcon);
+    }
+    this.toastAt = this.time.now;
     this.tweens.add({
-      targets: items, alpha: 1, duration: 200, yoyo: true, hold: tip ? 2400 : 1600,
+      targets: items, alpha: 1, duration: 160, yoyo: true, hold: tip ? 2600 : 1800,
       onComplete: () => { this.toasts.shift(); this.showToast(); },
     });
   }

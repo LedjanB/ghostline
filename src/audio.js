@@ -373,6 +373,16 @@ export const Audio = {
       // THE STRETCH: a heavy, soft step (louder the closer it is), a wet breath, a roar when you stumble
       case 'step': { const v = opts.v ?? 0.5; tone(t, rand(55, 70), 0.09, 'triangle', 0.05 * v * vv, sfxBus, 40); noise(t, 0.05, 0.02 * v, sfxBus, 300, 'lowpass'); break; }
       case 'breath': { const v = opts.v ?? 0.6; noise(t, 0.55, 0.035 * v, sfxBus, 700, 'bandpass'); noise(t + 0.6, 0.45, 0.025 * v, sfxBus, 500, 'bandpass'); break; }
+      case 'hiss': noise(t, 0.5, 0.05, sfxBus, 2600, 'bandpass'); tone(t, 90, 0.4, 'sawtooth', 0.03, sfxBus, 60); break; // phase 4: it's close now
+      case 'click2': tone(t, 1300, 0.015, 'square', 0.03, sfxBus); tone(t + 0.07, 1100, 0.015, 'square', 0.03, sfxBus); break; // its joints, nearer
+      case 'sting': { // phase 4 scares: a dissonant stab after a hush
+        [0, 1, 6, 11].forEach((st) => tone(t, midi(57 + st), 0.9, 'sawtooth', 0.035, sfxBus, midi(57 + st) * 0.94));
+        noise(t, 0.35, 0.09, sfxBus, 1800, 'bandpass'); tone(t, 70, 0.6, 'square', 0.06, sfxBus, 40);
+        break;
+      }
+      case 'whisper': noise(t, 0.9, 0.03, sfxBus, 3200, 'bandpass'); noise(t + 0.25, 0.7, 0.025, sfxBus, 2400, 'bandpass'); break;
+      case 'honk': tone(t, 230, 0.18, 'square', 0.07, sfxBus, 200); tone(t + 0.2, 180, 0.3, 'square', 0.07, sfxBus, 150); break;
+      case 'creak': tone(t, 90, 0.9, 'sawtooth', 0.025, sfxBus, 140); noise(t, 0.8, 0.02, sfxBus, 400, 'bandpass'); break;
       case 'roar': tone(t, 220, 0.45, 'sawtooth', 0.05, sfxBus, 70, dt); noise(t, 0.35, 0.05, sfxBus, 500, 'lowpass'); break;
       case 'flame': noise(t, 0.16, 0.035 * vv, sfxBus, 900, 'lowpass'); break;
       case 'holy': tone(t, 880, 0.08, 'sine', 0.05 * vv, sfxBus, 1320, dt); noise(t, 0.06, 0.03, sfxBus, 4000); break;

@@ -123,8 +123,12 @@ export const Features = {
     this.popups = (this.popups || []).filter((o) => o.active);
     const cur = this.popups[this.popups.length - 1];
     if (cur && cur.prio > p && this.clock - cur.bornAt < 0.6) return;
-    this.popups.forEach((o) => o.destroy()); this.popups = [];
-    if (this.runner && this.bubble) { this.bubble.forEach((o) => o.destroy()); this.bubble = null; }
+    if (this.runner && this.headlineUp()) { // phase 4: one message at a time; only a danger call clears the headline
+      if (p < 2) return;
+      this.clearHeadline();
+    }
+    if (this.runner) this.clearMessages();
+    else { this.popups.forEach((o) => o.destroy()); this.popups = []; }
     const t = text(this, PLAYER_X + 50, y ?? this.py - 40, str, 16, color).setDepth(31).setStroke('#07060d', 4);
     t.bornAt = this.clock; t.prio = p;
     this.popups.push(t);
@@ -241,6 +245,7 @@ export const Features = {
       landed: ['RUN! RUN!', "IT'S STILL COMING!"],
       dark: ["DON'T LOOK BACK!", 'FASTER, ' + hero + '!'], near: ['WHOA!', 'TOO CLOSE!', 'NICE ONE!'],
       shield: ['GOT YOU!', 'NOT TODAY, STRETCH!'], death: ['NOOO!', 'IT GOT YOU!', 'I LOOKED AWAY!'],
+      whisper: ["DON'T. TURN. AROUND."], scared: ['DID YOU SEE THAT?!', 'NOPE. NOPE. NOPE.', "I SAW NOTHING. RUN."], // phase 4 scares
     });
     const opts = LINES[kind];
     if (!opts) return;
@@ -255,6 +260,7 @@ export const Features = {
   },
   renderBubble() {
     if (!this.bubble) return;
+    if (this.runner && this.headlineUp()) { this.bubble.forEach((o) => o.destroy()); this.bubble = null; return; } // one message at a time
     const half = this.bubble[0].width / 2 + 8;
     const x = Math.min(W - half, Math.max(half, this.ghost.x + 40)), y = Math.max(this.runner ? 82 : 60, this.ghost.y - 34); // v6: never over the score row
     this.bubble[0].setPosition(x, y); this.bubble[1].setPosition(x, y + 1); this.bubble[2].setPosition(x - 26, y + 16);
@@ -271,7 +277,7 @@ export const Features = {
       rush: 'SPIRIT RUSH! SMASH THROUGH IT ALL!', light: 'LIGHT IS LOW! GRAB CANDLES!',
     };
     if (this.runner) Object.assign(TIPS, { // v6 (each fits the tip banner: 32 characters max)
-      candle: 'CANDLES PUSH THE STRETCH BACK!', slide: 'SLIDE UNDER THE BEAMS!', weapon: 'WEAPONS FIRE ON THEIR OWN!',
+      candle: 'CANDLES PUSH THE STRETCH BACK!', slide: 'SLIDE UNDER THE BEAMS!', weapon: 'IT FIRES ON ITS OWN. JUST RUN!',
       gurney: 'ROLLING BEDS! JUMP THEM!', drawer: 'DRAWERS POP OUT. SLIDE UNDER!', roots: 'ROOTS RISE UP. JUMP THEM!',
       sinkhole: 'LOOSE DIRT CAVES IN. JUMP IT!', vent: 'STEAM! JUMP IT OR WAIT IT OUT', chandelier: 'WATCH THE SHADOW ON THE FLOOR',
       cart: 'CARTS ON THE RAILS! JUMP!', eye: 'THE EYE BOBS. SLIDE OR JUMP',
