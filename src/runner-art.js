@@ -423,18 +423,21 @@ const FACE_BIG = [ // phase 4b: tall and narrow, like the rest of it (18 x 26): 
   '......GGGGGG......',
 ];
 // the graveyard scare's hand (14 x 20): open (clawing up) and shut (closing on air)
+// phase 4 round 6: crooked, splayed, every finger a different length, knuckles and a thumb that juts out
 const HAND_WRIST = [
-  '....SSSSSS....', '....SSSDSS....', '....SSSSSS....', '....SSSSSS....', '....SDSSSS....', '....SSSSSS....',
-  '..MMSSSSSSMM..', '.MMMMMMMMMMMM.',
+  '......SSSSSS......', '......SSSDSS......', '......SSSSSS......', '......SSSSSS......', '......SDSSSS......', '......SSSSSS......',
+  '..MMMMSSSSSSMMMM..', '.MMMMMMMMMMMMMMMM.',
 ];
 const HAND_OPEN = [
-  '.N..N..N...N..', '.S..S..S...S..', '.S..S..S...S..', '.SD.SD.SD..SD.', '.SS.SS.SS..SS.', '.SS.SS.SS.SS..',
-  '..SSSSSSSSSS..', '..SSDSSDSSSSSN', '..SSSSSSSSSSS.', '..SSSSSSSSSS..', '...SSSSSSSS...', '...SDSSSSSS...',
+  '..........N.......', '.....N...NS.......', '.....SN..SS....NN.', '....SS...SD...SS..', '....SD..SSD...SD..', '.N..SD...SD..SSD..',
+  '.SS.SSD..SD..SD...', '..SD.SD..SDS.SD...', '..SSDSD.SSD.SSD...', '...SDSSDSSDSSDD...', '...SSSSSSSSSSSD..N', '...SSDSSSDSSSSSSSD',
+  '...SSSSSSSSSSSSSD.', '....SSSLSSSSSDSS..', '....SSSSSSSSSSSS..', '.....SSDSSSSSSS...', '.....SSSSSSSSS....',
   ...HAND_WRIST,
 ];
-const HAND_SHUT = [
-  '..............', '..............', '..............', '..............', '...SSSSSSSS...', '..SSDSSDSSDS..',
-  '..SSSSSSSSSS..', '..SNSNSNSNSS..', '..SSSSSSSSSSS.', '..SSSSSSSSSSN.', '...SSSSSSSS...', '...SDSSSSSS...',
+const HAND_SHUT = [ // a fist closing on air: uneven knuckles, nails, the thumb across
+  '..................', '..................', '..................', '..................', '..................', '..................',
+  '........SS........', '.....SS.SSS.SS....', '....SSSDSSSDSSS...', '...SSSDSSSDSSSDS..', '...SDSSSDSSSDSSSS.', '...SSNSSSDNSSSNSD.',
+  '...SSSSSNSSSSSSSD.', '..SSSSDSSSSSSSDSS.', '..SDDDSSSSSSSSSS..', '...SSDDDDDSSSSN...', '....SSSSSSDSSS....',
   ...HAND_WRIST,
 ];
 const HAND_PAL = { S: '#9fb39a', D: '#5e6e58', N: '#e8dcc0', M: '#4a3a2a' };

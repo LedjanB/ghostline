@@ -14,9 +14,13 @@ export class HudScene extends Phaser.Scene {
     this.candleIcon = this.add.image(176, 18, 'candle0').setScale(1.5);
     this.candleText = text(this, 190, 18, `${play.runCandles}`, 16, '#ffd75e', 0).setStroke('#07060d', 4);
     this.runner = !!play.runner;
-    this.flame = this.add.image(318, 18, this.runner ? 'stretch_icon' : 'flame_icon').setScale(2);
+    // phase 4 round 6 (runner): a calm top bar on a phone. Always on: distance, the meter (centered, it's what
+    // matters), score, pause. Candles, souls and B-O-O letters peek in when they change, then fade out.
+    // The weapon timer lives bottom-right, over the floor band. Combo is a small line under the score.
+    this.mx = this.runner ? W / 2 - 66 : 332; // the meter bar's left edge
+    this.flame = this.add.image(this.mx - 14, 18, this.runner ? 'stretch_icon' : 'flame_icon').setScale(2);
     this.lightBar = this.add.graphics();
-    this.shieldIcon = this.add.image(498, 18, 'shield_icon').setScale(2).setVisible(play.shield);
+    this.shieldIcon = this.add.image(this.runner ? this.mx + 150 : 498, 18, 'shield_icon').setScale(2).setVisible(play.shield);
     this.pauseBtn = button(this, W - 24, 18, 'II', () => play.requestPause(), { w: 30, h: 26, size: 8 });
     // score + multiplier badge (Subway Surfers), combo meter on the right
     // (kept right of the player: x 120-180 must stay clear when you hug the ceiling)
@@ -77,9 +81,10 @@ export class HudScene extends Phaser.Scene {
       const g = this.comboBar;
       g.clear();
       if (!show) return;
-      const w = Math.max(60, this.comboText.width);
-      g.fillStyle(0x07060d, 1); g.fillRect(W - 14 - w, 58, w, 5);
-      g.fillStyle(Phaser.Display.Color.HexStringToColor(cols[c.tier]).color, 1); g.fillRect(W - 14 - w + 1, 59, Math.round((w - 2) * c.left), 3);
+      const at = this.comboBarAt || { x: W - 14, y: 58, min: 60 };
+      const w = Math.max(at.min, this.comboText.width);
+      g.fillStyle(0x07060d, 1); g.fillRect(at.x - w, at.y, w, 5);
+      g.fillStyle(Phaser.Display.Color.HexStringToColor(cols[c.tier]).color, 1); g.fillRect(at.x - w + 1, at.y + 1, Math.round((w - 2) * c.left), 3);
     });
     on('stretchStage', (st) => { if (this.runner) this.flame.setTexture(st === 'f' ? 'stretch_icon' : `stretch_icon_${st}`); }); // phase 4: its face on the meter changes too
     on('light', (v) => { this.light = v; this.drawLight(false); });
@@ -97,8 +102,9 @@ export class HudScene extends Phaser.Scene {
       this.powerBar.clear();
       if (!p) { this.powerIcon.setVisible(false); return; }
       this.powerIcon.setTexture(p.icon || `orb_${p.kind}`).setVisible(true);
-      this.powerBar.fillStyle(0x07060d, 1); this.powerBar.fillRect(526, 30, 28, 4);
-      this.powerBar.fillStyle(0xffb0d0, 1); this.powerBar.fillRect(526, 30, Math.round(28 * p.left), 4);
+      const pa = this.powerAt || { x: 526, y: 30 };
+      this.powerBar.fillStyle(0x07060d, 1); this.powerBar.fillRect(pa.x, pa.y, 28, 4);
+      this.powerBar.fillStyle(0xffb0d0, 1); this.powerBar.fillRect(pa.x, pa.y, Math.round(28 * p.left), 4);
     });
     on('toast', (msg) => { this.toasts.push({ kind: 'mission', msg }); if (this.toasts.length === 1) this.showToast(); });
     on('note', (msg) => { if (this.toasts.some((t) => t.msg === msg) || this.toasts.length > 1) return; this.toasts.push({ kind: 'tip', msg }); if (this.toasts.length === 1) this.showToast(); });
@@ -109,23 +115,65 @@ export class HudScene extends Phaser.Scene {
     });
     // v6: one more stumble and it gets you. Shown on the danger meter itself.
     this.strike = null;
-    this.strikeText = text(this, 398, 38, 'ONE MORE!', 8, '#ff6a5a').setVisible(false).setStroke('#07060d', 3);
+    this.strikeText = text(this, this.mx + 66, 38, 'ONE MORE!', 8, '#ff6a5a').setVisible(false).setStroke('#07060d', 3);
     on('strike', (left) => { this.strike = left; this.strikeText.setVisible(left !== null); this.drawLight(false); });
     // hide what hasn't mattered yet: souls and B-O-O letters show once you have one; x1 isn't worth a box
     if (this.runner) {
       const showSouls = play.souls > 0;
       this.soulIcon.setVisible(showSouls && showMeta); this.soulText.setVisible(showSouls && showMeta);
-      this.letters.forEach((l) => l.setVisible(false));
-      const showMult = play.mult > 1 && showScore;
-      this.multBg.setVisible(showMult); this.multText.setVisible(showMult);
-      this.scoreText.setX(showMult ? 242 : 206);
       on('souls', (n) => { this.soulIcon.setVisible(n > 0 && showMeta); this.soulText.setVisible(n > 0 && showMeta); });
-      on('letters', (n) => { if (n > 0) this.letters.forEach((l) => l.setVisible(showMeta)); });
     }
+    if (this.runner) this.layoutRunner(play, showMeta, showScore, on);
     on('rebirths', (n) => {
       this.rebirthText.setText(reborn(n));
       this.tweens.add({ targets: this.rebirthText, scaleX: 1.3, scaleY: 1.3, duration: 90, yoyo: true });
     });
+  }
+
+  layoutRunner(play, showMeta, showScore, on) {
+    // the always-on bar: distance left, meter center, score right of it, pause
+    this.scoreText.setOrigin(1, 0.5).setPosition(W - 48, 18);
+    this.comboText.setOrigin(1, 0.5).setPosition(W - 48, 38).setFontSize(8);
+    this.multBg.setSize(26, 16); this.multText.setFontSize(8);
+    const placeMult = () => {
+      const show = play.mult > 1 && showScore;
+      const mx = this.scoreText.x - this.scoreText.width - 18;
+      this.multBg.setPosition(mx, 18).setVisible(show); this.multText.setPosition(mx, 19).setVisible(show);
+    };
+    placeMult();
+    on('score', placeMult); on('mult', placeMult);
+    // the combo bar sits under its small label
+    this.comboBarAt = { x: W - 48, y: 45, min: 48 };
+    // peekers: row 2 on the left (x < 120: row 2 at x 120-180 stays clear for the ceiling)
+    this.candleIcon.setPosition(20, 42).setScale(1);
+    this.candleText.setPosition(28, 42).setFontSize(8);
+    this.letters.forEach((l, i) => l.setPosition(136 + i * 18, 18).setScale(1.2));
+    const placeSouls = () => {
+      const sx = this.candleText.x + this.candleText.width + 12;
+      this.soulIcon.setPosition(sx, 42).setScale(0.9); this.soulText.setPosition(sx + 8, 42).setFontSize(8);
+    };
+    placeSouls();
+    const groups = {
+      candles: [this.candleIcon, this.candleText],
+      souls: [this.soulIcon, this.soulText],
+      letters: this.letters,
+    };
+    const peek = (name, hold = 2400) => {
+      const g = groups[name];
+      g.forEach((o) => { this.tweens.killTweensOf(o); o.setAlpha(o.peekAlpha ?? 1); });
+      this.tweens.add({ targets: g, alpha: 0, delay: hold, duration: 500 });
+    };
+    Object.values(groups).flat().forEach((o) => o.setAlpha(0));
+    this.letters.forEach((l, i) => { l.peekAlpha = 0.25; });
+    on('candles', () => { placeSouls(); peek('candles'); });
+    on('souls', () => peek('souls'));
+    on('letters', (n) => {
+      this.letters.forEach((l, i) => { l.peekAlpha = i < n ? 1 : 0.25; });
+      peek('letters', n >= 3 ? 1600 : 3000);
+    });
+    // the weapon / power-up timer: bottom-right, over the floor band
+    this.powerIcon.setPosition(W - 24, H - 20);
+    this.powerAt = { x: W - 38, y: H - 8 };
   }
 
   // one mission toast at a time, like Jetpack Joyride's mission popups
@@ -154,28 +202,28 @@ export class HudScene extends Phaser.Scene {
 
   drawLight(blink) {
     const g = this.lightBar;
-    const v = this.light;
+    const v = this.light, m = this.mx;
     g.clear();
-    g.fillStyle(0x07060d, 1); g.fillRect(332, 11, 132, 14);
-    g.fillStyle(0x3a2a1a, 1); g.fillRect(334, 13, 128, 10);
+    g.fillStyle(0x07060d, 1); g.fillRect(m - 2, 11, 132, 14);
+    g.fillStyle(0x3a2a1a, 1); g.fillRect(m, 13, 128, 10);
     // phase 4b (runner): the bar is how CLOSE it is. It fills from its face toward the right and goes
     // grey, then orange, then red. Fuller and redder = worse (testers read the old shrinking bar as "safer").
     if (this.runner) {
       const c = 1 - v;
       const col = blink ? 0xff4040 : c < 0.35 ? 0x8a8298 : c < 0.65 ? 0xffb040 : 0xff3a4a;
       if (this.strike !== null && this.strike !== undefined) { // red frame + a shrinking timer: the next stumble is fatal
-        g.fillStyle(0xff4040, 1); g.fillRect(330, 9, 136, 18);
-        g.fillStyle(0x07060d, 1); g.fillRect(332, 11, 132, 14);
-        g.fillStyle(0xff6a5a, 1); g.fillRect(334, 27, Math.round(128 * this.strike), 3);
+        g.fillStyle(0xff4040, 1); g.fillRect(m - 4, 9, 136, 18);
+        g.fillStyle(0x07060d, 1); g.fillRect(m - 2, 11, 132, 14);
+        g.fillStyle(0xff6a5a, 1); g.fillRect(m, 27, Math.round(128 * this.strike), 3);
       }
-      g.fillStyle(0x1c1626, 1); g.fillRect(334, 13, 128, 10);
+      g.fillStyle(0x1c1626, 1); g.fillRect(m, 13, 128, 10);
       const w = Math.max(4, Math.round(128 * c));
-      g.fillStyle(col, 1); g.fillRect(334, 13, w, 10);
-      g.fillStyle(0xffffff, 0.35); g.fillRect(334, 13, w, 2);
+      g.fillStyle(col, 1); g.fillRect(m, 13, w, 10);
+      g.fillStyle(0xffffff, 0.35); g.fillRect(m, 13, w, 2);
       return;
     }
     const col = blink ? 0xff4040 : 0xffb040;
-    g.fillStyle(col, 1); g.fillRect(334, 13, Math.round(128 * v), 10);
-    g.fillStyle(0xffe0a0, 1); g.fillRect(334, 13, Math.round(128 * v), 2);
+    g.fillStyle(col, 1); g.fillRect(m, 13, Math.round(128 * v), 10);
+    g.fillStyle(0xffe0a0, 1); g.fillRect(m, 13, Math.round(128 * v), 2);
   }
 }

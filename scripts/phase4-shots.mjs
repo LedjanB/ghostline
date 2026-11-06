@@ -1,5 +1,5 @@
 // Screenshots of the phase 4 content (scares, THE STRETCH up close, a normal run frame). Serve the folder on :8000 first.
-// Usage: node scripts/phase4-shots.mjs <outDir> [scares,stretch,run]
+// Usage: node scripts/phase4-shots.mjs <outDir> [scares,stretch,run]   (ONLY=morgue,graveyard limits the scares)
 import { chromium } from '@playwright/test';
 const OUT = process.argv[2];
 const b = await chromium.launch({ executablePath: process.env.CHROME_PATH || undefined, args: ['--use-gl=swiftshader', '--mute-audio'] });
@@ -18,7 +18,7 @@ const sim = (fn, arg) => page.evaluate(([src, a]) => { window.__game.scene.getSc
 const base = (w, extra = {}) => ({ version: 7, storySeen: true, runs: 12, tips: [], mode: 'creative', creative: { x: (w * 400 + 40) * 24, rebirths: 0 }, ...extra });
 const IDS = ['ward', 'morgue', 'woods', 'graveyard', 'sewer', 'catacombs', 'carnival', 'otherside'];
 const phases = process.argv[3] ? process.argv[3].split(',') : ['scares', 'stretch', 'run'];
-if (phases.includes('scares')) for (let w = 0; w < 8; w++) {
+if (phases.includes('scares')) for (let w = 0; w < 8; w++) { if (process.env.ONLY && !process.env.ONLY.split(',').includes(IDS[w])) continue;
   for (const at of [-0.4, 0.12]) {
     await start(base(w));
     await sim((s, [id, at]) => {

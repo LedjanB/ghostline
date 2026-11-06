@@ -145,7 +145,12 @@ AI testers after phase 3: 7, 6.5, 7 out of 10, all would run again. Phase 4 fixe
 - **Round 5** (testers 8, 8, 8): the hush dims and drains the whole room, not just the edges; the woods go fully black under the
   eyes; the catacomb skulls turn their heads and their eyes glow; the ending close-up fills the screen; the ward lines sit up top,
   clear of Milo; at the near stage Boo flees up and ahead so the gap reads, and THE STRETCH looms 35% bigger.
-  Still open: the top HUD is busy on a phone (distance, candles, meter, BOO letters, score, combo, weapon).
+- **Round 6** (after testers 8, 8, 8): a calm top bar on a phone. Always on: distance (left), the meter with its face (center),
+  score (right), pause. Candles, souls and the B-O-O letters peek in when they change and fade out; the combo is a small line
+  under the score; the weapon timer sits bottom-right over the floor band. The graveyard hand is crooked and splayed (every finger
+  a different length, knuckles, a thumb that juts out; the fist closes unevenly). The morgue body is a corpse: bare feet and a
+  toe tag out the end of the sheet, it sits up and slumps, the head lolls, the cloth sinks into the face, a grey arm hangs off the
+  slab. Candles grabbed in the air can't push the landing gap all the way back (`LAND_MAX` 108), so landing stays tense.
 
 ## Open questions
 - The creature's final name and look

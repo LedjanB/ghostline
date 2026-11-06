@@ -148,26 +148,55 @@ export const ScareFeatures = {
         break;
       }
       case 'morgue': {
-        // a slab in the back with a sheet over a body; at the hit, it sits bolt upright
+        // a slab in the back, a body under a sheet: bare feet and a toe tag stick out the end.
+        // At the hit it sits bolt upright, slumps, the head lolls, the sheet slips and one dead arm hangs off the slab.
         const x = W * 0.68 - Math.max(0, t) * 30, y = FLOOR - 70;
         const up = k < 0 ? 0 : ease(k / 0.09);
+        const SHEET = 0xd8dfe3, FOLD = 0xa7b2ba, SKIN = 0x8e9c94, SKIN_D = 0x5c6a64, NAIL = 0x3a3440;
         B.fillStyle(0x020205, 0.75 * out); B.fillRect(0, CEIL, W, FLOOR - CEIL);
         B.fillStyle(0x6a7a88, out); B.fillRect(x - 70, y + 18, 140, 8); B.fillRect(x - 64, y + 26, 6, 40); B.fillRect(x + 58, y + 26, 6, 40); // the slab
-        B.fillStyle(0xdfe6ea, out);
-        B.fillRect(x - 64, y + 6, 128, 13);                       // the sheet, lying flat
-        if (up > 0) { // a body under a sheet, sitting bolt upright: head tilted, shoulders, the sheet draped to the slab
-          const top = y + 6 - 118 * up, hx = x - 36, sh = 0x9aa6b0;
-          B.fillStyle(0xdfe6ea, out);
-          B.fillTriangle(x - 78, y + 19, x - 4, y + 19, x - 40, top + 30);          // the drape, wide at the slab
-          B.fillRect(x - 64, top + 30, 48, y + 19 - top - 30);                      // the torso
-          B.fillRect(x - 70, top + 26, 60, 14);                                     // the shoulders
-          B.fillCircle(hx, top + 6, 20 * up);                                       // the head, tilted to one side
-          B.fillTriangle(hx - 20, top + 10, hx + 20, top + 6, hx - 6, top + 34);    // where the sheet hangs off the chin
-          B.lineStyle(2, sh, out);                                                  // the sheet's folds
-          B.lineBetween(x - 56, top + 40, x - 70, y + 18); B.lineBetween(x - 42, top + 42, x - 46, y + 18); B.lineBetween(x - 26, top + 40, x - 12, y + 18);
-          if (up >= 1) { B.fillStyle(0xff3a4a, 1); B.fillRect(hx - 11, top + 1, 6, 5); B.fillRect(hx + 4, top - 1, 6, 5); } // eyes, through the cloth
+        // the legs under the sheet: a knee, the feet tenting it, then two bare grey feet out the end
+        B.fillStyle(SHEET, out);
+        B.fillRect(x - 30, y + 9, 82, 10);
+        B.fillEllipse(x + 8, y + 9, 26, 8);                        // the knees
+        B.fillTriangle(x + 40, y + 19, x + 52, y + 19, x + 48, y - 2); // the feet, tenting it
+        B.fillStyle(FOLD, out); B.fillRect(x - 30, y + 16, 82, 3); B.lineStyle(1, FOLD, out); B.lineBetween(x + 20, y + 10, x + 44, y + 4);
+        B.fillStyle(SKIN_D, out); B.fillRect(x + 50, y - 2, 9, 20); B.fillRect(x + 51, y - 5, 3, 3); // the far foot, toes up
+        B.fillStyle(SKIN, out); B.fillRect(x + 55, y + 1, 10, 17); B.fillRect(x + 65, y + 6, 3, 12); // the near foot, a heel
+        B.fillStyle(SKIN_D, out); B.fillRect(x + 55, y + 1, 2, 17); B.fillRect(x + 56, y - 3, 3, 4); B.fillRect(x + 60, y - 1, 2, 2); B.fillRect(x + 63, y, 2, 2);
+        const sway = Math.sin(t * 5) * 2;                          // the toe tag, on its string
+        B.lineStyle(1, 0xb8a888, out); B.lineBetween(x + 57, y - 1, x + 66 + sway, y + 10);
+        B.fillStyle(0xd8c89a, out); B.fillRect(x + 64 + sway, y + 10, 9, 12); B.fillStyle(0x6a5a40, out); B.fillRect(x + 65 + sway, y + 14, 7, 1); B.fillRect(x + 65 + sway, y + 17, 5, 1);
+        if (up > 0) {
+          // sitting up, then slumped forward a little: the back curves, the head hangs off to one side
+          const top = y + 8 - 110 * up, hx = x - 22, hy = top + 12;
+          B.fillStyle(SHEET, out);
+          B.fillPoints([{ x: x - 66, y: y + 19 }, { x: x - 70, y: top + 54 }, { x: x - 62, y: top + 30 }, { x: x - 48, y: top + 22 },
+            { x: x - 28, y: top + 26 }, { x: x - 16, y: top + 44 }, { x: x - 14, y: y - 4 }, { x: x - 4, y: y + 19 }], true);
+          B.fillStyle(FOLD, out);                                  // the shadow side of the back, so it reads as cloth over a body
+          B.fillPoints([{ x: x - 66, y: y + 19 }, { x: x - 70, y: top + 54 }, { x: x - 62, y: top + 30 }, { x: x - 56, y: top + 34 }, { x: x - 58, y: y + 19 }], true);
+          B.fillStyle(SHEET, out); B.fillEllipse(hx, hy, 30, 34 * up); // the head, lolled forward and down
+          B.fillTriangle(hx - 15, hy + 4, hx + 12, hy + 8, hx - 18, top + 40); // the sheet hanging off the chin
+          B.fillStyle(FOLD, out); B.fillEllipse(hx - 7, hy + 2, 12, 26 * up); // the sheet sinks into the hollow of the face
+          B.lineStyle(2, FOLD, out);
+          B.lineBetween(x - 52, top + 34, x - 58, y + 18); B.lineBetween(x - 38, top + 34, x - 40, y + 18); B.lineBetween(x - 22, top + 46, x - 18, y + 18);
+          if (up >= 1) {
+            B.fillStyle(0x4a4450, out); B.fillEllipse(hx + 2, hy + 9, 8, 6);  // a mouth, open under the cloth
+            B.fillStyle(0xff3a4a, 1); B.fillRect(hx - 6, hy - 6, 5, 4); B.fillRect(hx + 6, hy - 4, 5, 4); // eyes, through the cloth
+            // the sheet slipped off one side: a thin grey arm hangs limp off the slab, long fingers, dark nails
+            const dang = Math.sin(t * 3) * 2;
+            B.lineStyle(10, SKIN, out); B.lineBetween(x - 18, top + 50, x - 10, y + 4);  // upper arm, out of the sheet
+            B.lineStyle(7, SKIN, out); B.lineBetween(x - 10, y + 4, x - 4 + dang, y + 30); // forearm, over the edge
+            B.fillStyle(SKIN, out); B.fillCircle(x - 10, y + 4, 6);                        // a bony elbow
+            B.lineStyle(3, SKIN_D, out); B.lineBetween(x - 22, top + 52, x - 15, y + 4); B.lineBetween(x - 13, y + 7, x - 8 + dang, y + 28);
+            B.fillStyle(SHEET, out); B.fillTriangle(x - 26, top + 40, x - 8, top + 46, x - 20, top + 62); // the sheet's edge where it slipped
+            B.fillStyle(SKIN, out); B.fillRect(x - 9 + dang, y + 28, 10, 8);  // the hand
+            for (const [fx, fl] of [[0, 12], [3, 15], [6, 13], [9, 9]]) { B.fillRect(x - 9 + dang + fx, y + 36, 2, fl); B.fillStyle(NAIL, out); B.fillRect(x - 9 + dang + fx, y + 35 + fl, 2, 2); B.fillStyle(SKIN, out); }
+          }
         } else {
-          B.fillCircle(x - 50, y + 6, 9);                          // the head, under the sheet
+          B.fillStyle(SHEET, out); B.fillRect(x - 64, y + 6, 40, 13); // the chest under the sheet
+          B.fillEllipse(x - 52, y + 6, 18, 14);                   // the head, under the sheet
+          B.fillStyle(FOLD, out); B.fillRect(x - 64, y + 16, 40, 3);
         }
         break;
       }
@@ -191,13 +220,13 @@ export const ScareFeatures = {
       }
       case 'graveyard': {
         // dirt shivers behind your heels; then a huge hand bursts up, grabs at your ankle, closes on air
-        const hx = PLAYER_X - 46; // right behind his heels, never over him
+        const hx = PLAYER_X - 52; // right behind his heels, never over him
         D.fillStyle(0x07060d, 0.35 * ease(t / 0.6) * out); D.fillRect(0, CEIL, W, FLOOR - CEIL);
         if (k < 0) { F.fillStyle(0x4a3a2a, 1); for (let i = 0; i < 5; i++) F.fillRect(hx - 12 + i * 6 + Math.sin(t * 40 + i) * 2, FLOOR - 3 - (i % 2) * 2, 4, 3); break; }
         const rise = ease(k / 0.1), sink = ease((k - 0.9) / 0.5);
         // pixel art, 4.5x: ~90 px, twice Milo. It rises out of the floor (the floor band covers what's below)
         this.scareHand.setTexture(k < 0.3 ? 'grave_hand_open' : 'grave_hand_shut')
-          .setPosition(hx + (k < 0.3 ? 0 : 3), FLOOR + 22 * 4.5 * (1 - rise + sink) - 8).setAlpha(out).setVisible(true);
+          .setPosition(hx, FLOOR + this.scareHand.height * 4.5 * (1 - rise + sink) - 8).setAlpha(out).setVisible(true);
         F.fillStyle(0x4a3a2a, out); F.fillRect(hx - 34, FLOOR - 5, 68, 5);          // the broken ground
         break;
       }

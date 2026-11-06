@@ -33,6 +33,7 @@ export const RUN = {
   CLEAN: 5,                  // px/s it falls back while you run clean
   CANDLE: 1.2, KILL: 8,
   LAND_GAP: 100, AIR_HIT: 30, // flight: it waits where you land; each air hit = 30 px closer (3 hits = caught)
+  LAND_MAX: 108, // candles in the air push it back, but never all the way: landing stays tense
   ORB_TIME: 8,               // Boo orb flight (s): rare, but long enough to be a real moment
   ORB_FIRST_M: 900, ORB_EVERY_M: [1800, 2600],
   CHASM_S: 6.5,              // fallback flight section width in seconds (a set piece sets its own)
@@ -444,7 +445,7 @@ export const RunnerFeatures = {
   // candles push it back a little (in the air: it'll be a little further back when you land)
   candlePush() {
     const k = RUN.CANDLE * this.perk.candle;
-    if (this.flying) this.landingGap = Math.min(RUN.START_GAP, this.landingGap + k);
+    if (this.flying) this.landingGap = Math.min(RUN.LAND_MAX, this.landingGap + k);
     else this.gap = Math.min(RUN.MAX_GAP + this.perk.startGap, this.gap + k);
   },
 

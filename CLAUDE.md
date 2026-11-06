@@ -59,6 +59,7 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 - v6: a gate is a passage (`renderGate`): the door art stands 150 px before the seam, the seam sits inside a black stretch, the next world fades in after it.
 - v6: one popup at a time (`popup(str, color, y, prio)`): a newer one replaces the old unless the old is more important and under 0.6 s old.
 - Phase 4: ONE message on screen at a time. The headline (one short line), the popup and Boo's bubble share a slot: a headline clears the others, a popup waits out a headline unless prio >= 2 (danger). Second lines and tips go to the small corner note (`note(str)`, HUD bottom-left). No floating +points in the runner.
+- Phase 4 round 6: the runner's top bar shows only distance, the meter (centered), score and pause. Candles, souls and B-O-O letters peek in on change (`peek()` in hud.js) and fade; the weapon timer is bottom-right. Don't add always-on HUD items.
 - Phase 4: scares and the RNG: never call `this.rand` from scares (it would change the run's layout).
 - v6: getting caught plays the grab scene (`stepGrab`/`renderGrab`); a pit death keeps the fall.
 
