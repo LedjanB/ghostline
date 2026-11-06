@@ -13,6 +13,11 @@
 // World 2, THE CORONER (Ansel's SHEET): toe tags (a hit files you: slower for 2 s), drawers out of the
 // walls (pushers, then platforms), and his lamp: a sweep of light you can't jump or roll through. Only the
 // Sheet gets you through it (a dodge under the Sheet = unseen for a moment). He writes on his clipboard: hit him then.
+//
+// Taken from the best 2D boss fights:
+//   Mega Man / Hollow Knight: the first time an attack comes, it comes slower, and one word says what to do.
+//   Hollow Knight / Cuphead: a "!" over the boss's head before every attack; a gold outline = you can hit now.
+//   Cuphead: lose and you see how close you were. Celeste / Cuphead: retry the arena right away.
 import { W, H, FLOOR, CEIL } from '../data.js';
 import { Audio } from '../audio.js';
 import { text } from '../ui.js';
@@ -201,6 +206,9 @@ export class BossScene extends Phaser.Scene {
     this.lastAttack = ''; this.checkHits = 0; this.passedThisRoll = false; this.sinceLight = 0;
     this.curtain = null; this.boards = []; this.tags = []; this.drawers = []; this.col = null; this.lostYou = false; this.toThrow = [];
     this.lightTaught = false; this.bossAlpha = 1;
+    this.data0 = data; this.tries = data.tries || 0;
+    this.taught = new Set(data.taught || []); // what the fight has already taught (kept across retries)
+    this.prompt = { text: '', t: 0 }; this.bangT = 0; this.slowTell = 1; this.choice = null;
     this.dark = 0; this.darkWant = 0; this.lampsOn = d.lamps.map(() => 1);
     this.trauma = 0; this.freeze = 0; this.redEdge = 0;
     this.stats = { hits: 0, taken: 0, dodges: 0, lights: 0, sheets: 0, time: 0 };
@@ -246,6 +254,10 @@ export class BossScene extends Phaser.Scene {
     this.bigText = text(this, W / 2, 130, '', 16, '#e6f0ff').setDepth(21).setStroke('#07060d', 6);
     this.subText = text(this, W / 2, 160, '', 10, '#a99fd0').setDepth(21).setStroke('#07060d', 4);
     this.powerLabel = text(this, POWER_BTN.x, POWER_BTN.y, 'LIGHT', 6, '#2a2410').setDepth(22).setVisible(false);
+    this.promptText = text(this, W / 2, 108, '', 12, '#ffd75e').setDepth(21).setStroke('#07060d', 5);
+    this.bangText = text(this, 0, 0, '!', 16, '#ff5a3a').setDepth(21).setStroke('#07060d', 5).setVisible(false);
+    this.retryText = text(this, W / 2 - 90, 250, 'TRY AGAIN', 10, '#07060d').setDepth(23).setVisible(false);
+    this.quitText = text(this, W / 2 + 90, 250, 'GIVE UP', 10, '#e6f0ff').setDepth(23).setVisible(false);
     this.pauseText = text(this, W / 2, H / 2, 'PAUSED', 16, '#e6f0ff').setDepth(30).setStroke('#07060d', 6).setVisible(false);
     if (this.kind === 'coroner') this.nine = text(this, WALL_R + 12, FLOOR - 90, '9', 8, '#2a2436').setDepth(4.7);
     this.touch = Device.get() === 'touch';
@@ -254,6 +266,7 @@ export class BossScene extends Phaser.Scene {
     this.input.on('pointerdown', (p) => {
       this.touch = true;
       if (this.paused) { this.togglePause(); return; }
+      if (this.choice) { if (Math.abs(p.y - 250) < 30) { if (Math.abs(p.x - (W / 2 - 90)) < 80) this.retry(); else if (Math.abs(p.x - (W / 2 + 90)) < 80) this.giveUp(); } return; }
       if (this.state !== 'fight') return;
       if (this.power && this.charge >= 1 && Math.hypot(p.x - POWER_BTN.x, p.y - POWER_BTN.y) < POWER_BTN.r + 12) { this.act.power = true; return; }
       if (p.x < W / 2) { if (!this.thumbs.move) this.thumbs.move = { id: p.id, x0: p.x, x: p.x, y0: p.y }; }
@@ -286,6 +299,15 @@ export class BossScene extends Phaser.Scene {
 
   talk(str, t = 1.6) { this.say = { text: str, t }; }
 
+  // the first time each attack comes it is slower, and one line says what to do
+  teach(id, line) {
+    this.bangT = 0.45; // "!" over the head before every attack
+    if (this.taught.has(id)) return 1;
+    this.taught.add(id);
+    this.prompt = { text: line, t: 2.2 };
+    return 1.7;
+  }
+
   togglePause() {
     this.paused = !this.paused;
     this.pauseText.setVisible(this.paused);
@@ -303,6 +325,10 @@ export class BossScene extends Phaser.Scene {
     const im = this.inputMap; im.update();
     if (im.pressed('pause') && (this.state === 'fight' || this.paused)) this.togglePause();
     if (this.paused) return;
+    if (this.choice) {
+      if (im.pressed('confirm') || im.pressed('float')) this.retry();
+      else if (im.pressed('back') || im.pressed('slide')) this.giveUp();
+    }
     const a = this.act;
     if (this.bot) this.bot(this, a); // debug: bots fill the same action map
     else {
@@ -324,6 +350,7 @@ export class BossScene extends Phaser.Scene {
   // ---------------- simulation ----------------
   step(dt) {
     this.say.t = Math.max(0, this.say.t - dt);
+    this.prompt.t = Math.max(0, this.prompt.t - dt); this.bangT = Math.max(0, this.bangT - dt);
     this.trauma = Math.max(0, this.trauma - dt * 2.2);
     this.redEdge = Math.max(0, this.redEdge - dt * 2.5);
     this.t += dt;
@@ -539,7 +566,7 @@ export class BossScene extends Phaser.Scene {
   }
 
   nextAttack(p2) {
-    if (p2 && this.darkWant === 0 && Math.random() < 0.45) { this.bstate = 'lights'; this.bt = 1.0; this.talk(this.def.lines.dark, 1.0); return; }
+    if (p2 && this.darkWant === 0 && Math.random() < 0.45) { this.bstate = 'lights'; this.bt = 1.0 * this.teach('lights', 'STAY IN YOUR LANTERN LIGHT'); this.talk(this.def.lines.dark, 1.0); return; }
     const a = this.queue.shift() || this.pick(['roll', 'curtain', 'boards'], true);
     this.lastAttack = a; this.cleanAttack = true;
     const beds = this.def.beds;
@@ -549,15 +576,16 @@ export class BossScene extends Phaser.Scene {
       this.bTarget = beyond.length ? (side > 0 ? beyond[0] : beyond[beyond.length - 1]) : (side > 0 ? beds[2] : beds[0]);
       if (Math.abs(this.bTarget - this.bx) < 20) this.bTarget = this.bx > W / 2 ? beds[0] : beds[2];
       this.bDir = Math.sign(this.bTarget - this.bx) || 1;
-      this.bstate = 'tellRoll'; this.bt = p2 ? 0.45 : 0.65; this.passedThisRoll = false;
+      this.bstate = 'tellRoll'; this.bt = (p2 ? 0.45 : 0.65) * this.teach('roll', 'SHE CHARGES. DODGE THROUGH HER'); this.passedThisRoll = false;
       Audio.sfx('creak');
-    } else if (a === 'curtain') { this.bstate = 'tellCurtain'; this.bt = p2 ? 0.55 : 0.75; Audio.sfx('warn'); }
-    else { this.bstate = 'tellBoards'; this.bt = p2 ? 0.4 : 0.55; }
+    } else if (a === 'curtain') { this.bstate = 'tellCurtain'; this.bt = (p2 ? 0.55 : 0.75) * this.teach('curtain', 'A CURTAIN ON THE FLOOR. JUMP IT'); Audio.sfx('warn'); }
+    else { this.bstate = 'tellBoards'; this.bt = (p2 ? 0.4 : 0.55) * this.teach('boards', 'CLIPBOARDS. MOVE AWAY'); }
   }
 
   check(p2) {
     if (this.power && this.cleanAttack && this.lastAttack !== 'roll') this.charge = Math.min(1, this.charge + this.power.clean);
     this.bstate = 'check'; this.bt = p2 ? 1.15 : 1.6; this.checkHits = 0;
+    if (!this.taught.has('open')) { this.taught.add('open'); this.prompt = { text: 'GOLD = OPEN. GET CLOSE TO HIT', t: 2.6 }; this.bt += 1.0; }
     if (this.kind !== 'matron') return;
     let nb = this.def.beds[0];
     for (const b of this.def.beds) if (Math.abs(b - this.bx) < Math.abs(nb - this.bx)) nb = b;
@@ -619,17 +647,16 @@ export class BossScene extends Phaser.Scene {
     if (a === 'light' && !this.sheet) a = 'tags';
     this.sinceLight = a === 'light' ? 0 : this.sinceLight + 1;
     this.lastAttack = a; this.cleanAttack = true;
-    if (a === 'tags') { this.bstate = 'tellTags'; this.bt = p2 ? 0.4 : 0.6; Audio.sfx('creak'); }
+    if (a === 'tags') { this.bstate = 'tellTags'; this.bt = (p2 ? 0.4 : 0.6) * this.teach('tags', 'TOE TAGS. MOVE AWAY'); Audio.sfx('creak'); }
     else if (a === 'drawers') {
-      this.bstate = 'tellDrawers'; this.bt = p2 ? 0.5 : 0.7;
+      this.bstate = 'tellDrawers'; this.bt = (p2 ? 0.5 : 0.7) * this.teach('drawers', 'A DRAWER. JUMP ON IT');
       const near = this.x < W / 2 ? -1 : 1; // from the wall Milo is nearer to
       this.drawers.push(this.makeDrawer(near, 'low', p2 ? 250 : 210));
       if (p2) this.drawers.push(this.makeDrawer(-near, 'mid', 300, 0.3));
       Audio.sfx('creak');
     } else {
-      this.bstate = 'tellLight'; this.bt = p2 ? 0.65 : 0.85;
+      this.bstate = 'tellLight'; this.bt = (p2 ? 0.65 : 0.85) * this.teach('light', 'DODGE INTO THE LIGHT. THE SHEET HIDES YOU');
       this.talk(this.def.lines.light, 1.0); Audio.sfx('warn');
-      if (!this.lightTaught) { this.lightTaught = true; this.note('DODGE INTO THE LIGHT. THE SHEET HIDES YOU.', 3.5); }
     }
   }
 
@@ -739,8 +766,29 @@ export class BossScene extends Phaser.Scene {
       if (this.endT > 4.2 && !this.done) this.finish(true);
     } else {
       if (this.endT > 0.3 && !this.bigText.text) this.bigText.setText(this.def.lines.lose || 'LIGHTS OUT.');
-      if (this.endT > 2.0 && !this.done) this.finish(false);
+      // Cuphead: how close you were. Then retry right here, or give up (the run ends)
+      if (this.endT > 1.0 && !this.subText.text) this.subText.setText(`${Math.round(100 * (1 - Math.max(0, this.hp) / this.def.hp))}% OF THE WAY THERE`);
+      if (this.endT > 1.3 && !this.choice && !this.done) {
+        this.choice = true; this.inputMap.update();
+        const d = this.touch ? null : Device.get() === 'gamepad' ? ['A', 'B'] : ['W', 'S'];
+        this.retryText.setText(d ? `${d[0]}  TRY AGAIN` : 'TRY AGAIN').setVisible(true);
+        this.quitText.setText(d ? `${d[1]}  GIVE UP` : 'GIVE UP').setVisible(true);
+      }
     }
+  }
+
+  retry() {
+    if (!this.choice || this.done) return;
+    this.choice = null; this.done = true;
+    Audio.sfx('click');
+    this.cameras.main.fadeOut(250, 7, 6, 13);
+    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.restart({ ...this.data0, tries: this.tries + 1, taught: [...this.taught] }));
+  }
+  giveUp() {
+    if (!this.choice || this.done) return;
+    this.choice = null;
+    this.retryText.setVisible(false); this.quitText.setVisible(false);
+    this.finish(false);
   }
 
   finish(won) {
@@ -869,7 +917,7 @@ export class BossScene extends Phaser.Scene {
     const bx = this.bx + (this.bstate === 'walk' ? 0 : 0), bob = this.bstate === 'walk' ? Math.abs(Math.sin(this.t * 9)) * 2 : 0;
     const mirror = { x: bx + this.bDir * 7, y: FLOOR - d.h - 3 - bob };
     if (this.bstate === 'tellLight') {
-      const k = 1 - Math.max(0, this.bt) / 0.85;
+      const k = Math.max(0, Math.min(1, 1 - Math.max(0, this.bt) / 0.85));
       lg.fillStyle(0xfff6d0, 0.5 + 0.5 * k); lg.fillCircle(mirror.x, mirror.y, 4 + 3 * k);
       const tx = this.bx + (Math.sign(this.x - this.bx) || 1) * 24;
       lg.fillStyle(0xdfefff, 0.18 + 0.3 * k); lg.fillRect(tx - 2, LIGHT_TOP, 4, FLOOR - LIGHT_TOP);
@@ -1008,5 +1056,15 @@ export class BossScene extends Phaser.Scene {
       u.fillStyle(0xffffff, 0.2); u.fillCircle(tm.x0 + dx, tm.y0, 14);
     }
     this.lineText.setText(this.say.t > 0 ? this.say.text : '').setAlpha(Math.min(1, this.say.t * 3));
+    this.promptText.setText(this.prompt.t > 0 && fighting ? this.prompt.text : '').setAlpha(Math.min(1, this.prompt.t * 3)).setScale(1 + 0.04 * Math.sin(this.t * 8));
+    // the "!" before every attack, over the boss's head
+    this.bangText.setVisible(this.bangT > 0 && fighting).setPosition(this.bx, FLOOR - this.def.h - 22 - (0.45 - this.bangT) * 16);
+    if (this.choice) {
+      const k = 1 - Math.max(0, this.hp) / this.def.hp;
+      u.fillStyle(0x140f24, 0.95); u.fillRect(W / 2 - 121, 189, 242, 12);
+      u.fillStyle(0xd9d0a8, 1); u.fillRect(W / 2 - 120, 190, 240 * k, 10);
+      u.fillStyle(0xffd75e, 1); u.fillRect(W / 2 - 150, 234, 120, 32);
+      u.lineStyle(2, 0xe6f0ff, 0.8); u.strokeRect(W / 2 + 30, 234, 120, 32);
+    }
   }
 }

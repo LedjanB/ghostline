@@ -625,3 +625,33 @@ test('v8 Coroner: his light goes through a plain dodge, not through the Sheet; t
   expect(r.grounded).toBe(true);
   expect(errors).toEqual([]);
 });
+
+test('v8 arenas: the first attack teaches (slower, one line), a "!" before each attack, lose = how close + try again', async ({ page }) => {
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 8, storySeen: true } });
+  await page.evaluate(() => new Promise((res) => {
+    const g = window.__game; g.scene.getScenes(true).forEach((sc) => sc.scene.stop()); window.__boss = null;
+    g.scene.start('boss', { boss: 'matron', powers: ['penlight'], char: 'survivor', onEnd: () => {} });
+    const wait = () => (window.__boss ? res() : setTimeout(wait, 50)); wait();
+  }));
+  const r = await page.evaluate(() => {
+    const B = window.__boss; window.__game.loop.sleep();
+    const N = (n) => { for (let i = 0; i < n; i++) B.step(1 / 120); };
+    N(220);
+    B.queue = ['curtain']; B.bstate = 'idle'; B.bt = 0; N(1);
+    const first = { bt: +B.bt.toFixed(2), prompt: B.prompt.text, bang: B.bangT > 0 };
+    B.curtain = null; B.bstate = 'idle'; B.bt = 0; B.queue = ['curtain']; N(1);
+    const again = { bt: +B.bt.toFixed(2), prompt: B.prompt.t > 1.5 ? B.prompt.text : '' };
+    B.hp = 7; B.inv = 0; B.hearts = 1; B.booUsed = true; B.hurt(B.x + 10);
+    N(200);
+    return { first, again, choice: B.choice, sub: B.subText.text, taught: [...B.taught] };
+  });
+  expect(r.first.prompt).toBe('A CURTAIN ON THE FLOOR. JUMP IT');
+  expect(r.first.bang).toBe(true);
+  expect(r.first.bt).toBeGreaterThan(r.again.bt);
+  expect(r.choice).toBe(true);
+  expect(r.sub).toBe('67% OF THE WAY THERE');
+  await page.evaluate(() => { window.__game.loop.wake(); window.__boss.retry(); });
+  await page.waitForFunction(() => window.__boss && window.__boss.state === 'intro' && window.__boss.tries === 1);
+  expect(await page.evaluate(() => ({ hearts: window.__boss.hearts, hp: window.__boss.hp, taught: window.__boss.taught.has('curtain') }))).toEqual({ hearts: 5, hp: 21, taught: true });
+  expect(errors).toEqual([]);
+});
