@@ -103,8 +103,9 @@ export class HudScene extends Phaser.Scene {
       if (!p) { this.powerIcon.setVisible(false); return; }
       this.powerIcon.setTexture(p.icon || `orb_${p.kind}`).setVisible(true);
       const pa = this.powerAt || { x: 526, y: 30 };
-      this.powerBar.fillStyle(0x07060d, 1); this.powerBar.fillRect(pa.x, pa.y, 28, 4);
-      this.powerBar.fillStyle(0xffb0d0, 1); this.powerBar.fillRect(pa.x, pa.y, Math.round(28 * p.left), 4);
+      const bw = pa.w || 28, bh = pa.h || 4;
+      this.powerBar.fillStyle(0x07060d, 1); this.powerBar.fillRect(pa.x - 1, pa.y - 1, bw + 2, bh + 2);
+      this.powerBar.fillStyle(p.left < 0.25 ? 0xff6a5a : 0xffb0d0, 1); this.powerBar.fillRect(pa.x, pa.y, Math.round(bw * p.left), bh);
     });
     on('toast', (msg) => { this.toasts.push({ kind: 'mission', msg }); if (this.toasts.length === 1) this.showToast(); });
     on('note', (msg) => { if (this.toasts.some((t) => t.msg === msg) || this.toasts.length > 1) return; this.toasts.push({ kind: 'tip', msg }); if (this.toasts.length === 1) this.showToast(); });
@@ -131,6 +132,9 @@ export class HudScene extends Phaser.Scene {
   }
 
   layoutRunner(play, showMeta, showScore, on) {
+    // a soft dark band behind the top bar, so bright ceilings (the ward's lights) don't fight it
+    const band = this.add.graphics().setDepth(-1);
+    for (let i = 0; i < 12; i++) { band.fillStyle(0x07060d, 0.55 * (1 - i / 12)); band.fillRect(0, i * 3, W, 3); }
     // the always-on bar: distance left, meter center, score right of it, pause
     this.scoreText.setOrigin(1, 0.5).setPosition(W - 48, 18);
     this.comboText.setOrigin(1, 0.5).setPosition(W - 48, 38).setFontSize(8);
@@ -172,8 +176,8 @@ export class HudScene extends Phaser.Scene {
       peek('letters', n >= 3 ? 1600 : 3000);
     });
     // the weapon / power-up timer: bottom-right, over the floor band
-    this.powerIcon.setPosition(W - 24, H - 20);
-    this.powerAt = { x: W - 38, y: H - 8 };
+    this.powerIcon.setPosition(W - 30, H - 20).setScale(1.8);
+    this.powerAt = { x: W - 54, y: H - 7, w: 48, h: 5 };
   }
 
   // one mission toast at a time, like Jetpack Joyride's mission popups

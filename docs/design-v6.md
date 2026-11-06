@@ -153,6 +153,9 @@ AI testers after phase 3: 7, 6.5, 7 out of 10, all would run again. Phase 4 fixe
   slab. Candles grabbed in the air can't push the landing gap all the way back (`LAND_MAX` 108), so landing stays tense.
   Testers 7, 7, 7 on the first pass: two headlines could stack (the old one was left to fade on its own; now `nextHeadline`
   clears it first). The hand got a leaning wrist and broken, uneven fingers; the morgue sheet became one slack piece with a hem.
+  Second pass 7.5, 7.5, 8 (all would run again): a soft dark band behind the top bar, a bigger weapon timer (red when low).
+  Still open: the same skull face in the ward scare, the Other Side scare and the ending; Milo reads as a white smear under Boo
+  in flight; the sewer and woods scares are faint on a phone; a high jump in the morgue trick reaches the HUD band.
 
 ## Open questions
 - The creature's final name and look
