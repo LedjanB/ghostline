@@ -136,6 +136,7 @@ export const Features = {
   },
 
   onZoneEnter(zone) {
+    if (this.runner) this.booUntil = Math.max(this.booUntil || 0, this.clock + 2.8); // Boo walks you through the gate
     this.time.delayedCall(900, () => this.quip(`zone_${zone.id}`, true));
     if (this.runner) this.nextGiant = 2.5; // v6: every new world opens with its background giant
     Save.update((s) => { s.stats.maxZone = Math.max(s.stats.maxZone, this.zoneIndex); });
@@ -224,6 +225,9 @@ export const Features = {
     if (this.runner && kind !== 'death' && (this.clock < (this.quietUntil || 0) || !this.started)) return;
     if (this.runner && kind !== 'death' && this.popups && this.popups.some((o) => o.active && this.clock - o.bornAt < 1.2)) return; // a popup is up: don't stack a bubble on it
     if (this.runner && kind === 'near') return;
+    // v8: Boo talks less, and it means more: when he arrives, when he leaves, when something matters.
+    // While he isn't there, only a few lines come (as text by the lantern)
+    if (this.runner && (this.booVisK ?? 1) < 0.5 && !['whisper', 'death', 'landed', 'shield'].includes(kind)) return;
     if (!force && this.quipCooldown > 0) return;
     const hero = this.char.name.split(' ').pop();
     const LINES = {
@@ -240,15 +244,18 @@ export const Features = {
       zone_sewer: ['EW. EW. EW.'], zone_catacombs: ['NICE SKULLS.'], zone_carnival: ['I HATE CLOWNS.'], zone_otherside: ['WHERE ARE WE?!'],
     };
     if (this.runner) Object.assign(LINES, { // v6: running from THE STRETCH
-      start: ['RUN, ' + hero + '!', "DON'T LOOK BACK!", 'IT SAW US. RUN!'],
-      grab: ['I GOT YOU!', 'UP WE GO!', 'HOLD ON!'],
-      landed: ['RUN! RUN!', "IT'S STILL COMING!"],
-      dark: ["DON'T LOOK BACK!", 'FASTER, ' + hero + '!'], near: ['WHOA!', 'TOO CLOSE!', 'NICE ONE!'],
-      shield: ['GOT YOU!', 'NOT TODAY, STRETCH!'], death: ['NOOO!', 'IT GOT YOU!', 'I LOOKED AWAY!'],
-      whisper: ["DON'T. TURN. AROUND."], scared: ['DID YOU SEE THAT?!', 'NOPE. NOPE. NOPE.', "I SAW NOTHING. RUN."], // phase 4 scares
+      start: ['RUN, MILO.', "DON'T LOOK BACK."],
+      grab: ['HOLD ON. I GOT YOU.', 'OKAY. OKAY. UP.'],
+      landed: ["DON'T STOP.", 'OKAY. WE GO RIGHT.'],
+      dark: ["DON'T LOOK BACK."], near: [],
+      shield: ['GOT YOU.', 'NOT YET, KID.'], death: ['MILO.'],
+      whisper: ["DON'T. TURN. AROUND."], scared: ["DON'T LOOK AT IT. I DON'T."], // phase 4 scares
+      // v8: Boo's voice (the doc): tired, kind, a night shift coworker
+      zone_morgue: ['THE HUM STOPPED.'], zone_woods: ["MY KNEES DON'T HURT. THAT'S NEW."], zone_graveyard: ['I KNOW SOME OF THESE.'],
+      zone_sewer: ['HEAR THAT? ... NEVER MIND.'], zone_catacombs: ["DON'T READ THE NAMES."], zone_carnival: ['I NEVER LIKED THE FAIR.'], zone_otherside: ['OKAY. OKAY. WE GO DOWN.'],
     });
     const opts = LINES[kind];
-    if (!opts) return;
+    if (!opts || !opts.length) return;
     this.quipCooldown = 4;
     const str = opts[Math.floor(Math.random() * opts.length)];
     if (this.bubble) this.bubble.forEach((o) => o.destroy());
@@ -262,7 +269,10 @@ export const Features = {
     if (!this.bubble) return;
     if (this.runner && this.headlineUp()) { this.bubble.forEach((o) => o.destroy()); this.bubble = null; return; } // one message at a time
     const half = this.bubble[0].width / 2 + 8;
-    const x = Math.min(W - half, Math.max(half, this.ghost.x + 40)), y = Math.max(this.runner ? 82 : 60, this.ghost.y - 34); // v6: never over the score row
+    // v8: with Boo away the line comes from the lantern in Milo's hand
+    const away = this.runner && (this.booVisK ?? 1) < 0.5;
+    const ax = away ? PLAYER_X + 30 : this.ghost.x + 40, ay = away ? this.py - 70 : this.ghost.y - 34;
+    const x = Math.min(W - half, Math.max(half, ax)), y = Math.max(this.runner ? 82 : 60, ay); // v6: never over the score row
     this.bubble[0].setPosition(x, y); this.bubble[1].setPosition(x, y + 1); this.bubble[2].setPosition(x - 26, y + 16);
     if (this.clock > this.bubbleUntil) { this.bubble.forEach((o) => o.destroy()); this.bubble = null; }
   },

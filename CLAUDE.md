@@ -33,9 +33,10 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 - `src/scares.js` (phase 4) one scare per world (`SCARES`): hush, sting, release; waits for a clear screen (`scareHold` stops the spawner), never hurts you
 - `scripts/bot.mjs` bot players (casual, regular, expert): `node scripts/bot.mjs 6 all` for full runs, `--pieces` for each world's flight
 - `src/runner-art.js` THE STRETCH (3 stages by distance: `_m`, `_n` frames via `hungry()`; near stays upright), its big ending face `stretch_face`, ground and world traps, weapons, HUD face icon (pixel art)
-- `scripts/phase3-shots.mjs`, `scripts/phase4-shots.mjs` screenshots for the AI testers
+- `scripts/phase3-shots.mjs`, `scripts/phase4-shots.mjs`, `scripts/v8-shots.mjs` screenshots (v8: the shadow, the stumble arm, shadow tricks, Ansel, the Coroner)
+- `node scripts/bot.mjs 8 all --arena` fights every boss arena with the bot profiles (wins, time, hearts left, what hit them)
 - `src/story.js` (v8) The Story of Vigil in the run: `ALLIES` (met once, each gives a power; `save.story.met`) and `STORY_BOSS` (an arena at the end of a world, fought until beaten once; `save.story.beaten`). `storyHold` keeps traps, tricks and scares off while a story beat has the screen
-- `src/scenes/boss.js` (v8) the boss arena scene (`BOSSES`, `POWERS`): play pauses, HUD sleeps, the arena hands back `{ won, ... }` via `onEnd`. World 1: THE NIGHT MATRON with Ivy's PENLIGHT. `window.__boss` + `bot` for tests. Story, names and voice: the Claude Doc "Ghostline: The Story of Vigil"
+- `src/scenes/boss.js` (v8) the boss arena scene (`BOSSES`, `POWERS`): play pauses, HUD sleeps, the arena hands back `{ won, ... }` via `onEnd`. World 1: THE NIGHT MATRON with Ivy's PENLIGHT. World 2: THE CORONER (toe tags file you = slow 2 s, drawers out of the walls = pushers then platforms, his lamp = a sweep only Ansel's SHEET gets you through). `window.__boss` + `bot` for tests. Story, names and voice: the Claude Doc "Ghostline: The Story of Vigil"
 
 ## Rules
 - Run state is reset in `init()`, never the constructor.
@@ -67,6 +68,9 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 - v8: save v8 adds `story` {met, beaten}. Bots' saves mark the bosses beaten so full runs aren't stopped by an arena.
 - v8: boss arenas use the same 4 actions on every device: move, jump (`float`), dodge (`slide`), light (`light`: E/J, pad X/Y). Attacks are automatic. Touch in the arena: left half hold-and-slide to move, right half tap = jump, swipe = dodge, the LIGHT button only when charged (`createInput(scene, { pointers: false })`). A new power upgrades one of the 4 actions, never adds a button.
 - v8: a boss is open (takes hits) only while it checks/stuns; after 3 hits in one window it shoves Milo off. Boo saves Milo once per fight, only at his last heart.
+- v8: Milo keeps every power: the penlight is the LIGHT button in every later arena; THE SHEET upgrades the dodge (unseen 0.6 s, ready every 1.5 s: attacks pass through, the boss aims where it last saw you). A light attack (`hurt(x, true)`) ignores a plain dodge. Each boss is built to need its world's new power.
+- v8: THE STRETCH is heard, not seen. While running only its shadow shows (`stretchShadow`, depth 4.55, feet off the left edge, head where the gap says), plus steps, keys (`keys`), breath and at the near stage a hum (`hum`). Its body shows only when you fail: the arm on a stumble (`renderLungeArm`), all of it when caught (the grab comes in from the left edge). Tricks are a shadow (`shadeStretch`) and a sound tell; a trick that hits you shows the real thing. The `stretch` sprite still runs the stage anims (hidden).
+- v8: Boo only comes when he's needed (`booNeeded()` in play.js: the opening, flights, saves, ally scenes, gates, the ending, `booUntil`). The rest of the time Milo carries Boo's lantern (`renderLantern`, lit when Boo is near) and only a few lines come, as text by the lantern.
 
 ## Test
 Serve the folder (`python -m http.server 8000`) and open http://localhost:8000.

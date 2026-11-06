@@ -375,6 +375,22 @@ export const Audio = {
       case 'breath': { const v = opts.v ?? 0.6; noise(t, 0.55, 0.035 * v, sfxBus, 700, 'bandpass'); noise(t + 0.6, 0.45, 0.025 * v, sfxBus, 500, 'bandpass'); break; }
       case 'hiss': noise(t, 0.5, 0.05, sfxBus, 2600, 'bandpass'); tone(t, 90, 0.4, 'sawtooth', 0.03, sfxBus, 60); break; // phase 4: it's close now
       case 'click2': tone(t, 1300, 0.015, 'square', 0.03, sfxBus); tone(t + 0.07, 1100, 0.015, 'square', 0.03, sfxBus); break; // its joints, nearer
+      case 'keys': { // v8: its joints click like a key ring (Boo's keys make the same sound)
+        const v = opts.v ?? 0.6;
+        for (let i = 0; i < 4; i++) tone(t + i * 0.035 + rand(0, 0.015), rand(2400, 3400), 0.02, 'square', 0.018 * v, sfxBus, null, dt);
+        noise(t, 0.12, 0.012 * v, sfxBus, 6000, 'highpass');
+        break;
+      }
+      case 'hum': { // v8: at the near stage it hums. Boo's tune, a little off
+        const v = opts.v ?? 0.6;
+        [[67, 0], [69, 0.32], [71, 0.64], [67, 0.96], [64, 1.4]].forEach(([n, at], i) => tone(t + at, midi(n) * (0.985 - i * 0.004), 0.36, 'sine', 0.03 * v, sfxBus, midi(n) * 0.97));
+        break;
+      }
+      case 'sheet': noise(t, 0.3, 0.05, sfxBus, 1400, 'bandpass'); tone(t, 520, 0.25, 'sine', 0.03, sfxBus, 260); break; // a sheet pulled over
+      case 'tag': tone(t, 900, 0.05, 'square', 0.04, sfxBus, 600); noise(t, 0.08, 0.04, sfxBus, 2500, 'highpass'); break; // filed
+      case 'drawer': noise(t, 0.45, 0.07, sfxBus, 900, 'bandpass'); tone(t, 75, 0.45, 'sawtooth', 0.04, sfxBus, 55); break; // steel on rollers
+      case 'lamp': tone(t, 1800, 0.03, 'square', 0.04, sfxBus); tone(t + 0.02, 120, 0.8, 'sine', 0.05, sfxBus, 118); break; // a lamp clicks on and hums
+      case 'pen': noise(t, 0.06, 0.02, sfxBus, 3500, 'bandpass'); break; // scratch
       case 'sting': { // phase 4 scares: a dissonant stab after a hush
         [0, 1, 6, 11].forEach((st) => tone(t, midi(57 + st), 0.9, 'sawtooth', 0.035, sfxBus, midi(57 + st) * 0.94));
         noise(t, 0.35, 0.09, sfxBus, 1800, 'bandpass'); tone(t, 70, 0.6, 'square', 0.06, sfxBus, 40);

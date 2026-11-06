@@ -157,6 +157,19 @@ AI testers after phase 3: 7, 6.5, 7 out of 10, all would run again. Phase 4 fixe
   Still open: the same skull face in the ward scare, the Other Side scare and the ending; Milo reads as a white smear under Boo
   in flight; the sewer and woods scares are faint on a phone; a high jump in the morgue trick reaches the HUD band.
 
+## v8 story, world 2 (Nov 6)
+- **Ansel on slab 9** (150 m into the Cold Room): he sits up under his sheet as you come, points the way, lies back down once you're past.
+  Lines: SLAB 9. / HE SITS UP. HE POINTS. / HE LIES BACK DOWN. He gives THE SHEET (the dodge: unseen for a moment).
+- **THE CORONER** (Doctor Lisle), at the end of the Cold Room: throws toe tags (a hit files you: slower for 2 s), pulls drawers out of
+  the walls (they shove you while they slide out, then you can stand on them), and sweeps his lamp across the room: a wall of light you
+  can't jump or roll through. Dodge into it under the Sheet and he loses you (WHERE DID YOU GO?, a longer window). He stops to write on
+  his clipboard: hit him then. Beaten: HE WRITES ONE MORE NAME. HIS OWN. Arena bots: casual 6-8 of 8, regular and expert 8 of 8, about 35 s.
+- **THE STRETCH is heard, not seen.** Its shadow stretches in from the left along the wall, longer the closer it is; its steps, the click of
+  keys in its joints, its breath, and right behind you a hum (Boo's tune, a little off). A stumble: its arm lunges in from the left edge,
+  grabs at Milo and pulls back. Caught: the grab scene, the first time you see all of it. Tricks are shadow and sound tells.
+- **Boo only comes when he's needed**: the opening, flights, saves, ally scenes, gates, the ending. Milo carries his lantern, which lights
+  when Boo is near. Boo's lines are rarer and in the doc's voice.
+
 ## Open questions
 - The creature's final name and look
 - Does the LIGHT meter go away completely, or does the dark come back as part of the creature?

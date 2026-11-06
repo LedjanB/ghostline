@@ -3,6 +3,7 @@
 //   reaction jitter (s), lapse (chance to miss a threat), and how it flies.
 // It reads the world the way a player would: what's on screen now, and where it will be soon.
 // Usage: node scripts/bot.mjs [runs=6] [profile=all] [--json]
+//        node scripts/bot.mjs [fights=6] [profile=all] --arena   (each boss arena: wins, time, hearts left)
 //   CHROME_PATH=/path/to/chrome to use a system Chrome. Serves the folder on :8123 by itself.
 import { chromium } from '@playwright/test';
 import http from 'node:http';
@@ -21,6 +22,81 @@ export const PROFILES = {
   regular: { jitter: 0.045, lapse: 0.035, fly: 0.8, airLag: 0.14, label: 'regular (a few hours in)' },
   expert: { jitter: 0.02, lapse: 0.01, fly: 0.95, airLag: 0.09, label: 'expert (many hours in)' },
 };
+
+// ---------------- the arena brain (runs inside the page): the same 4 actions a player has ----------------
+function arenaFight(B, opts) {
+  const P = opts.profile;
+  let a32 = opts.seed >>> 0;
+  const rnd = () => { a32 = (a32 + 0x6d2b79f5) >>> 0; let t = a32; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const FLOOR = 324, WALL_L = 24, WALL_R = 616;
+  const seen = new WeakMap();
+  // a threat is noticed after a reaction time, and now and then not at all
+  const notice = (o) => { if (!seen.has(o)) seen.set(o, rnd() < P.lapse ? Infinity : B.t + P.jitter * 2.5 * (0.5 + rnd())); return B.t >= seen.get(o); };
+  const landX = (g) => { // where a thrown thing comes down, and when
+    let x = g.x, y = g.y, vy = g.vy, t = 0;
+    while (y < FLOOR - 18 && t < 2) { vy += 800 / 60; x += g.vx / 60; y += vy / 60; t += 1 / 60; }
+    return { x, t };
+  };
+  B.bot = (b, a) => {
+    a.left = a.right = false; a.jumpHeld = false;
+    if (b.state !== 'fight') return;
+    const mx = b.x;
+    let goal = null, threat = false;
+    const go = (x) => { goal = x; };
+    const dodge = (dir) => { if (b.dodgeCd <= 0 && b.dodgeT <= 0) { a.dodge = true; a.dodgeDir = dir; } };
+    const jump = () => { if (b.grounded) { a.jump = true; } a.jumpHeld = true; };
+    if (b.kind === 'coroner') {
+      if (b.col && notice(b.col)) {
+        const dx = b.col.x - mx, coming = Math.sign(dx) === -b.col.dir;
+        if (coming && Math.abs(dx) < b.col.w / 2 + 40) { threat = true; if (b.sheetCd <= 0) dodge(Math.sign(dx)); }
+        else if (coming) { threat = true; go(mx); }
+      }
+      for (const g of b.tags) {
+        if (g.stuck || !notice(g)) continue;
+        const l = landX(g);
+        if (Math.abs(l.x - mx) < 26 && l.t < 0.5) { threat = true; go(l.x > mx ? mx - 80 : mx + 80); if (l.t < 0.16) dodge(l.x > mx ? -1 : 1); }
+      }
+      for (const d of b.drawers) {
+        if (d.state !== 'out' && !(d.state === 'tell') || d.delay > 0 && d.state !== 'tell') continue;
+        if (!notice(d)) continue;
+        const reach = d.side < 0 ? WALL_L + d.max : WALL_R - d.max, inReach = d.side < 0 ? mx < reach + 16 : mx > reach - 16;
+        if (!inReach) continue;
+        const front = d.side < 0 ? WALL_L + d.len : WALL_R - d.len, dist = Math.abs(front - mx);
+        threat = true;
+        if (d.state === 'out' && dist < 46) { if (d.row === 'low') jump(); else dodge(d.side < 0 ? -1 : 1); }
+      }
+    } else {
+      if ((b.bstate === 'tellRoll' || b.bstate === 'roll') && notice(b.queue)) {
+        const toward = Math.sign(mx - b.bx) === b.bDir;
+        if (toward && Math.abs(b.bx - mx) < (b.bstate === 'roll' ? 80 : 30)) { threat = true; dodge(-b.bDir); }
+      }
+      if (b.curtain && notice(b.curtain)) {
+        const c = b.curtain, dist = (mx - c.x) * c.dir;
+        if (dist > 0 && dist < 70) { threat = true; jump(); }
+      }
+      for (const g of b.boards) {
+        if (!notice(g)) continue;
+        const l = landX(g);
+        if (Math.abs(l.x - mx) < 26 && l.t < 0.5) { threat = true; go(l.x > mx ? mx - 80 : mx + 80); if (l.t < 0.16) dodge(l.x > mx ? -1 : 1); }
+      }
+    }
+    if (goal === null) {
+      if (b.isOpen()) go(b.bx - Math.sign(b.bx - mx || 1) * 30);
+      else if (!threat) go(b.bx + (mx < b.bx ? -150 : 150));
+    }
+    if (goal !== null) { const g = Math.max(WALL_L + 20, Math.min(WALL_R - 20, goal)); if (g > mx + 8) a.right = true; else if (g < mx - 8) a.left = true; }
+    if (b.power && b.charge >= 1 && !b.isOpen() && /^tell/.test(b.bstate)) a.power = true;
+  };
+  const hitBy = {};
+  const hurt0 = B.hurt.bind(B);
+  B.hurt = (x, light) => { const h = B.hearts, r = hurt0(x, light); if (B.hearts < h || (r && B.booT > 0)) { const k = light ? 'light' : B.bstate; hitBy[k] = (hitBy[k] || 0) + 1; } return r; };
+  let n = 0;
+  while (B.state !== 'won' && B.state !== 'lost' && n++ < 120 * 300) {
+    B.bot(B, B.act); B.step(1 / 120);
+    const x = B.act; x.jump = false; x.dodge = false; x.dodgeDir = 0; x.power = false; x.cancelJump = false;
+  }
+  return { won: B.state === 'won', secs: Math.round(B.stats.time), hearts: B.hearts, taken: B.stats.taken, sheets: B.stats.sheets, lights: B.stats.lights, boo: B.booUsed, hp: B.hp, hitBy };
+}
 
 // ---------------- the brain (runs inside the page) ----------------
 function brain(s, opts) {
@@ -264,13 +340,38 @@ async function main() {
     await page.waitForFunction(() => window.__game.scene.getScene('play')?.runner && window.__game.scene.isActive('play'));
     await page.evaluate(() => window.__game.loop.sleep());
   };
+  if (process.argv.includes('--arena')) { // every boss arena, N fights per profile
+    const FIGHTS = [['matron', ['penlight']], ['coroner', ['penlight', 'sheet']]];
+    for (const name of (ONLY === 'all' ? Object.keys(PROFILES) : [ONLY])) {
+      for (const [boss, powers] of FIGHTS) {
+        const rs = [];
+        for (let i = 0; i < RUNS; i++) {
+          await page.goto('http://localhost:8123/');
+          await page.waitForFunction(() => window.__game && window.__game.scene.getScenes(true).length > 0);
+          await page.evaluate(([boss, powers]) => new Promise((res) => {
+            const g = window.__game; g.scene.getScenes(true).forEach((sc) => sc.scene.stop()); window.__boss = null;
+            g.scene.start('boss', { boss, powers, char: 'survivor', onEnd: () => {} });
+            const wait = () => (window.__boss ? res() : setTimeout(wait, 50)); wait();
+          }), [boss, powers]);
+          const r = await page.evaluate(([fight, cfg]) => { window.__game.loop.sleep(); const B = window.__boss; for (let i = 0; i < 200; i++) B.step(1 / 120); return (0, eval)('(' + fight + ')')(B, cfg); },
+            [arenaFight.toString(), { profile: PROFILES[name], seed: 4242 + i * 977 + boss.length * 31 + name.length }]);
+          rs.push(r);
+        }
+        const wins = rs.filter((r) => r.won);
+        const avg = (k, l) => (l.length ? (l.reduce((a, r) => a + r[k], 0) / l.length).toFixed(1) : '-');
+        console.log(name.padEnd(8), boss.padEnd(8), `won ${wins.length}/${rs.length}  time ${avg('secs', wins)}s  hearts left ${avg('hearts', wins)}  hits taken ${avg('taken', rs)}  Boo used ${rs.filter((r) => r.boo).length}  sheets ${avg('sheets', rs)}  lost at hp ${rs.filter((r) => !r.won).map((r) => r.hp).join(',') || '-'}  hit by ${JSON.stringify(rs.reduce((o, r) => { for (const [k, v] of Object.entries(r.hitBy)) o[k] = (o[k] || 0) + v; return o; }, {}))}`);
+      }
+    }
+    if (errors.length) console.log('PAGE ERRORS:', [...new Set(errors)].slice(0, 5));
+    await browser.close(); server.close(); return;
+  }
   if (process.argv.includes('--pieces')) { // every world's set piece, N times per profile: air hits (3 = caught)
     for (const name of (ONLY === 'all' ? Object.keys(PROFILES) : [ONLY])) {
       const line = [];
       for (let w = 0; w < 8; w++) {
         const hits = [];
         for (let i = 0; i < RUNS; i++) {
-          await start({ version: 8, storySeen: true, runs: 12, story: { met: ['ivy'], beaten: ['matron'] }, tips: [] });
+          await start({ version: 8, storySeen: true, runs: 12, story: { met: ['ivy', 'ansel'], beaten: ['matron', 'coroner'] }, tips: [] });
           const r = await page.evaluate(([run, brainSrc, cfg]) => (0, eval)('(' + run + ')')(window.__game.scene.getScene('play'), { ...cfg, brain: brainSrc }),
             [playRun.toString(), brain.toString(), { profile: PROFILES[name], seed: 77 + i * 131 + w, world: w }]);
           hits.push(r.flights[0] ? r.flights[0].hits + (r.flights[0].kinds.length ? '(' + r.flights[0].kinds.join('/') + ')' : '') : (r.cause || '?') + '@' + r.m);
@@ -287,7 +388,7 @@ async function main() {
     report[name] = [];
     for (let i = 0; i < RUNS; i++) {
       // a player some hours in: every system on, no safety net, a random amount of the unlock track
-      const save = { version: 8, storySeen: true, runs: 12, story: { met: ['ivy'], beaten: ['matron'] }, candles: 0, best: 0, owned: ['survivor'], selected: 'survivor', tips: [], unlocks: { got: name === 'expert' ? 40 : 12, points: 0, fresh: 0 } };
+      const save = { version: 8, storySeen: true, runs: 12, story: { met: ['ivy', 'ansel'], beaten: ['matron', 'coroner'] }, candles: 0, best: 0, owned: ['survivor'], selected: 'survivor', tips: [], unlocks: { got: name === 'expert' ? 40 : 12, points: 0, fresh: 0 } };
       await page.goto('http://localhost:8123/');
       await page.evaluate((sv) => { localStorage.clear(); localStorage.setItem('ghostline-save', JSON.stringify(sv)); }, save);
       await page.reload();

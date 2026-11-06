@@ -89,6 +89,7 @@ export class PlayScene extends Phaser.Scene {
     this.rand = makeRng(save.mode === 'daily' ? dailySeed() : Date.now());
     this.intro = createIntroTracker();
     this.acc = 0;
+    this.booLeft = false; this.booUntil = 0; this.booVisK = 1; // v8: Boo comes when he's needed
     this.worldX = 0;
     this.scroll = 0;
     this.speed = 230;
@@ -324,7 +325,18 @@ export class PlayScene extends Phaser.Scene {
     this.burst(PLAYER_X, FLOOR - 2, 0x8a8a9a, 6, 30, 300);
   }
 
+  // v8: in the runner Boo only comes when he's needed: the opening, flights, saves, ally scenes, gates,
+  // boss arenas and the ending. The rest of the time Milo runs alone with Boo's lantern.
+  booNeeded() {
+    return !this.openingDone || this.clock < (this.booUntil || 0) || this.flying || !!this.gate || !!this.ally || !!this.finish;
+  }
   stepGhost(dt, holding) {
+    if (this.runner) {
+      if (this.openingDone && !this.booLeft) { this.booLeft = true; this.booUntil = this.clock + 1.4; }
+      const want = this.booNeeded() ? 1 : 0;
+      if (want && (this.booVisK || 0) < 0.04 && !this.dead) { this.ghostX = PLAYER_X - 70; this.ghostY = -36; } // he comes down from above
+      this.booVisK = (this.booVisK ?? 1) + (want - (this.booVisK ?? 1)) * Math.min(1, dt * (want ? 7 : 3.5));
+    }
     if (this.dead || !this.openingDone) return;
     let tx, ty;
     if (holding) { tx = PLAYER_X - 4; ty = this.py - 46 + Math.sin(this.clock * 9) * 2; }
@@ -912,8 +924,9 @@ export class PlayScene extends Phaser.Scene {
     // ghost + tendril
     this.tendril.clear();
     if (!this.dead) {
-      this.ghost.setPosition(this.ghostX, this.ghostY).setAlpha(this.invuln > 0 ? 0.5 : 0.92);
-      this.ghostGlow.setPosition(this.ghostX, this.ghostY).setAlpha(this.holding ? 0.5 : 0.28);
+      const vis = this.runner ? (this.booVisK ?? 1) : 1;
+      this.ghost.setPosition(this.ghostX, this.ghostY).setAlpha((this.invuln > 0 ? 0.5 : 0.92) * vis);
+      this.ghostGlow.setPosition(this.ghostX, this.ghostY).setAlpha((this.holding ? 0.5 : 0.28) * vis);
       const ax = this.ghostX, ay = this.ghostY + 12, bx = PLAYER_X - 3, by = py - 8;
       const thick = this.holding ? 5 : 3;
       for (let pass = 0; pass < (!this.runner || this.flying ? 2 : 0); pass++) {

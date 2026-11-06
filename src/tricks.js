@@ -18,6 +18,8 @@ export const TRICKS = {
   carnival: { id: 'ride', name: 'IT RIDES THE RAILS!', tip: 'ride', need: 'jump' },   // a coaster cart from behind
 };
 const ALL = Object.values(TRICKS);
+// v8: the sound each trick makes before you see its shadow
+const TELL_SFX = { reach: 'keys', drawer: 'drawer', canopy: 'creak', burrow: 'step', ceiling: 'keys', skull: 'hum', ride: 'creak' };
 export const TRICK_EVERY = [10, 15];   // seconds of running between tricks
 const FIRST_AT_M = 60;                 // meters into a world before its first trick
 
@@ -75,6 +77,7 @@ export const TrickFeatures = {
     // the spawner waits until it's over
     this.nextTrapX = Math.max(this.nextTrapX, this.worldX + v * (tell + 2.2));
     Audio.sfx('roar'); this.shake(120, 0.004);
+    Audio.sfx(TELL_SFX[def.id] || 'keys', { v: 0.9 }); // v8: you hear it first
     // it needs saying now: if a headline is up, the popup takes it
     // phase 4: one line. The first time: what to do (the corner tip says why); after that: its name.
     this.headline(teach ? this.trickHow(def) : def.name, '', teach ? 1.4 : 0.7, true);
@@ -215,6 +218,8 @@ export const TrickFeatures = {
   renderTrick(t, x, tg, pg) {
     const s = this.stretch;
     const g = this.trickGfx;
+    // v8: a trick is a shadow and a sound; only when it gets you does the real thing show (pale bone, the grin)
+    const P = t.hit ? 0xece8f2 : 0x1c1828;
     const back = PLAYER_X - 8 - this.gapVis * 0.72 - 14;
     const tellK = Math.min(1, t.t / t.tell);
     const blink = Math.floor(this.clock * 10) % 2 === 0;
@@ -227,7 +232,7 @@ export const TrickFeatures = {
           const tip = PLAYER_X + 40 * t.reach;
           g.lineStyle(7, 0x0b0918, 1); g.lineBetween(back + 10, FLOOR - 70, tip, FLOOR - 38);
           g.lineStyle(4, 0x2c2540, 1); g.lineBetween(back + 10, FLOOR - 70, tip, FLOOR - 38);
-          g.fillStyle(0xece8f2, 1); g.fillRect(tip - 2, FLOOR - 44, 12, 3); g.fillRect(tip - 2, FLOOR - 38, 12, 3); g.fillRect(tip + 8, FLOOR - 44, 3, 9);
+          g.fillStyle(P, 1); g.fillRect(tip - 2, FLOOR - 44, 12, 3); g.fillRect(tip - 2, FLOOR - 38, 12, 3); g.fillRect(tip + 8, FLOOR - 44, 3, 9);
         }
         return true;
       }
@@ -236,11 +241,11 @@ export const TrickFeatures = {
         tg.fillStyle(0x07060d, 0.9); tg.fillRect(x - 2, FLOOR - 20, 46, 20);
         tg.fillStyle(0xff5a3a, 0.25 + 0.2 * Math.abs(Math.sin(this.clock * 7))); tg.fillRect(x - 4, FLOOR - 22, 50, 3);
         // its grin in the dark of the drawer, before the arm comes
-        g.fillStyle(0xece8f2, 0.9); g.fillRect(x + 8, FLOOR - 15, 3, 3); g.fillRect(x + 16, FLOOR - 15, 3, 3); g.fillRect(x + 6, FLOOR - 9, 16, 2);
+        if (t.hit) { g.fillStyle(P, 0.9); g.fillRect(x + 8, FLOOR - 15, 3, 3); g.fillRect(x + 16, FLOOR - 15, 3, 3); g.fillRect(x + 6, FLOOR - 9, 16, 2); }
         if (t.arm > 0) { // a pale arm sweeping out along the floor
           const tip = x - 70 * t.arm;
           g.fillStyle(0x0b0918, 1); g.fillRect(tip, FLOOR - 14, x - tip + 4, 9);
-          g.fillStyle(0xece8f2, 1); g.fillRect(tip - 8, FLOOR - 16, 10, 3); g.fillRect(tip - 8, FLOOR - 11, 10, 3); g.fillRect(tip - 8, FLOOR - 6, 10, 3);
+          g.fillStyle(P, 1); g.fillRect(tip - 8, FLOOR - 16, 10, 3); g.fillRect(tip - 8, FLOOR - 11, 10, 3); g.fillRect(tip - 8, FLOOR - 6, 10, 3);
         }
         return false;
       }
@@ -264,14 +269,14 @@ export const TrickFeatures = {
           g.fillStyle(0x07060d, 1); g.fillEllipse(t.mx, FLOOR + 1, 44, h * 2 + 4);
           g.fillStyle(0x9a6a3a, 1); g.fillEllipse(t.mx, FLOOR + 1, 40, h * 2);
           g.fillStyle(0xc8925a, 1); g.fillEllipse(t.mx - 4, FLOOR - h * 0.5, 18, h * 0.7);
-          g.fillStyle(0xece8f2, 1); for (const k of [-8, 0, 8]) g.fillRect(t.mx + k - 1, FLOOR - h - 3 + Math.sin(this.clock * 30 + k) * 2, 3, 5);
+          g.fillStyle(P, 1); for (const k of [-8, 0, 8]) g.fillRect(t.mx + k - 1, FLOOR - h - 3 + Math.sin(this.clock * 30 + k) * 2, 3, 5);
           if (Math.floor(t.t * 12) !== t.dust) { t.dust = Math.floor(t.t * 12); this.burst(t.mx, FLOOR - 4, 0x9a6a3a, 2, 30, 260, 2); }
         }
         if (t.erupt < 0) { arrowL(FLOOR - 16); g.fillStyle(this.hz.warn, 0.2 + 0.3 * tellK); g.fillRect(t.mx - 16, FLOOR - 44, 32, 44 - h); }
         else { // its arms burst up out of the ground
           const k = Math.min(1, t.erupt / 0.08) * (t.erupt > 0.28 ? Math.max(0, 1 - (t.erupt - 0.28) / 0.3) : 1);
           g.fillStyle(0x0b0918, 1); g.fillRect(t.mx - 12, FLOOR - 48 * k, 7, 48 * k); g.fillRect(t.mx + 5, FLOOR - 42 * k, 7, 42 * k);
-          g.fillStyle(0xece8f2, 1); g.fillRect(t.mx - 14, FLOOR - 48 * k - 3, 11, 3); g.fillRect(t.mx + 3, FLOOR - 42 * k - 3, 11, 3);
+          g.fillStyle(P, 1); g.fillRect(t.mx - 14, FLOOR - 48 * k - 3, 11, 3); g.fillRect(t.mx + 3, FLOOR - 42 * k - 3, 11, 3);
         }
         return true;
       }
@@ -299,8 +304,9 @@ export const TrickFeatures = {
           for (let k = 1; k <= 4; k++) { g.fillStyle(0xff2244, 0.35 - k * 0.07); g.fillCircle(fx - k * 9, fy + (t.svy || 0) * 0.012 * k, 11 - k * 1.5); }
         }
         g.fillStyle(0x0b0918, 1); g.fillCircle(fx, fy, 14);
-        g.fillStyle(0xece8f2, 1); g.fillCircle(fx, fy, 12);
-        g.fillStyle(0x0b0918, 1); g.fillRect(fx - 7, fy - 5, 4, 4); g.fillRect(fx + 3, fy - 5, 4, 4);
+        g.fillStyle(P, 1); g.fillCircle(fx, fy, 12);
+        g.fillStyle(t.hit ? 0x0b0918 : 0xff3355, 1); g.fillRect(fx - 7, fy - 5, 4, 4); g.fillRect(fx + 3, fy - 5, 4, 4);
+        g.fillStyle(0x0b0918, 1);
         g.fillRect(fx - 8, fy + 3, 16, 2); for (let k = -6; k <= 6; k += 4) g.fillRect(fx + k, fy + 2, 1, 4);
         return true;
       }
@@ -315,7 +321,7 @@ export const TrickFeatures = {
         } else {
           s.setVisible(false);
           t.s.setPosition(t.cx, FLOOR + 2 + (Math.floor(this.clock * 20) % 2));
-          g.fillStyle(0xece8f2, 1); g.fillCircle(t.cx + 30, FLOOR - 30, 7);
+          g.fillStyle(P, 1); g.fillCircle(t.cx + 30, FLOOR - 30, 7);
           g.fillStyle(0x0b0918, 1); g.fillRect(t.cx + 26, FLOOR - 32, 2, 2); g.fillRect(t.cx + 32, FLOOR - 32, 2, 2); g.fillRect(t.cx + 26, FLOOR - 28, 8, 1);
           g.fillStyle(0xff5a3a, 0.28); g.fillEllipse(t.cx + 26, FLOOR - 1, 60, 7);
         }

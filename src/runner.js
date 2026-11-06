@@ -159,6 +159,17 @@ export const RunnerFeatures = {
     this.grabDark = this.add.graphics().setDepth(25);
     this.player.setScale(MILO_SCALE); // the dark it brings with it: backgrounds only, under every hazard
     this.stretch.play('stretch_walk');
+    // v8: THE STRETCH is heard, not seen. What you see is its shadow, long and thin across the wall,
+    // longer the closer it is. Its body only shows when you fail (an arm on a stumble, all of it when caught).
+    this.stretchShadow = this.add.sprite(-40, FLOOR + 2, 'stretch_walk0').setOrigin(0.5, 1).setDepth(4.55)
+      .setTint(0x020104).setTintMode(Phaser.TintModes.FILL).setAlpha(0);
+    this.stretchShadow.play('stretch_walk');
+    this.stretch.setVisible(false);
+    // Boo's lantern hangs from Milo's hand; it lights when Boo is near
+    this.lanternGfx = this.add.graphics().setDepth(9.05);
+    this.lanternGlow = this.add.image(PLAYER_X, BOTTOM, 'glow').setScale(1.1).setDepth(9.04).setBlendMode(Phaser.BlendModes.ADD).setTint(0xffc46a).setAlpha(0);
+    this.armGfx = this.add.graphics().setDepth(9.72);
+    this.keysT = 1.5; this.humT = 2;
     this.gunImg = this.add.image(PLAYER_X, BOTTOM, 'salt_gun').setScale(1.5).setDepth(9.1).setVisible(false);
     this.tutorial.setText(`${prompt2('jump')} TO JUMP`);
     this.tutorial2.setText(`${prompt2('slide')} TO SLIDE`);
@@ -278,6 +289,12 @@ export const RunnerFeatures = {
     }
     this.breathT -= dt;
     if (near > 0.55 && this.breathT <= 0) { this.breathT = 1.4; Audio.sfx('breath', { v: near }); }
+    // v8: you know where it is by ear. Its joints click like a key ring; right behind you, it hums
+    this.keysT -= dt;
+    if (near > 0.3 && this.keysT <= 0) { this.keysT = 1.2 + (1 - near) * 1.6 + Math.random() * 0.6; Audio.sfx('keys', { v: 0.3 + near * 0.7 }); }
+    this.humT -= dt;
+    if (near > 0.6 && this.humT <= 0) { this.humT = 4.2; Audio.sfx('hum', { v: 0.5 + near * 0.5 }); }
+    if (near <= 0.6) this.humT = Math.min(this.humT, 0.8);
   },
 
   stumble(kind) {
@@ -328,7 +345,7 @@ export const RunnerFeatures = {
     this.caughtBy = true; // pit or not, it comes for you
     if (cause !== 'pit') {
       // the death scene (stepGrab / renderGrab): its arm shoots out, lifts Milo, and the dark takes them both
-      this.grab = { t: 0, y0: this.py, cx0: this.stretch.x, roared: false };
+      this.grab = { t: 0, y0: this.py, cx0: -60, roared: false }; // it comes in from the left edge: the first time you see it
       this.stretch.anims.stop(); this.stretch.setTexture('stretch_grab');
       Audio.sfx('scream');
     } else { // it crawls up to the edge of the pit and looks down
@@ -387,7 +404,7 @@ export const RunnerFeatures = {
     // the creature steps up to its full height, a little behind Milo
     const cx = Phaser.Math.Linear(g.cx0, PLAYER_X - 70, ease.Cubic.Out(Math.min(1, t / 0.25))) - drag;
     const s = this.stretch;
-    s.clearTint().setRotation(0); s.anims.timeScale = 1;
+    s.clearTint().setRotation(0).setAlpha(1); s.anims.timeScale = 1;
     s.setVisible(true).setPosition(Math.round(cx), FLOOR + 2).setScale(STRETCH_SCALE, STRETCH_SCALE + (t > 0.8 && t < 1.2 ? 0.08 : 0));
     const sh = { x: cx + 9, y: FLOOR + 2 - s.displayHeight + 26 }; // its right shoulder
     // Milo: frozen where he was, then lifted up and back, kicking
@@ -434,7 +451,7 @@ export const RunnerFeatures = {
     if (cause === 'pit' || this.py > BOTTOM) { this.py = BOTTOM - 70; this.vy = -380; this.grounded = false; this.dropPitUnderMilo(); }
     Audio.sfx('grab'); this.shake(140, 0.006);
     this.burst(PLAYER_X - 30, FLOOR - 40, 0xcfe0ff, 14, 50, 450);
-    this.ghostX = PLAYER_X - 40; this.ghostY = this.py - 30;
+    this.ghostX = PLAYER_X - 40; this.ghostY = this.py - 30; this.booUntil = this.clock + 1.8;
     this.popup(cause === 'pit' ? 'BOO PULLED YOU OUT!' : 'BOO SHOVED IT BACK!', '#cfe0ff');
     this.quip('shield', true);
   },
@@ -534,6 +551,7 @@ export const RunnerFeatures = {
     }
     this.setPiece = null;
     this.flyPop(this.gap - RUN.CAUGHT < 40 ? 'IT\'S RIGHT THERE' : 'IT\'S COMING');
+    this.booUntil = this.clock + 1.1; // Boo sets you down and goes
     this.quip('landed');
   },
 
@@ -1329,9 +1347,12 @@ export const RunnerFeatures = {
     this.renderAim();
     this.renderGate(lead);
 
-    if (this.grab) { this.edgeGfx.clear(); this.renderGrab(); return; }
-    if (this.finish) { this.edgeGfx.clear(); return; } // ending.js draws the door scene
+    this.renderLantern(py);
+    this.armGfx.clear();
+    if (this.grab) { this.edgeGfx.clear(); this.stretchShadow.setAlpha(0); this.renderGrab(); return; }
+    if (this.finish) { this.edgeGfx.clear(); this.stretchShadow.setAlpha(0); return; } // ending.js draws the door scene
     this.renderStretch();
+    if (!this.dead && this.lungeT < 0.5 && !this.flying) this.renderLungeArm(py);
   },
 
   // world traps; returns true when it drew the trap
@@ -1484,46 +1505,109 @@ export const RunnerFeatures = {
     return st;
   },
 
-  renderStretch() {
+  // a trick's THE STRETCH is a shadow too; only when it gets you does the real thing show
+  shadeStretch(t) {
     const s = this.stretch;
-    if (this.trick && !this.trick.gone && this.trick.ownsStretch && !this.flying) { s.clearTint().setRotation(0); s.anims.timeScale = 1; this.renderEdge(1 - this.light); return; }
+    s.setRotation(0); s.anims.timeScale = 1;
+    if (t && t.hit) s.clearTint().setAlpha(1);
+    else s.setTint(0x020104).setTintMode(Phaser.TintModes.FILL).setAlpha(0.68);
+  },
+
+  renderStretch() {
+    const s = this.stretch, sd = this.stretchShadow;
+    if (this.trick && !this.trick.gone && this.trick.ownsStretch && !this.flying) {
+      this.shadeStretch(this.trick);
+      sd.setAlpha(Math.max(0, sd.alpha - 0.08)); // it's somewhere else now
+      this.renderEdge(1 - this.light); return;
+    }
     this.resetStretchSprite();
+    s.clearTint().setAlpha(1);
+    const near = 1 - this.light;
     if (this.flying) {
-      s.clearTint().setRotation(0); s.anims.timeScale = 1;
+      s.setRotation(0); s.anims.timeScale = 1;
       this.edgeGfx.clear();
-      // it can't follow: it jumps and reaches up with its long arms, then falls behind
+      // it can't follow: its shadow falls away behind you
       const t = this.crFlyT;
       const x = this.crFlyX + Math.min(t, 0.4) * 60 - Math.max(0, t - 1.1) * 220;
       const hop = t < 1.1 ? Math.abs(Math.sin(t * Math.PI / 0.55)) * 46 : 0;
-      s.setPosition(x, FLOOR + 2 - hop).setVisible(x > -40);
+      s.setPosition(x, FLOOR + 2 - hop).setVisible(false);
+      sd.setAlpha(Math.max(0, 0.8 * (1 - t / 0.9)));
       return;
     }
-    const near = 1 - this.light;
     this.renderEdge(near);
-    const fast = this.catchUpT > 0 || this.clock - this.lastStumble < 1.2 || this.dead; // near stays UPRIGHT: tall, grin open (on all fours it read smaller)
-    // phase 4: it looks and moves differently as it closes in. Far: upright, slow, half lost in the dark.
-    // Middle: red pupils, quicker, its head twitches. Near: on all fours, the grin wide open, it jitters.
+    const fast = this.catchUpT > 0 || this.clock - this.lastStumble < 1.2 || this.dead;
+    // phase 4: it moves differently as it closes in (far: slow; middle: it twitches; near: it jitters).
+    // v8: you see that only in its shadow and hear it (steps, keys, breath, the hum)
     const stage = this.stretchStage(near);
     const want = (fast ? 'stretch_crawl' : 'stretch_walk') + (stage === 'f' ? '' : `_${stage}`);
     if (!this.dead || this.caughtBy) { if (s.anims.currentAnim?.key !== want) s.play(want); }
-    s.anims.timeScale = stage === 'f' ? 0.85 : 1;
-    if (stage === 'f') s.setTint(0x4a4458); else s.clearTint(); // far: a dark shape; closer: pale, lit
-    // honest position: the creature's FRONT edge (not its centre) is where the gap says it is
-    const half = (fast ? 28 : 12) * STRETCH_SCALE / 2;
-    const target = PLAYER_X - 8 - this.gapVis * 0.72 - half; // 0.72: always on screen, still in step with the bar
+    const swant = stage === 'f' ? 'stretch_walk' : `stretch_walk_${stage}`; // the shadow stays upright: tall and thin
+    if (sd.anims.currentAnim?.key !== swant) sd.play(swant);
+    s.anims.timeScale = stage === 'f' ? 0.85 : 1; sd.anims.timeScale = (fast ? 1.6 : 1) * s.anims.timeScale;
     const enter = Phaser.Math.Easing.Cubic.Out(this.crEnter);
-    // never parked: it sways, and it lunges at you when you stumble
     const lunge = this.lungeT < 0.45 ? Math.sin((this.lungeT / 0.45) * Math.PI) * 34 : 0;
     const sway = Math.sin(this.clock * 1.7) * 6 + Math.sin(this.clock * 4.3) * 2;
-    // the twitch (middle): every so often the whole thing jerks a few px and tilts, then snaps back
     const tw = stage === 'm' && (this.clock % 1.7) < 0.09 ? 1 : 0;
-    // the jitter (near): never still, and it surges at you in short lurches
     const jit = stage === 'n' ? (Math.random() - 0.5) * 3 + Math.max(0, Math.sin(this.clock * 5.3)) ** 6 * 10 : 0;
+    // the body: off screen behind you (where the gap says it is); shown only once it has you (a pit death)
+    const half = (fast ? 28 : 12) * STRETCH_SCALE / 2;
+    const target = PLAYER_X - 8 - this.gapVis * 0.72 - half;
     const x = Phaser.Math.Linear(-60, target, enter) + lunge + sway + tw * 5 + jit;
-    s.setVisible(true).setPosition(Math.round(x), FLOOR + 2 + (fast ? 0 : Math.sin(this.clock * 14) * 1.5));
+    s.setPosition(Math.round(x), FLOOR + 2 + (fast ? 0 : Math.sin(this.clock * 14) * 1.5));
     s.setRotation(tw * 0.07 + (stage === 'n' ? (Math.random() - 0.5) * 0.03 : 0));
-    const grow = 1 + 0.1 * near + (stage === 'n' ? 0.35 : 0); // near: it looms over Milo // it looms as it gets closer (on all fours it would read smaller)
-    s.setScale(STRETCH_SCALE * grow, (fast ? STRETCH_SCALE : STRETCH_SCALE + Math.sin(this.clock * 7) * 0.05) * grow); // a slight, wrong breathing stretch
+    const grow = 1 + 0.1 * near + (stage === 'n' ? 0.35 : 0);
+    s.setScale(STRETCH_SCALE * grow, (fast ? STRETCH_SCALE : STRETCH_SCALE + Math.sin(this.clock * 7) * 0.05) * grow);
+    s.setVisible(this.dead && this.caughtBy);
+    // the shadow: its feet off the left edge, thrown long up the wall toward Milo; its head is where the gap says it is
+    const foot = -26 + sway * 0.5;
+    const tip = Phaser.Math.Linear(-20, PLAYER_X - 14 - this.gapVis * 0.72, enter) + lunge + tw * 6 + jit;
+    const lean = 0.62 - 0.06 * near + tw * 0.06 + Math.sin(this.clock * 2.3) * 0.02; // up the wall, long and thin
+    const len = Math.max(30, (tip - foot) / Math.sin(lean));
+    const fh = sd.frame.realHeight || sd.height || 46;
+    const thin = STRETCH_SCALE * (0.62 + 0.08 * near);
+    sd.setPosition(Math.round(foot), FLOOR + 2).setRotation(lean).setScale(thin, len / fh);
+    const want2 = this.dead ? 0 : (0.5 + 0.35 * near) * enter;
+    sd.setAlpha(sd.alpha + (want2 - sd.alpha) * 0.25);
+  },
+
+  // a stumble: its arm lunges in from the left edge, grabs at Milo, misses, and pulls back out
+  renderLungeArm(py) {
+    const k = this.lungeT;
+    const out = k < 0.16 ? Phaser.Math.Easing.Cubic.Out(k / 0.16) : k < 0.24 ? 1 : Math.max(0, 1 - (k - 0.24) / 0.26);
+    if (out <= 0) return;
+    const sh = { x: -36, y: FLOOR - 128 };
+    const hx = Phaser.Math.Linear(sh.x, PLAYER_X - 16, out), hy = Phaser.Math.Linear(sh.y, py - 10, out);
+    const a = this.armGfx;
+    const j1 = { x: sh.x + (hx - sh.x) * 0.36, y: sh.y + (hy - sh.y) * 0.36 - 18 * out };
+    const j2 = { x: sh.x + (hx - sh.x) * 0.7, y: sh.y + (hy - sh.y) * 0.7 + 10 * out };
+    const bone = (p, q, w, c) => { a.lineStyle(w, c, 1); a.beginPath(); a.moveTo(p.x, p.y); a.lineTo(q.x, q.y); a.strokePath(); };
+    for (const [w, c] of [[7, 0x0b0918], [4, 0x2c2540]]) { bone(sh, j1, w, c); bone(j1, j2, w, c); bone(j2, { x: hx, y: hy }, w, c); }
+    a.fillStyle(0x463c63, 1); a.fillCircle(j1.x, j1.y, 2.5); a.fillCircle(j2.x, j2.y, 2.5);
+    // long pale fingers: spread as it reaches, snapping shut on nothing behind his back
+    const shut = k > 0.17 ? 1 : 0;
+    a.fillStyle(0x0b0918, 1); a.fillRect(hx - 3, hy - 9, 8, 18);
+    a.fillStyle(0xece8f2, 1);
+    for (let i = 0; i < 4; i++) {
+      const fy = hy - 8 + i * 5 + (shut ? (1.5 - i) * 1.6 : 0);
+      a.fillRect(hx + 2, fy, shut ? 6 : 11 - Math.abs(i - 1.5) * 2, 2);
+    }
+    a.fillRect(hx + 1, hy - 8, 2, 16);
+  },
+
+  // Boo's lantern: dark while Milo runs alone, lit when Boo is near or carrying him
+  renderLantern(py) {
+    const g = this.lanternGfx; g.clear();
+    const vis = this.booVisK || 0;
+    if (this.dead || this.finish || !this.player.visible) { this.lanternGlow.setAlpha(0); return; }
+    const sliding = this.slide > 0 && this.grounded && !this.flying;
+    const swing = Math.sin(this.clock * (this.grounded ? 11 : 4)) * (this.grounded ? 2 : 1);
+    const x = Math.round(PLAYER_X + (sliding ? 16 : 9) + swing), y = Math.round(sliding ? FLOOR - 10 : py + 6);
+    g.lineStyle(1, 0x0b0918, 1); g.lineBetween(x + 0.5, y - 6, x + 0.5, y - 2);              // the handle, in his hand
+    g.fillStyle(0x0b0918, 1); g.fillRect(x - 3, y - 2, 8, 10);
+    const lit = 0.12 + 0.88 * vis;
+    g.fillStyle(Phaser.Display.Color.GetColor(90 + 165 * lit, 62 + 153 * lit, 40 + 66 * lit), 1); g.fillRect(x - 2, y, 6, 6); // the glass
+    g.fillStyle(0x8a7048, 1); g.fillRect(x - 3, y - 2, 8, 2); g.fillRect(x - 2, y + 6, 6, 2);   // brass cap and base
+    this.lanternGlow.setPosition(x + 1, y + 4).setAlpha(0.55 * vis * (0.85 + Math.sin(this.clock * 9) * 0.1));
   },
 };
 

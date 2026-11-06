@@ -515,3 +515,113 @@ test('v8 story: meet Ivy, the Matron arena ends world 1, beating her saves it an
   expect(r2.m).toBeGreaterThanOrEqual(395);
   expect(errors).toEqual([]);
 });
+
+test('v8 runner: THE STRETCH is only a shadow while you run; its arm shows on a stumble, its body when caught', async ({ page }) => {
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 8, storySeen: true, runs: 5, story: { met: ['ivy'], beaten: ['matron'] } } });
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(1500);
+  const r = await play(page, (s) => {
+    s.openingDone = true; s.nextTrickT = 1e9; s.trickZone = 0;
+    const at = (gap) => { for (let i = 0; i < 120; i++) { s.invuln = 1e9; s.gap = gap; s.lastStumble = -99; s.step(1 / 120, false); if (i % 10 === 0) s.render(0); } s.render(0); return { body: s.stretch.visible, shadow: +s.stretchShadow.alpha.toFixed(2), len: Math.round(s.stretchShadow.displayHeight) }; };
+    const far = at(118), near = at(30);
+    s.shield = false; s.invuln = 0; s.gap = 90; s.hit('grave');
+    for (let i = 0; i < 18; i++) s.step(1 / 120, false);
+    s.render(0);
+    const arm = { body: s.stretch.visible, drawn: s.armGfx.commandBuffer.length > 0 };
+    s.invuln = 0; s.hit('grave'); // the second one: caught
+    for (let i = 0; i < 40; i++) s.step(1 / 120, false);
+    s.render(0);
+    return { far, near, arm, caught: { dead: s.dead, body: s.stretch.visible } };
+  });
+  expect(r.far.body).toBe(false);
+  expect(r.near.body).toBe(false);
+  expect(r.far.shadow).toBeGreaterThan(0.3);
+  expect(r.near.len).toBeGreaterThan(r.far.len); // longer the closer it is
+  expect(r.arm).toEqual({ body: false, drawn: true });
+  expect(r.caught).toEqual({ dead: true, body: true });
+  expect(errors).toEqual([]);
+});
+
+test('v8 runner: Boo only comes when he is needed (the opening, flights), Milo runs alone with the lantern', async ({ page }) => {
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 8, storySeen: true, runs: 5, story: { met: ['ivy'], beaten: ['matron'] } } });
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(1500);
+  const r = await play(page, (s) => {
+    s.openingDone = true; s.nextTrickT = 1e9; s.trickZone = 0;
+    const run = (n) => { for (let i = 0; i < n; i++) { s.invuln = 1e9; s.gap = 110; s.step(1 / 120, false); } s.render(0); return +s.ghost.alpha.toFixed(2); };
+    const alone = run(600);
+    const lantern = +s.lanternGlow.alpha.toFixed(2);
+    s.startFlight('orb');
+    const flying = run(90);
+    return { alone, lantern, flying, lit: +s.lanternGlow.alpha.toFixed(2) };
+  });
+  expect(r.alone).toBeLessThan(0.05);
+  expect(r.lantern).toBeLessThan(0.05);
+  expect(r.flying).toBeGreaterThan(0.45); // 0.5 = Boo while you are invulnerable (the test keeps Milo safe)
+  expect(r.lit).toBeGreaterThan(0.3);
+  expect(errors).toEqual([]);
+});
+
+test('v8 story, world 2: meet Ansel on slab 9, THE CORONER ends world 2, beating him saves it', async ({ page }) => {
+  const save = { version: 8, storySeen: true, runs: 5, mode: 'creative', creative: { x: (400 + 40) * 24, rebirths: 0 }, story: { met: ['ivy'], beaten: ['matron'] } };
+  const errors = await boot(page, { key: 'ghostline-save', value: save });
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(1500);
+  const r = await play(page, (s) => {
+    s.openingDone = true; s.started = true;
+    let n = 0, sat = false;
+    while (!s.bossOn && s.worldX / 24 < 796 && n < 200000) { s.invuln = 1e9; s.gap = 118; s.step(1 / 120, Math.floor(n / 40) % 2 === 0); if (s.ally && s.ally.img.texture.key === 'ansel_sit') sat = true; n++; }
+    return { m: Math.floor(s.worldX / 24), zone: s.zoneIndex, bossOn: s.bossOn, sat, met: JSON.parse(localStorage.getItem('ghostline-save')).story.met };
+  });
+  expect(r).toEqual({ m: expect.any(Number), zone: 1, bossOn: true, sat: true, met: ['ivy', 'ansel'] });
+  expect(r.m).toBeGreaterThanOrEqual(768);
+  await page.waitForFunction(() => window.__game.scene.isActive('boss') && window.__boss);
+  expect(await page.evaluate(() => ({ id: window.__boss.bossId, powers: window.__boss.powers, sheet: window.__boss.sheet, light: !!window.__boss.power }))).toEqual({ id: 'coroner', powers: ['penlight', 'sheet'], sheet: true, light: true });
+  await page.evaluate(() => window.__boss.win());
+  await page.waitForFunction(() => !window.__game.scene.isActive('boss') && !window.__game.scene.isPaused('play'), null, { timeout: 10000 });
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ghostline-save')).story.beaten)).toEqual(['matron', 'coroner']);
+  expect(errors).toEqual([]);
+});
+
+test('v8 Coroner: his light goes through a plain dodge, not through the Sheet; tags file you; a drawer is a step', async ({ page }) => {
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 8, storySeen: true } });
+  const launch = (powers) => page.evaluate((powers) => new Promise((res) => {
+    const g = window.__game; g.scene.getScenes(true).forEach((sc) => sc.scene.stop());
+    window.__boss = null;
+    g.scene.start('boss', { boss: 'coroner', powers, char: 'survivor', onEnd: () => {} });
+    const wait = () => (window.__boss ? res() : setTimeout(wait, 50)); wait();
+  }), powers);
+  const fight = (fn) => page.evaluate((src) => { const B = window.__boss; window.__game.loop.sleep(); return (0, eval)(src)(B); }, fn.toString());
+  await launch(['penlight', 'sheet']);
+  const r = await fight((B) => {
+    const N = (n) => { for (let i = 0; i < n; i++) B.step(1 / 120); };
+    N(220); // the intro
+    const sweep = (sheet) => {
+      B.inv = 0; B.hearts = 5; B.queue = ['light']; B.bstate = 'idle'; B.bt = 0; B.bx = 490; B.x = 200; B.sheetCd = sheet ? 0 : 9; B.unseenT = 0;
+      B.sheet = sheet; B.coronerAttack(false);
+      let n = 0, dodged = false;
+      while (B.bstate !== 'check' && n++ < 2000) {
+        if (B.col && !dodged && Math.abs(B.col.x - B.x) < 60) { B.act.dodge = true; B.act.dodgeDir = 1; dodged = true; }
+        N(1); B.act.dodge = false;
+      }
+      return { hearts: B.hearts, lost: B.lostYou, filed: B.filedT > 0 };
+    };
+    const plain = sweep(false), sheet = sweep(true);
+    // a toe tag that hits files you
+    B.bstate = 'idle'; B.bt = 9; B.inv = 0; B.hearts = 5; B.filedT = 0; B.unseenT = 0; B.x = 300; B.y = 0;
+    B.tags.push({ x: 300, y: 300, vx: 0, vy: 0, spin: 0, stuck: false, life: 1 }); N(1);
+    const tag = { hearts: B.hearts, filed: B.filedT > 0 };
+    // a low drawer, out and still: Milo lands on it
+    B.tags = []; B.drawers = [{ side: -1, row: 'low', max: 200, len: 200, state: 'hold', t: 9, delay: 0, v: 760 }];
+    B.x = 120; B.y = 60; B.vy = 0; B.grounded = false; B.inv = 99;
+    for (let i = 0; i < 120; i++) N(1);
+    return { plain, sheet, tag, onDrawer: Math.round(B.y), grounded: B.grounded };
+  });
+  expect(r.plain.hearts).toBeLessThan(5);
+  expect(r.plain.filed).toBe(true);
+  expect(r.sheet).toEqual({ hearts: 5, lost: true, filed: false });
+  expect(r.tag).toEqual({ hearts: 4, filed: true });
+  expect(r.onDrawer).toBe(22);
+  expect(r.grounded).toBe(true);
+  expect(errors).toEqual([]);
+});
