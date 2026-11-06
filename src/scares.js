@@ -49,7 +49,7 @@ export const ScareFeatures = {
       return !!this.scare;
     }
     if (this.dead || this.flying || this.chasm || this.gate || this.grab || this.trick || !this.started || this.finish || this.creative) return false;
-    if (this.beyond || this.endlessMode) return false;
+    if (this.beyond || this.endlessMode || this.storyHold) return false;
     const id = zoneAt(this.zoneIndex).id;
     if (!SCARES[id] || this.scareZones.has(this.zoneIndex)) return false;
     const zoneM = meters % ZONE_LENGTH_M;

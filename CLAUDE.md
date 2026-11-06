@@ -34,6 +34,8 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 - `scripts/bot.mjs` bot players (casual, regular, expert): `node scripts/bot.mjs 6 all` for full runs, `--pieces` for each world's flight
 - `src/runner-art.js` THE STRETCH (3 stages by distance: `_m`, `_n` frames via `hungry()`; near stays upright), its big ending face `stretch_face`, ground and world traps, weapons, HUD face icon (pixel art)
 - `scripts/phase3-shots.mjs`, `scripts/phase4-shots.mjs` screenshots for the AI testers
+- `src/story.js` (v8) The Story of Vigil in the run: `ALLIES` (met once, each gives a power; `save.story.met`) and `STORY_BOSS` (an arena at the end of a world, fought until beaten once; `save.story.beaten`). `storyHold` keeps traps, tricks and scares off while a story beat has the screen
+- `src/scenes/boss.js` (v8) the boss arena scene (`BOSSES`, `POWERS`): play pauses, HUD sleeps, the arena hands back `{ won, ... }` via `onEnd`. World 1: THE NIGHT MATRON with Ivy's PENLIGHT. `window.__boss` + `bot` for tests. Story, names and voice: the Claude Doc "Ghostline: The Story of Vigil"
 
 ## Rules
 - Run state is reset in `init()`, never the constructor.
@@ -62,6 +64,9 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 - Phase 4 round 6: the runner's top bar shows only distance, the meter (centered), score and pause. Candles, souls and B-O-O letters peek in on change (`peek()` in hud.js) and fade; the weapon timer is bottom-right. Don't add always-on HUD items.
 - Phase 4: scares and the RNG: never call `this.rand` from scares (it would change the run's layout).
 - v6: getting caught plays the grab scene (`stepGrab`/`renderGrab`); a pit death keeps the fall.
+- v8: save v8 adds `story` {met, beaten}. Bots' saves mark the bosses beaten so full runs aren't stopped by an arena.
+- v8: boss arenas use the same 4 actions on every device: move, jump (`float`), dodge (`slide`), light (`light`: E/J, pad X/Y). Attacks are automatic. Touch in the arena: left half hold-and-slide to move, right half tap = jump, swipe = dodge, the LIGHT button only when charged (`createInput(scene, { pointers: false })`). A new power upgrades one of the 4 actions, never adds a button.
+- v8: a boss is open (takes hits) only while it checks/stuns; after 3 hits in one window it shoves Milo off. Boo saves Milo once per fight, only at his last heart.
 
 ## Test
 Serve the folder (`python -m http.server 8000`) and open http://localhost:8000.

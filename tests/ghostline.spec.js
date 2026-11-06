@@ -42,8 +42,9 @@ test('first launch plays the story, then starts a run', async ({ page }) => {
 test('an old v1 save migrates to the current version and keeps progress', async ({ page }) => {
   await boot(page, { key: 'ghostline-save-v1', value: { candles: 321, best: 999, owned: ['survivor', 'nurse'], selected: 'nurse', muted: true, runs: 7 } });
   const s = await page.evaluate(() => JSON.parse(localStorage.getItem('ghostline-save')));
-  expect(s.version).toBe(7);
+  expect(s.version).toBe(8);
   expect(s.ending).toEqual({ seen: false, runs: 0 });
+  expect(s.story).toEqual({ met: [], beaten: [] });
   expect(s.candles).toBe(321);
   expect(s.bestScore).toBe(0);
   expect(s.boo).toEqual({ hat: 'none', trail: 'ecto' });
@@ -240,6 +241,7 @@ test('runner: Boo carries you over the chasm, and it waits where you land', asyn
   expect(r.dead).toBe(false);
   // three air hits and it's waiting right where you land
   const r2 = await play(page, (s) => {
+    s.shield = false; // a shield power-up picked up on the way would absorb one hit
     s.startFlight('orb');
     for (let i = 0; i < 3; i++) { s.invuln = 0; s.hit('banshee'); }
     s.invuln = 0; s.endFlight();
@@ -478,5 +480,38 @@ test('phase 4: the ending plays its beats: the journal, the close-up, the lit wa
     return { ...seen, ended: s.ended };
   });
   expect(r).toEqual({ tiles: true, face: true, ward: true, ended: true });
+  expect(errors).toEqual([]);
+});
+
+test('v8 story: meet Ivy, the Matron arena ends world 1, beating her saves it and the next run goes past', async ({ page }) => {
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 7, storySeen: true, runs: 5 } });
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(1500);
+  const run = () => play(page, (s) => {
+    s.openingDone = true; s.started = true;
+    let n = 0;
+    while (!s.bossOn && s.worldX / 24 < 396 && n < 200000 && !s.dead) { s.invuln = 1e9; s.gap = 118; s.step(1 / 120, Math.floor(n / 40) % 2 === 0); n++; }
+    return { m: Math.floor(s.worldX / 24), bossOn: s.bossOn, dead: s.dead, met: JSON.parse(localStorage.getItem('ghostline-save')).story.met };
+  });
+  const r = await run();
+  expect(r).toEqual({ m: expect.any(Number), bossOn: true, dead: false, met: ['ivy'] });
+  expect(r.m).toBeGreaterThanOrEqual(368);
+  await page.waitForFunction(() => window.__game.scene.isActive('boss') && window.__boss);
+  expect(await page.evaluate(() => ({ powers: window.__boss.powers, paused: window.__game.scene.isPaused('play') }))).toEqual({ powers: ['penlight'], paused: true });
+  await page.evaluate(() => window.__boss.win());
+  await page.waitForFunction(() => !window.__game.scene.isActive('boss') && !window.__game.scene.isPaused('play'), null, { timeout: 10000 });
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ghostline-save')).story.beaten)).toEqual(['matron']);
+  // the run goes on to the gate
+  const r1 = await run();
+  expect(r1.bossOn).toBe(false);
+  expect(r1.dead).toBe(false);
+  // a new run with that save: no arena this time
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('ghostline-save')));
+  await boot(page, { key: 'ghostline-save', value: saved });
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(1500);
+  const r2 = await run();
+  expect(r2.bossOn).toBe(false);
+  expect(r2.m).toBeGreaterThanOrEqual(395);
   expect(errors).toEqual([]);
 });

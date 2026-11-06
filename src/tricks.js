@@ -41,6 +41,7 @@ export const TrickFeatures = {
   stepTricks(dt, meters, toGate) {
     if (this.dead || this.flying || this.chasm || this.gate || this.grab || !this.started || this.finish) return false;
     if (this.trick) return true;
+    if (this.storyHold) return false; // v8: an ally or an arena has the screen
     if (this.scare) return false;
     const zoneM = meters % ZONE_LENGTH_M;
     if (this.safeRun && meters < 300) return false; // first runs: learn the traps first

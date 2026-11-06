@@ -622,7 +622,7 @@ export const RunnerFeatures = {
     const runway = !this.chasm && !this.chasmZones.has(chasmKey) && zoneM > at - v * 1.4 / PX_PER_METER && zoneM < at;
     if (this.chasm || runway) return;
     if (this.gate || (toGate < 22 && !this.beyond)) return; // gates (and the door) stay clear
-    if (this.trick || this.scare || this.scareHold) return; // THE STRETCH (or a scare) has the screen to itself
+    if (this.trick || this.scare || this.scareHold || this.storyHold) return; // THE STRETCH, a scare or a story beat has the screen to itself
 
     // pickups: a weapon (salt first, then a different one each time) and the (rare) Boo orb
     if (this.worldX >= this.nextWeaponX && !this.weapon) {
@@ -927,7 +927,8 @@ export const RunnerFeatures = {
     this.lastWeapon = kind;
     this.gunImg.setTexture(def.icon);
     Audio.sfx('powerup');
-    this.headline(def.short, def.answer, 1.0, true); // what it's for, every time (in the corner)
+    if (this.clock < (this.storyTalkUntil || 0)) this.note(`${def.short} ${def.answer}`); // v8: an ally is talking
+    else this.headline(def.short, def.answer, 1.0, true); // what it's for, every time (in the corner)
     this.tip(kind === 'bone' ? 'bone' : 'weapon');
     this.addCombo('power', PLAYER_X + 40, this.py - 40);
     this.events.emit('power', { kind: 'weapon', icon: def.icon, left: 1 });

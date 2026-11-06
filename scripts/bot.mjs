@@ -270,7 +270,7 @@ async function main() {
       for (let w = 0; w < 8; w++) {
         const hits = [];
         for (let i = 0; i < RUNS; i++) {
-          await start({ version: 7, storySeen: true, runs: 12, tips: [] });
+          await start({ version: 8, storySeen: true, runs: 12, story: { met: ['ivy'], beaten: ['matron'] }, tips: [] });
           const r = await page.evaluate(([run, brainSrc, cfg]) => (0, eval)('(' + run + ')')(window.__game.scene.getScene('play'), { ...cfg, brain: brainSrc }),
             [playRun.toString(), brain.toString(), { profile: PROFILES[name], seed: 77 + i * 131 + w, world: w }]);
           hits.push(r.flights[0] ? r.flights[0].hits + (r.flights[0].kinds.length ? '(' + r.flights[0].kinds.join('/') + ')' : '') : (r.cause || '?') + '@' + r.m);
@@ -287,7 +287,7 @@ async function main() {
     report[name] = [];
     for (let i = 0; i < RUNS; i++) {
       // a player some hours in: every system on, no safety net, a random amount of the unlock track
-      const save = { version: 7, storySeen: true, runs: 12, candles: 0, best: 0, owned: ['survivor'], selected: 'survivor', tips: [], unlocks: { got: name === 'expert' ? 40 : 12, points: 0, fresh: 0 } };
+      const save = { version: 8, storySeen: true, runs: 12, story: { met: ['ivy'], beaten: ['matron'] }, candles: 0, best: 0, owned: ['survivor'], selected: 'survivor', tips: [], unlocks: { got: name === 'expert' ? 40 : 12, points: 0, fresh: 0 } };
       await page.goto('http://localhost:8123/');
       await page.evaluate((sv) => { localStorage.clear(); localStorage.setItem('ghostline-save', JSON.stringify(sv)); }, save);
       await page.reload();

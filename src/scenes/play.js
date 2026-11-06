@@ -19,6 +19,7 @@ import { TrickFeatures } from '../tricks.js';
 import { SetPieceFeatures } from '../setpieces.js';
 import { EndingFeatures } from '../ending.js';
 import { ScareFeatures } from '../scares.js';
+import { StoryFeatures } from '../story.js';
 
 const STEP = 1 / 120;
 const MAX_STEPS = 12;
@@ -146,6 +147,7 @@ export class PlayScene extends Phaser.Scene {
       if (this.worldX > 0) this.nextBanshee = 8;
     }
     this.endingInit(save); // v6 phase 3: the door at the end of world 8, endless mode (src/ending.js)
+    this.storyInit(save); // v8: allies and boss arenas (src/story.js, src/scenes/boss.js)
     this.featInit(save);
     this.scoreInit(save);
     this.runnerInit(); // v6: Milo runs, THE STRETCH chases (src/runner.js)
@@ -269,7 +271,7 @@ export class PlayScene extends Phaser.Scene {
     const airHold = holding && (!this.runner || this.flying);
     this.stepGhost(dt, this.runner ? this.flying : holding);
     this.stepZones();
-    if (this.runner) this.stepDoor();
+    if (this.runner) { this.stepDoor(); this.stepStory(); }
     if (!this.dead) {
       if (!this.runner || this.flying) { // the v5 hazards are the air traps
         this.spawner(meters, pace);
@@ -1025,4 +1027,4 @@ export class PlayScene extends Phaser.Scene {
   }
 }
 
-Object.assign(PlayScene.prototype, Features, ScoreFeatures, RunnerFeatures, TrickFeatures, SetPieceFeatures, EndingFeatures, ScareFeatures);
+Object.assign(PlayScene.prototype, Features, ScoreFeatures, RunnerFeatures, TrickFeatures, SetPieceFeatures, EndingFeatures, ScareFeatures, StoryFeatures);

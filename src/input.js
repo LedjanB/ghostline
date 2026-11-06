@@ -11,6 +11,7 @@ const KEYS = {
   up: ['UP', 'W'],
   down: ['DOWN', 'S'],
   slide: ['DOWN', 'S'],
+  light: ['E', 'J'], // v8: the ally power button (boss arenas)
 };
 // Standard gamepad mapping: 0 A, 1 B, 7 RT, 9 Start, 12-15 d-pad up/down/left/right
 const PAD = {
@@ -23,6 +24,7 @@ const PAD = {
   slide: [1, 13],
   left: [14],
   right: [15],
+  light: [2, 3],
 };
 
 // last device that sent input, shared by every scene so prompts stay consistent
@@ -55,7 +57,7 @@ export function prompt(action) {
 }
 
 // One per scene. Call update() at the top of the scene's update().
-export function createInput(scene) {
+export function createInput(scene, opts = {}) {
   const allCodes = [...new Set(Object.values(KEYS).flat())];
   const keys = scene.input.keyboard.addKeys(allCodes.join(','));
   const prev = {};
@@ -87,7 +89,8 @@ export function createInput(scene) {
   const ptrs = new Map();
   let tapLatch = false, swipeLatch = false;
   const SWIPE_PX = 22, HOLD_MS = 70;
-  scene.input.on('pointerdown', (p) => { if (!p.__ui) ptrs.set(p.id, { y0: p.y, t0: performance.now(), state: 'pending' }); });
+  // opts.pointers === false: the scene reads touch itself (the boss arena's two-thumb controls)
+  if (opts.pointers !== false) scene.input.on('pointerdown', (p) => { if (!p.__ui) ptrs.set(p.id, { y0: p.y, t0: performance.now(), state: 'pending' }); });
   scene.input.on('pointermove', (p) => {
     const s = ptrs.get(p.id);
     if (s && p.isDown && s.state !== 'swipe' && p.y - s.y0 > SWIPE_PX) { s.state = 'swipe'; swipeLatch = true; }

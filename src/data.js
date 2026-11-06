@@ -37,7 +37,8 @@ export const CAUSE_LINES = {
   crate: 'TRIPPED ON A CRATE.', ghoul: 'A GHOUL GOT IN THE WAY.', swing: 'THE SWING GOT YOU.', pit: 'YOU FELL IN A PIT.',
   gurney: 'RUN OVER BY A BED.', drawer: 'A DRAWER GOT YOU.', roots: 'TRIPPED ON THE ROOTS.', sinkhole: 'THE GROUND GAVE WAY.',
   vent: 'STEAMED.', chandelier: 'THE CHANDELIER GOT YOU.', cart: 'RUN OVER BY A CART.', eye: 'THE EYE SAW YOU.',
-  door: "THE DOOR NEEDS EVERY JOURNAL PAGE.", ending: 'YOU MADE IT THROUGH.',
+  door: "THE DOOR NEEDS EVERY JOURNAL PAGE.",
+  matron: 'LIGHTS OUT. SHE PUT YOU TO BED.', coroner: 'FILED.', ending: 'YOU MADE IT THROUGH.',
   'trick:reach': 'IT REACHED YOU.', 'trick:drawer': 'IT CAME OUT OF THE DRAWER.', 'trick:canopy': 'IT DROPPED FROM THE TREES.',
   'trick:burrow': 'IT CAME UP UNDER YOU.', 'trick:ceiling': 'IT WAS ON THE CEILING.', 'trick:skull': 'ITS FACE HIT YOU.', 'trick:ride': 'IT RODE YOU DOWN.',
 };

@@ -3,6 +3,7 @@ import { makeArt, makeAnims, makeArt2, makeAnims2 } from './art.js';
 import { makeZoneArt } from './zones.js';
 import { MenuScene } from './scenes/menu.js';
 import { PlayScene } from './scenes/play.js';
+import { BossScene } from './scenes/boss.js';
 import { OverScene } from './scenes/over.js';
 import { HudScene } from './scenes/hud.js';
 import { PauseScene } from './scenes/pause.js';
@@ -70,7 +71,7 @@ async function start() {
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     input: { activePointers: 3, gamepad: true },
     // draw order = list order: run, then HUD, then overlays on top
-    scene: [BootScene, StoryScene, MenuScene, PlayScene, HudScene, SpinScene, OverScene, PauseScene, MissionsScene, CharmsScene, SettingsScene, StatsScene, UnlocksScene],
+    scene: [BootScene, StoryScene, MenuScene, PlayScene, HudScene, BossScene, SpinScene, OverScene, PauseScene, MissionsScene, CharmsScene, SettingsScene, StatsScene, UnlocksScene],
   });
   window.__game = game;
 }

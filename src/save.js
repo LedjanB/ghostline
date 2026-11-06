@@ -2,7 +2,7 @@
 // migrate old saves, validate on load, keep a backup of the last good save.
 import { TRACK, HAT_IDS, TRAIL_IDS, owned as ownedUnlocks } from './unlocks.js';
 
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 const KEY = 'ghostline-save';
 const BACKUP_KEY = 'ghostline-save.bak';
 const LEGACY_KEY = 'ghostline-save-v1'; // v1 of the game stored here, without a version field
@@ -36,6 +36,8 @@ function defaults() {
     boo: { hat: 'none', trail: 'ecto' },
     // v7: the ending (seen once = the door stays open and endless mode unlocks)
     ending: { seen: false, runs: 0 },
+    // v8: the story of Vigil. allies met (each gives Milo a power), bosses beaten (fought until beaten once)
+    story: { met: [], beaten: [] },
     settings: { music: 0.8, sfx: 0.9, muted: false, shake: true, flicker: true, vibrate: true, contrast: false },
   };
 }
@@ -61,12 +63,15 @@ const MIGRATIONS = {
     return { ...old, version: 6, bestScore: 0, bestCombo: 0, unlocks: d.unlocks, boo: d.boo };
   },
   6: (old) => ({ ...old, version: 7, ending: { seen: false, runs: 0 } }),
+  7: (old) => ({ ...old, version: 8, story: old.story || { met: [], beaten: [] } }),
   3: (old) => {
     const d = defaults();
     return { ...old, version: 4, missions: d.missions, charms: d.charms, daily: d.daily, giftAt: 0 };
   },
 };
 
+export const STORY_ALLIES = ['ivy', 'ansel'];
+export const STORY_BOSSES = ['matron', 'coroner'];
 const CHARM_IDS = ['magnet', 'nightlight', 'lucky', 'headstart', 'bouncy', 'graverobber', 'ironlung', 'soulmagnet', 'longrush', 'luckyspin'];
 const strArr = (a) => (Array.isArray(a) ? a.filter((x) => typeof x === 'string') : []);
 const numMap = (o) => {
@@ -141,6 +146,10 @@ function validate(raw) {
     ending: {
       seen: !!s.ending?.seen,
       runs: isInt(s.ending?.runs) ? s.ending.runs : 0,
+    },
+    story: {
+      met: [...new Set(strArr(s.story?.met).filter((id) => STORY_ALLIES.includes(id)))],
+      beaten: [...new Set(strArr(s.story?.beaten).filter((id) => STORY_BOSSES.includes(id)))],
     },
     creative: {
       x: Number.isFinite(s.creative?.x) && s.creative.x >= 0 ? s.creative.x : 0,
