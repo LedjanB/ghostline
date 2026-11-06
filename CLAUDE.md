@@ -67,4 +67,7 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 Serve the folder (`python -m http.server 8000`) and open http://localhost:8000.
 Debug: `window.__game` exposes the Phaser game.
 Automated: `npm test` (Playwright, `tests/ghostline.spec.js`; set `CHROME_PATH` to use a system Chrome).
+AI testers (they cost the most tokens, images are expensive): by default ONE tester on the `sonnet` model, shown ONLY the screenshots
+of what changed (use `ONLY=` / the phase args of the shot scripts), once at the end of a round, not after every fix. All three testers
+on every screenshot only at a roadmap gate (end of a phase), or when the user asks.
 Store: `npm run build:itch` makes `dist/ghostline-itch.zip`; `scripts/screenshots.mjs` refreshes `docs/store/`; shipping steps in `docs/SHIPPING.md`.
