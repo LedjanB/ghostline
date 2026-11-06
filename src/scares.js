@@ -125,11 +125,11 @@ export const ScareFeatures = {
     // phase 4c: you can SEE the hush. The edges close in (under Milo and THE STRETCH), then let go after the hit
     const close = k < 0 ? ease(t / h) : 1 - ease(k / 0.35);
     if (close > 0) {
-      const a = 0.13 * close;
-      D.fillStyle(0x020205, a);
-      for (let i = 1; i <= 8; i++) {
-        D.fillRect(0, CEIL, W, i * 12 * close); D.fillRect(0, FLOOR - i * 8 * close, W, i * 8 * close);
-        D.fillRect(0, CEIL, i * 22 * close, FLOOR - CEIL); D.fillRect(W - i * 22 * close, CEIL, i * 22 * close, FLOOR - CEIL);
+      D.fillStyle(0x0a0814, 0.45 * close); D.fillRect(0, CEIL, W, FLOOR - CEIL); // the whole room dims and loses its color
+      D.fillStyle(0x020205, 0.2 * close);
+      for (let i = 1; i <= 8; i++) { // and the dark closes in hard from the edges
+        D.fillRect(0, CEIL, W, i * 14 * close); D.fillRect(0, FLOOR - i * 9 * close, W, i * 9 * close);
+        D.fillRect(0, CEIL, i * 30 * close, FLOOR - CEIL); D.fillRect(W - i * 30 * close, CEIL, i * 30 * close, FLOOR - CEIL);
       }
     }
     switch (s.id) {
@@ -174,7 +174,7 @@ export const ScareFeatures = {
       case 'woods': {
         // the woods go black, then a hundred eyes open at once, all turned to you; they blink out in a wave
         const dark = ease(t / 0.5) * out;
-        B.fillStyle(0x020205, 0.85 * dark); B.fillRect(0, CEIL, W, FLOOR - CEIL);
+        D.fillStyle(0x020205, 0.95 * dark); D.fillRect(0, CEIL, W, FLOOR - CEIL); // over the woods (the trees' own glow too)
         if (k >= 0) {
           let a = s.seed;
           const rnd = () => { a = (a * 9301 + 49297) % 233280; return a / 233280; };
@@ -182,9 +182,9 @@ export const ScareFeatures = {
             const ex = rnd() * W, ey = CEIL + 10 + rnd() * (FLOOR - CEIL - 60), gone = k > 1.0 + (ex / W) * 0.6;
             if (gone) continue;
             const look = ex > PLAYER_X ? -1 : 1, open = ease(k / 0.06);
-            B.fillStyle(rnd() < 0.2 ? 0xff3a4a : 0xfff2b0, 0.95);
-            B.fillRect(ex, ey, 4, 3 * open); B.fillRect(ex + 9, ey, 4, 3 * open);
-            B.fillStyle(0x020205, 1); B.fillRect(ex + 1 + look, ey, 2, 2 * open); B.fillRect(ex + 10 + look, ey, 2, 2 * open);
+            D.fillStyle(rnd() < 0.2 ? 0xff3a4a : 0xfff2b0, 0.95);
+            D.fillRect(ex, ey, 4, 3 * open); D.fillRect(ex + 9, ey, 4, 3 * open);
+            D.fillStyle(0x020205, 1); D.fillRect(ex + 1 + look, ey, 2, 2 * open); D.fillRect(ex + 10 + look, ey, 2, 2 * open);
           }
         }
         break;
@@ -221,11 +221,13 @@ export const ScareFeatures = {
         B.fillStyle(0x07060d, 0.4 * ease(t / 0.6) * out); B.fillRect(0, CEIL, W, FLOOR - CEIL);
         for (let r = 0; r < 3; r++) for (let c = 0; c < 21; c++) {
           const x = x0 + c * 34 + (r % 2) * 17, y = CEIL + 70 + r * 34;
-          B.fillStyle(0xd8d0bc, 0.55 * out); B.fillCircle(x, y, 11); B.fillRect(x - 6, y + 6, 12, 8);
           const lit = k >= 0 && k < 1.3;
-          const look = Math.sign(PLAYER_X - x) * (lit ? 2 : 0), dn = lit ? 1 : 0;
+          const turn = lit ? Math.sign(PLAYER_X - x) * 4 : 0; // they all turn their heads toward you
+          B.fillStyle(0xd8d0bc, (lit ? 0.85 : 0.55) * out); B.fillCircle(x + turn, y, 12); B.fillRect(x - 6 + turn * 1.3, y + 6, 12, 9);
+          const look = turn * 0.8, dn = lit ? 1 : 0;
+          if (lit) { B.fillStyle(0xff3a4a, 0.25); B.fillCircle(x - 3 + look, y + dn, 8); B.fillCircle(x + 5 + look, y + dn, 8); } // the glow
           B.fillStyle(lit ? 0xff3a4a : 0x07060d, lit ? 1 : 0.8 * out);
-          B.fillRect(x - 6 + look, y - 3 + dn, 4, 4); B.fillRect(x + 2 + look, y - 3 + dn, 4, 4);
+          B.fillRect(x - 7 + look, y - 4 + dn, 6, 6); B.fillRect(x + 2 + look, y - 4 + dn, 6, 6);
         }
         break;
       }

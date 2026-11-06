@@ -454,13 +454,14 @@ test('phase 4: THE STRETCH changes as it gets closer (far, middle, near)', async
   const errors = await startRun(page, {});
   const r = await play(page, (s) => {
     s.openingDone = true; s.started = true; s.nextTrapX = s.worldX + 1e6;
-    const at = (gap) => { s.gap = gap; s.lastStumble = -99; s.catchUpT = 0; for (let i = 0; i < 30; i++) { s.invuln = 1e9; s.step(1 / 120, false); } s.render(0); return { st: s.stretchSt, anim: s.stretch.anims.currentAnim.key }; };
+    const at = (gap) => { s.gap = gap; s.lastStumble = -99; s.catchUpT = 0; for (let i = 0; i < 90; i++) { s.invuln = 1e9; s.step(1 / 120, false); if (i % 10 === 0) s.render(0); } s.render(0); return { st: s.stretchSt, anim: s.stretch.anims.currentAnim.key, booAhead: s.ghostX > 150 }; };
     return [at(118), at(70), at(34)];
   });
   expect(r.map((x) => x.st)).toEqual(['f', 'm', 'n']);
   expect(r[0].anim).toBe('stretch_walk');
   expect(r[1].anim).toBe('stretch_walk_m');
   expect(r[2].anim).toBe('stretch_walk_n');
+  expect(r.map((x) => x.booAhead)).toEqual([false, false, true]); // Boo gets out of the way when it's close
   expect(errors).toEqual([]);
 });
 

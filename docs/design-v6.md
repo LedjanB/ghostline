@@ -142,6 +142,10 @@ AI testers after phase 3: 7, 6.5, 7 out of 10, all would run again. Phase 4 fixe
 - **Round 4**: every journal page has its own pencil drawing (`drawJournalPage` in ending.js); the ending shows the twelve
   first, then they turn one by one into the pieces of the ward picture. The carnival clown is long, lopsided, with a grin
   wider than its face. Every hush is visible: the dark closes in from the edges, then lets go after the hit.
+- **Round 5** (testers 8, 8, 8): the hush dims and drains the whole room, not just the edges; the woods go fully black under the
+  eyes; the catacomb skulls turn their heads and their eyes glow; the ending close-up fills the screen; the ward lines sit up top,
+  clear of Milo; at the near stage Boo flees up and ahead so the gap reads, and THE STRETCH looms 35% bigger.
+  Still open: the top HUD is busy on a phone (distance, candles, meter, BOO letters, score, combo, weapon).
 
 ## Open questions
 - The creature's final name and look

@@ -327,6 +327,7 @@ export class PlayScene extends Phaser.Scene {
     let tx, ty;
     if (holding) { tx = PLAYER_X - 4; ty = this.py - 46 + Math.sin(this.clock * 9) * 2; }
     else { tx = PLAYER_X - 20; ty = this.py - 40 + Math.sin(this.clock * 3) * 4; }
+    if (this.runner && this.stretchSt === 'n' && !holding) { tx = PLAYER_X + 18; ty = this.py - 74 + Math.sin(this.clock * 5) * 3; } // phase 4: Boo flees up and ahead when it's close, so you can read the gap
     const k = 1 - Math.exp(-14 * dt);
     this.ghostX += (tx - this.ghostX) * k;
     this.ghostY += (ty - this.ghostY) * k;

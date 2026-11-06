@@ -199,8 +199,8 @@ export const EndingFeatures = {
       const T = END_T;
       for (let i = 0; i < ENDING_LINES.length; i++) if (f.said === i && f.t > ENDING_LINES[i][0]) {
         f.said++;
-        const dark = ENDING_LINES[i][0] >= T.face && ENDING_LINES[i][0] < T.ward;
-        this.endLine(ENDING_LINES[i][1], dark ? '#ece8f2' : '#2a1f4a', dark ? '#07060d' : '#fff6d8');
+        const at = ENDING_LINES[i][0], dark = at >= T.face && at < T.ward;
+        this.endLine(ENDING_LINES[i][1], dark ? '#ece8f2' : '#2a1f4a', dark ? '#07060d' : '#fff6d8', 16, at >= T.ward ? 74 : H - 36); // in the ward: up top, clear of Milo
       }
       if (f.t > T.pages && !f.pagesIn) { f.pagesIn = true; Audio.sfx('unlock'); }
       if (f.t > T.face && !f.faceIn) { f.faceIn = true; Audio.sfx('breath', { v: 1 }); Audio.hush(1.6); }
@@ -367,7 +367,7 @@ export const EndingFeatures = {
       const lit = clamp((t - 11.4) / 0.25);
       g.fillStyle(0x020205, 1); g.fillRect(0, 0, W, H);
       const jit = lit < 1 ? (Math.random() - 0.5) * 3 : 0;
-      const sc = 5.5 + k * 3 - lit * 1.5; // the face is 26 px tall: up to ~220 px
+      const sc = 9 + k * 3 - lit * 2; // the face is 26 px tall: it fills the screen, the biggest it ever gets
       this.endFace.setTexture(lit > 0.5 ? 'stretch_face_lit' : 'stretch_face').setScale(sc).setPosition(W / 2 + jit - (1 - clamp(k * 4)) * 200, H / 2 - 24 + jit)
         .setAlpha(clamp(k * 5) * (1 - clamp((t - 12.6) / 1.0))).setVisible(true);
       if (t > 11.2) { // the light: a wedge from the right, from the open door
