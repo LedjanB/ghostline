@@ -145,10 +145,17 @@ export const ScareFeatures = {
         B.fillStyle(0x6a7a88, out); B.fillRect(x - 70, y + 18, 140, 8); B.fillRect(x - 64, y + 26, 6, 40); B.fillRect(x + 58, y + 26, 6, 40); // the slab
         B.fillStyle(0xdfe6ea, out);
         B.fillRect(x - 64, y + 6, 128, 13);                       // the sheet, lying flat
-        if (up > 0) {
-          B.fillRect(x - 64, y + 6 - 120 * up, 46, 126 * up);        // sitting bolt upright (sheet over the head), taller than Milo
-          B.fillCircle(x - 41, y + 4 - 124 * up, 26 * up);
-          if (up >= 1) { B.fillStyle(0xff3a4a, 1); B.fillRect(x - 54, y - 126, 7, 6); B.fillRect(x - 36, y - 126, 7, 6); }
+        if (up > 0) { // a body under a sheet, sitting bolt upright: head tilted, shoulders, the sheet draped to the slab
+          const top = y + 6 - 118 * up, hx = x - 36, sh = 0x9aa6b0;
+          B.fillStyle(0xdfe6ea, out);
+          B.fillTriangle(x - 78, y + 19, x - 4, y + 19, x - 40, top + 30);          // the drape, wide at the slab
+          B.fillRect(x - 64, top + 30, 48, y + 19 - top - 30);                      // the torso
+          B.fillRect(x - 70, top + 26, 60, 14);                                     // the shoulders
+          B.fillCircle(hx, top + 6, 20 * up);                                       // the head, tilted to one side
+          B.fillTriangle(hx - 20, top + 10, hx + 20, top + 6, hx - 6, top + 34);    // where the sheet hangs off the chin
+          B.lineStyle(2, sh, out);                                                  // the sheet's folds
+          B.lineBetween(x - 56, top + 40, x - 70, y + 18); B.lineBetween(x - 42, top + 42, x - 46, y + 18); B.lineBetween(x - 26, top + 40, x - 12, y + 18);
+          if (up >= 1) { B.fillStyle(0xff3a4a, 1); B.fillRect(hx - 11, top + 1, 6, 5); B.fillRect(hx + 4, top - 1, 6, 5); } // eyes, through the cloth
         } else {
           B.fillCircle(x - 50, y + 6, 9);                          // the head, under the sheet
         }

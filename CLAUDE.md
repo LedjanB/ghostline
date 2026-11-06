@@ -32,7 +32,7 @@ Engine skills: `phaser-core`, `phaser-arcade-physics`.
 - `src/ending.js` (phase 3) the door at the end of world 8 (needs every journal page), the ending scene, endless mode (`save.ending.seen`, mode `endless`)
 - `src/scares.js` (phase 4) one scare per world (`SCARES`): hush, sting, release; waits for a clear screen (`scareHold` stops the spawner), never hurts you
 - `scripts/bot.mjs` bot players (casual, regular, expert): `node scripts/bot.mjs 6 all` for full runs, `--pieces` for each world's flight
-- `src/runner-art.js` THE STRETCH (3 stages by distance: `_m`, `_n` frames via `hungry()`), its big ending face `stretch_face`, ground and world traps, weapons, HUD face icon (pixel art)
+- `src/runner-art.js` THE STRETCH (3 stages by distance: `_m`, `_n` frames via `hungry()`; near stays upright), its big ending face `stretch_face`, ground and world traps, weapons, HUD face icon (pixel art)
 - `scripts/phase3-shots.mjs`, `scripts/phase4-shots.mjs` screenshots for the AI testers
 
 ## Rules

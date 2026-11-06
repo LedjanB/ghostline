@@ -1497,7 +1497,7 @@ export const RunnerFeatures = {
     }
     const near = 1 - this.light;
     this.renderEdge(near);
-    const fast = this.catchUpT > 0 || this.clock - this.lastStumble < 1.2 || near > 0.6 || this.dead;
+    const fast = this.catchUpT > 0 || this.clock - this.lastStumble < 1.2 || this.dead; // near stays UPRIGHT: tall, grin open (on all fours it read smaller)
     // phase 4: it looks and moves differently as it closes in. Far: upright, slow, half lost in the dark.
     // Middle: red pupils, quicker, its head twitches. Near: on all fours, the grin wide open, it jitters.
     const stage = this.stretchStage(near);
@@ -1519,7 +1519,7 @@ export const RunnerFeatures = {
     const x = Phaser.Math.Linear(-60, target, enter) + lunge + sway + tw * 5 + jit;
     s.setVisible(true).setPosition(Math.round(x), FLOOR + 2 + (fast ? 0 : Math.sin(this.clock * 14) * 1.5));
     s.setRotation(tw * 0.07 + (stage === 'n' ? (Math.random() - 0.5) * 0.03 : 0));
-    const grow = 1 + 0.1 * near + (stage === 'n' ? 0.15 : 0); // it looms as it gets closer (on all fours it would read smaller)
+    const grow = 1 + 0.1 * near + (stage === 'n' ? 0.2 : 0); // it looms as it gets closer (on all fours it would read smaller)
     s.setScale(STRETCH_SCALE * grow, (fast ? STRETCH_SCALE : STRETCH_SCALE + Math.sin(this.clock * 7) * 0.05) * grow); // a slight, wrong breathing stretch
   },
 };

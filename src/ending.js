@@ -304,14 +304,17 @@ export const EndingFeatures = {
       this.endFace.setTexture(lit > 0.5 ? 'stretch_face_lit' : 'stretch_face').setScale(sc).setPosition(W / 2 + jit - (1 - clamp(k * 4)) * 200, H / 2 - 24 + jit)
         .setAlpha(clamp(k * 5) * (1 - clamp((t - 12.6) / 1.0))).setVisible(true);
       if (t > 11.2) { // the light: a wedge from the right, from the open door
-        const w = W * clamp((t - 11.2) / 0.3);
-        g.fillStyle(0xfff6d8, 0.85); g.fillRect(W - w, 0, w, H);
-        g.fillStyle(0xfff6d8, 0.35); g.fillRect(W - w - 40, 0, 40, H);
+        const w = W * 0.42 * clamp((t - 11.2) / 0.3); // a beam from the right, not a flood: the dark stays around it
+        g.fillStyle(0xfff6d8, 0.9); g.fillTriangle(W, 0, W, H, W - w, H / 2);
+        g.fillStyle(0xfff6d8, 0.3); g.fillTriangle(W, -60, W, H + 60, W - w - 60, H / 2);
       }
-      if (lit > 0) { // it cracks in the light
-        g.lineStyle(4, 0x07060d, lit * (1 - clamp((t - 12.6) / 1.0)));
+      if (lit > 0) { // it cracks in the light (drawn OVER the face), and splinters
+        const C = this.endTop, fade = 1 - clamp((t - 12.6) / 1.0);
+        C.lineStyle(Math.max(2, sc * 0.7), 0x07060d, lit * fade);
         const cx = W / 2 + sc, cy = H / 2 - 24 - 11 * sc;
-        g.lineBetween(cx, cy, cx - 10, cy + 40 * lit); g.lineBetween(cx - 10, cy + 40 * lit, cx + 8, cy + 80 * lit); g.lineBetween(cx + 8, cy + 80 * lit, cx - 4, cy + 120 * lit);
+        C.lineBetween(cx, cy, cx - 10, cy + 40 * lit); C.lineBetween(cx - 10, cy + 40 * lit, cx + 8, cy + 80 * lit); C.lineBetween(cx + 8, cy + 80 * lit, cx - 4, cy + 120 * lit);
+        C.lineBetween(cx - 10, cy + 40 * lit, cx - 40 * lit, cy + 60 * lit); C.lineBetween(cx + 8, cy + 80 * lit, cx + 44 * lit, cy + 100 * lit);
+        if (t > 12.0) { C.fillStyle(0xece8f2, fade); for (let i = 0; i < 10; i++) { const a = i * 0.63, r = (t - 12.0) * 260; C.fillRect(cx + Math.cos(a) * r, cy + 80 + Math.sin(a) * r * 0.7, 6, 6); } } // shards
       }
     } else if (this.endFace) { this.endFace.destroy(); this.endFace = null; }
     // THE WARD, lit up: it comes out of the dark, the lamps come on one by one, Boo waves and floats away

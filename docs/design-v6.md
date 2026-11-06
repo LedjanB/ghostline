@@ -136,6 +136,10 @@ AI testers after phase 3: 7, 6.5, 7 out of 10, all would run again. Phase 4 fixe
 - **Round 2** (testers 7.5, 7.5, 7.5 on the first pass): nothing talks over a scare; the big face is tall and narrow (18 x 26),
   not round; the graveyard hand is pixel art; the meter now fills toward red as it gets CLOSER (the old shrinking bar read as
   "safer"); far = dark silhouette; the journal picture warms from sepia with Boo in a lit window.
+- **Round 3** (testers 8, 8, 7.5): the near stage stays upright (on all fours it read smaller and cuter) and is 20% bigger;
+  the morgue body has shoulders, a tilted head and a draped sheet; the ending's light is a beam, and the crack and shards
+  draw over the face. Still open: the journal pages show slices of the ward, not their own content; the carnival clown
+  reads cute; the hush has little visible build-up (mostly audio).
 
 ## Open questions
 - The creature's final name and look

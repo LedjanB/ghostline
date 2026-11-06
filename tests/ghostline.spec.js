@@ -460,7 +460,7 @@ test('phase 4: THE STRETCH changes as it gets closer (far, middle, near)', async
   expect(r.map((x) => x.st)).toEqual(['f', 'm', 'n']);
   expect(r[0].anim).toBe('stretch_walk');
   expect(r[1].anim).toBe('stretch_walk_m');
-  expect(r[2].anim).toBe('stretch_crawl_n');
+  expect(r[2].anim).toBe('stretch_walk_n');
   expect(errors).toEqual([]);
 });
 
