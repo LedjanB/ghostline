@@ -133,6 +133,9 @@ AI testers after phase 3: 7, 6.5, 7 out of 10, all would run again. Phase 4 fixe
   catacombs THEY TURN (every skull), carnival JACK, the Other Side DON'T TURN AROUND (its face, full screen, a blink).
 - **THE STRETCH changes with distance**: far (upright, slow, half in the dark), middle (red pupils, quicker, it twitches, clicking joints),
   near (on all fours, the grin wide open, a crack, it jitters and lurches, a hiss). It looms as it closes in; the HUD face follows.
+- **Round 2** (testers 7.5, 7.5, 7.5 on the first pass): nothing talks over a scare; the big face is tall and narrow (18 x 26),
+  not round; the graveyard hand is pixel art; the meter now fills toward red as it gets CLOSER (the old shrinking bar read as
+  "safer"); far = dark silhouette; the journal picture warms from sepia with Boo in a lit window.
 
 ## Open questions
 - The creature's final name and look

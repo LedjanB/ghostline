@@ -300,7 +300,7 @@ export const EndingFeatures = {
       const lit = clamp((t - 11.4) / 0.25);
       g.fillStyle(0x020205, 1); g.fillRect(0, 0, W, H);
       const jit = lit < 1 ? (Math.random() - 0.5) * 3 : 0;
-      const sc = 7 + k * 4 - lit * 2;
+      const sc = 5.5 + k * 3 - lit * 1.5; // the face is 26 px tall: up to ~220 px
       this.endFace.setTexture(lit > 0.5 ? 'stretch_face_lit' : 'stretch_face').setScale(sc).setPosition(W / 2 + jit - (1 - clamp(k * 4)) * 200, H / 2 - 24 + jit)
         .setAlpha(clamp(k * 5) * (1 - clamp((t - 12.6) / 1.0))).setVisible(true);
       if (t > 11.2) { // the light: a wedge from the right, from the open door
@@ -310,7 +310,7 @@ export const EndingFeatures = {
       }
       if (lit > 0) { // it cracks in the light
         g.lineStyle(4, 0x07060d, lit * (1 - clamp((t - 12.6) / 1.0)));
-        const cx = W / 2, cy = H / 2 - 24 - 9 * sc;
+        const cx = W / 2 + sc, cy = H / 2 - 24 - 11 * sc;
         g.lineBetween(cx, cy, cx - 10, cy + 40 * lit); g.lineBetween(cx - 10, cy + 40 * lit, cx + 8, cy + 80 * lit); g.lineBetween(cx + 8, cy + 80 * lit, cx - 4, cy + 120 * lit);
       }
     } else if (this.endFace) { this.endFace.destroy(); this.endFace = null; }

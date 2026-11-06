@@ -34,7 +34,8 @@ export const ScareFeatures = {
     this.scareFront = this.add.graphics().setDepth(9.2);   // things by Milo that never touch him
     this.scareTop = this.add.graphics().setDepth(26);      // the full-screen blink
     this.scareFace = this.add.image(W / 2, H / 2, 'stretch_face').setDepth(4.475).setVisible(false);
-    this.events.once('shutdown', () => this.scareFace.destroy());
+    this.scareHand = this.add.image(0, 0, 'grave_hand_open').setOrigin(0.5, 1).setScale(4.5).setDepth(10.5).setVisible(false);
+    this.events.once('shutdown', () => { this.scareFace.destroy(); this.scareHand.destroy(); });
   },
 
   // returns true while a scare runs (tricks and the spawner wait)
@@ -75,7 +76,7 @@ export const ScareFeatures = {
     this.clearHeadline(); this.clearMessages(); this.quietUntil = this.clock + def.len; // nothing talks over a scare
     if (id === 'ward') Audio.sfx('powerdown');
     if (id === 'morgue' || id === 'catacombs') Audio.sfx('creak');
-    if (id === 'otherside') this.time.delayedCall(250, () => { if (this.scare?.id === 'otherside') { Audio.sfx('whisper'); this.scareWhisper(); } });
+    if (id === 'otherside') this.time.delayedCall(250, () => { if (this.scare?.id === 'otherside' && !this.scare.hit) { Audio.sfx('whisper'); this.scareWhisper(); } });
     this.tracker?.add('scares', 1);
   },
 
@@ -88,6 +89,7 @@ export const ScareFeatures = {
   },
 
   scareHit(s) {
+    this.clearMessages(); // the hit has the screen to itself (Boo's whisper too)
     Audio.sfx(s.id === 'carnival' ? 'honk' : 'sting');
     if (s.id === 'carnival') this.time.delayedCall(90, () => Audio.sfx('sting'));
     this.shake(s.id === 'otherside' || s.id === 'graveyard' ? 260 : 180, s.id === 'otherside' ? 0.012 : 0.007);
@@ -114,7 +116,7 @@ export const ScareFeatures = {
     const s = this.scare;
     const B = this.scareBack, D = this.scareDim, F = this.scareFront, T = this.scareTop;
     B.clear(); D.clear(); F.clear(); T.clear();
-    this.scareFace.setVisible(false);
+    this.scareFace.setVisible(false); this.scareHand.setVisible(false);
     if (!s) return;
     const t = s.t, h = s.def.hush, k = t - h; // k < 0: the hush; k >= 0: after the hit
     const out = Math.max(0, Math.min(1, (s.def.len - t) / 0.5)); // fade at the end
@@ -130,7 +132,7 @@ export const ScareFeatures = {
         D.fillStyle(0x020205, dark * 0.92 * out); D.fillRect(0, CEIL, W, FLOOR - CEIL);
         if (k >= 0 && k < 0.85) {
           const lit = flick ? Math.floor(k * 14) % 3 === 0 : true;
-          this.scareFace.setTexture('stretch_face').setScale(11).setPosition(W * 0.66, CEIL + 120).setAlpha(lit ? 1 : 0.35).setVisible(true).setDepth(8.95);
+          this.scareFace.setTexture('stretch_face').setScale(9).setPosition(W * 0.66, CEIL + 128).setAlpha(lit ? 1 : 0.35).setVisible(true).setDepth(8.95);
           B.fillStyle(0x1a2a3a, 0.6); B.fillRect(W * 0.66 - 150, CEIL + 10, 300, 230); // the window it's behind
         }
         break;
@@ -172,20 +174,13 @@ export const ScareFeatures = {
       }
       case 'graveyard': {
         // dirt shivers behind your heels; then a huge hand bursts up, grabs at your ankle, closes on air
-        const hx = PLAYER_X - 30;
+        const hx = PLAYER_X - 46; // right behind his heels, never over him
         D.fillStyle(0x07060d, 0.35 * ease(t / 0.6) * out); D.fillRect(0, CEIL, W, FLOOR - CEIL);
         if (k < 0) { F.fillStyle(0x4a3a2a, 1); for (let i = 0; i < 5; i++) F.fillRect(hx - 12 + i * 6 + Math.sin(t * 40 + i) * 2, FLOOR - 3 - (i % 2) * 2, 4, 3); break; }
-        const rise = ease(k / 0.12), close = ease((k - 0.25) / 0.15), sink = ease((k - 0.9) / 0.5);
-        const top = FLOOR - 120 * rise * (1 - sink), z = 1.6; // big: it should be bigger than Milo
-        F.fillStyle(0x8ea08a, out);
-        F.fillRect(hx - 10 * z, top + 20 * z, 20 * z, FLOOR - top - 20 * z);       // the wrist
-        F.fillRect(hx - 16 * z, top + 6 * z, 32 * z, 18 * z);                     // the palm
-        for (let i = 0; i < 4; i++) {                                             // the fingers, curling shut
-          const fx = hx - 15 * z + i * 8 * z, len = 22 * z * (1 - close * 0.7);
-          F.fillRect(fx + close * (i < 2 ? 5 : -5), top + 6 * z - len, 6 * z, len);
-        }
-        F.fillRect(hx + 16 * z - close * 8, top + 10 * z, 10 * z, 6 * z);          // the thumb
-        F.fillStyle(0x07060d, out * 0.5); F.fillRect(hx - 6 * z, top + 12 * z, 3 * z, 8 * z); F.fillRect(hx + 4 * z, top + 12 * z, 3 * z, 8 * z); // knuckle shadows
+        const rise = ease(k / 0.1), sink = ease((k - 0.9) / 0.5);
+        // pixel art, 4.5x: ~90 px, twice Milo. It rises out of the floor (the floor band covers what's below)
+        this.scareHand.setTexture(k < 0.3 ? 'grave_hand_open' : 'grave_hand_shut')
+          .setPosition(hx + (k < 0.3 ? 0 : 3), FLOOR + 22 * 4.5 * (1 - rise + sink) - 8).setAlpha(out).setVisible(true);
         F.fillStyle(0x4a3a2a, out); F.fillRect(hx - 34, FLOOR - 5, 68, 5);          // the broken ground
         break;
       }
@@ -244,7 +239,7 @@ export const ScareFeatures = {
         D.fillStyle(0x020205, 0.55 * ease(t / 0.8) * out); D.fillRect(0, CEIL, W, FLOOR - CEIL);
         if (k >= 0 && k < 0.22) {
           T.fillStyle(0x020205, 1); T.fillRect(0, 0, W, H);
-          this.scareFace.setTexture('stretch_face').setScale(16).setPosition(W / 2, H / 2 + 10 - k * 40).setAlpha(1).setDepth(26.5).setVisible(true);
+          this.scareFace.setTexture('stretch_face').setScale(15).setPosition(W / 2, H / 2 + 40 - k * 40).setAlpha(1).setDepth(26.5).setVisible(true);
         }
         break;
       }

@@ -394,28 +394,50 @@ function STRETCH_ICON_ROWS() { return [
 
 
 // the ending close-up: THE STRETCH's porcelain face, 24 x 20, a crack, red pin-prick pupils, the grin
-const FACE_BIG = [
-  '.......FFFFFFFFFF.......',
-  '.....FFFFFFFFFFFFFF.....',
-  '....FFFFFFFFCFFFFFFF....',
-  '...FFFFFFFFFCFFFFFFFF...',
-  '..FFFEEEEFFFCCFEEEEFFF..',
-  '..FFEEEEEEFFFCEEEEEEFF..',
-  '.FFFEEEEEEFFFFEEEEEEFFF.',
-  '.FFFEEEEREFFFFERAEEEFFF.',
-  '.FFFFEEEEFFFFFFEEEEFFFF.',
-  '.FFFFFFFFFFFFFFFFFFFFFF.',
-  '.GFFFFFFFFFGGFFFFFFFFFG.',
-  'FFEEEEEEEEEEEEEEEEEEEEFF',
-  'FEETTETTETTETTETTETTEEFF',
-  'FEETTETTETTETTETTETTEEF.',
-  '.FEEEEEEEEEEEEEEEEEEEEF.',
-  '.FEETTETTETTETTETTETEF..',
-  '..FEEEEEEEEEEEEEEEEEF...',
-  '...GFFFFFFFFFFFFFFFG....',
-  '.....GFFFFFFFFFFFG......',
-  '........GGGGGGG.........',
+const FACE_BIG = [ // phase 4b: tall and narrow, like the rest of it (18 x 26): high hollow eyes, a crack, a long jaw
+  '......FFFFFF......',
+  '....FFFFFFFFFF....',
+  '...FFFFFFFCFFFF...',
+  '..FFFFFFFFCFFFFF..',
+  '..FFFFFFFFFCFFFF..',
+  '.FFFFFFFFFFCFFFFF.',
+  '.FFFFFFFFFFFFFFFF.',
+  '.FEEEEFFFFFFEEEEF.',
+  '.FEEEEEFFFFEEEEEF.',
+  '.FEEEREFFFFEREEEF.',
+  '.FEEEEEFFFFEEEEEF.',
+  '.GFEEEFFFFFFEEEFG.',
+  '.GFFFFFFFFFFFFFFG.',
+  '..GFFFFFEEFFFFFG..',
+  '..GFFFFFFFFFFFFG..',
+  '..GFFFFFFFFFFFFG..',
+  '..FEEEEEEEEEEEEF..',
+  '..FETETETETETETF..',
+  '..FEEEEEEEEEEEEF..',
+  '..FEEEEEEEEEEEEF..',
+  '...FEEEEEEEEEEF...',
+  '...FETETETETETF...',
+  '...GFEEEEEEEEFG...',
+  '....GFFFFFFFFG....',
+  '.....GFFFFFFG.....',
+  '......GGGGGG......',
 ];
+// the graveyard scare's hand (14 x 20): open (clawing up) and shut (closing on air)
+const HAND_WRIST = [
+  '....SSSSSS....', '....SSSDSS....', '....SSSSSS....', '....SSSSSS....', '....SDSSSS....', '....SSSSSS....',
+  '..MMSSSSSSMM..', '.MMMMMMMMMMMM.',
+];
+const HAND_OPEN = [
+  '.N..N..N...N..', '.S..S..S...S..', '.S..S..S...S..', '.SD.SD.SD..SD.', '.SS.SS.SS..SS.', '.SS.SS.SS.SS..',
+  '..SSSSSSSSSS..', '..SSDSSDSSSSSN', '..SSSSSSSSSSS.', '..SSSSSSSSSS..', '...SSSSSSSS...', '...SDSSSSSS...',
+  ...HAND_WRIST,
+];
+const HAND_SHUT = [
+  '..............', '..............', '..............', '..............', '...SSSSSSSS...', '..SSDSSDSSDS..',
+  '..SSSSSSSSSS..', '..SNSNSNSNSS..', '..SSSSSSSSSSS.', '..SSSSSSSSSSN.', '...SSSSSSSS...', '...SDSSSSSS...',
+  ...HAND_WRIST,
+];
+const HAND_PAL = { S: '#9fb39a', D: '#5e6e58', N: '#e8dcc0', M: '#4a3a2a' };
 
 export function makeRunnerArt(scene) {
   px(scene, 'stretch_walk0', [...HEAD, ...TORSO, ...LEGS0], STRETCH_PAL);
@@ -453,6 +475,8 @@ export function makeRunnerArt(scene) {
   }
   // the ending close-up: its face, big (2x the head rows, hand-drawn so it reads at full screen)
   px(scene, 'stretch_face', FACE_BIG, STRETCH_PAL);
+  px(scene, 'grave_hand_open', HAND_OPEN, HAND_PAL);
+  px(scene, 'grave_hand_shut', HAND_SHUT, HAND_PAL);
   px(scene, 'stretch_face_lit', FACE_BIG.map((r) => r.replace(/R/g, 'E')), { ...STRETCH_PAL, F: '#fff6d8', G: '#e8d8b0', C: '#c0a878' });
 }
 

@@ -158,15 +158,24 @@ export class HudScene extends Phaser.Scene {
     g.clear();
     g.fillStyle(0x07060d, 1); g.fillRect(332, 11, 132, 14);
     g.fillStyle(0x3a2a1a, 1); g.fillRect(334, 13, 128, 10);
-    // v6 runner: the bar is how far back THE STRETCH is (full = safe), and it turns red as it closes in
-    const col = !this.runner ? (blink ? 0xff4040 : 0xffb040) : blink ? 0xff4040 : v > 0.6 ? 0x9fd0ff : v > 0.3 ? 0xffb040 : 0xff6a5a;
-    if (this.runner && this.strike !== null && this.strike !== undefined) { // red frame + a shrinking timer: the next stumble is fatal
-      g.fillStyle(0xff4040, 1); g.fillRect(330, 9, 136, 18);
-      g.fillStyle(0x07060d, 1); g.fillRect(332, 11, 132, 14);
-      g.fillStyle(0xff6a5a, 1); g.fillRect(334, 27, Math.round(128 * this.strike), 3);
+    // phase 4b (runner): the bar is how CLOSE it is. It fills from its face toward the right and goes
+    // grey, then orange, then red. Fuller and redder = worse (testers read the old shrinking bar as "safer").
+    if (this.runner) {
+      const c = 1 - v;
+      const col = blink ? 0xff4040 : c < 0.35 ? 0x8a8298 : c < 0.65 ? 0xffb040 : 0xff3a4a;
+      if (this.strike !== null && this.strike !== undefined) { // red frame + a shrinking timer: the next stumble is fatal
+        g.fillStyle(0xff4040, 1); g.fillRect(330, 9, 136, 18);
+        g.fillStyle(0x07060d, 1); g.fillRect(332, 11, 132, 14);
+        g.fillStyle(0xff6a5a, 1); g.fillRect(334, 27, Math.round(128 * this.strike), 3);
+      }
+      g.fillStyle(0x1c1626, 1); g.fillRect(334, 13, 128, 10);
+      const w = Math.max(4, Math.round(128 * c));
+      g.fillStyle(col, 1); g.fillRect(334, 13, w, 10);
+      g.fillStyle(0xffffff, 0.35); g.fillRect(334, 13, w, 2);
+      return;
     }
-    const hi = !this.runner ? 0xffe0a0 : v > 0.6 ? 0xdff0ff : 0xffe0a0;
+    const col = blink ? 0xff4040 : 0xffb040;
     g.fillStyle(col, 1); g.fillRect(334, 13, Math.round(128 * v), 10);
-    g.fillStyle(hi, 1); g.fillRect(334, 13, Math.round(128 * v), 2);
+    g.fillStyle(0xffe0a0, 1); g.fillRect(334, 13, Math.round(128 * v), 2);
   }
 }
