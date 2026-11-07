@@ -1,7 +1,9 @@
 # The Story of Vigil (short version)
 
-Condensed from the Claude Doc "Ghostline: The Story of Vigil" (https://claude.ai/artifact/WG1rLy7keDUdu95qVYSxov).
-Read this file, not the doc. Open the doc only for something this file doesn't cover.
+Short version of docs/story-full.md (a full copy of the Claude Doc "Ghostline: The Story of Vigil").
+Enough for normal work. Open docs/story-full.md for: Vigil's history in order (the well, the keepers, St. Mercy built on top),
+Milo's backstory and look, Boo's look and how he died, ally looks, the Reality Shift table per world, the exact journal page text,
+the "what changed" notes (candles buy power upgrades, perks become powers), and the before/after world flavor table.
 Built so far: worlds 1 and 2 (allies + bosses), the shadow STRETCH, Boo only when needed.
 
 ## Core

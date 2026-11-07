@@ -2,7 +2,9 @@
 
 Horror (spooky fun) 2D runner with boss arenas. Phaser 4.2.1 (vendored `vendor/phaser.min.js`), plain ES modules, no build step.
 Work happens on branch `v6-runner`; `main` (v5) stays untouched. Commit as Ledjan <ledibajrami15@gmail.com>.
-Story, names, voice: `docs/story.md` (short). Don't open the full Claude Doc unless story.md lacks it.
+Start every session by reading `docs/owner-notes.md` (how Ledjan works, his decisions, the current task).
+Story, names, voice: `docs/story.md` (short). Full story: `docs/story-full.md` (open it for Vigil's history, Milo's backstory, ally looks, Reality Shift per world, exact journal text).
+Plans: `docs/review-roadmap-v6.md` (full review + roadmap), `docs/design-v6.md` (design log). Claude Docs exports: `scripts/doc-to-md.py`.
 Game dev skills in `.claude/skills/` (start with `router`); engine skills `phaser-core`, `phaser-arcade-physics`.
 
 ## Saving tokens
