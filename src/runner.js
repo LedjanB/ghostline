@@ -209,6 +209,7 @@ export const RunnerFeatures = {
 
   // ---------------- ground spawning ----------------
   runnerSpawner(meters, pace) {
+    if (this.stationBusy()) return; // v9: a nurse station has the screen (and its speed can be 0)
     const v = this.speed;
     this.runDiff = pace.diff;
     const spawnWX = this.worldX + (W + 40 - PLAYER_X);

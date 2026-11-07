@@ -43,3 +43,10 @@ Already in (commit "Arenas teach"): first time an attack comes it's slower with 
 - Every act ends with her cracked and kneeling: only the Penlight finishes it (Zelda light-arrow idea). Penlight charges faster by dodging through attacks (Cuphead parry).
 - TRY AGAIN starts at the act you reached (his choice can change this; Cuphead restarts the whole fight).
 - Next: his playtest on phone, then the Coroner the same way.
+
+## Nov 7: new direction, CHASE -> EXPLORE -> CHASE (greybox prototype, waiting for his playtest)
+- Ghostline becomes a 2D horror action-adventure: fast auto-running, small bounded exploration areas, boss fights.
+- New story (priority over older story docs where they clash): Milo, 16, hospital patient, wakes at 3:33 AM as a ghost while his body stays in bed; he must get back before THE STRETCH claims his spirit. Not written into the game yet.
+- Prototype `src/station.js`: two lit nurse stations in Ward 4 (55 m and 170 m). Run in, the run slows to a stop, walk left/right, jump on desk/shelf/cabinet, find the chart ("BED 7: MILO, 16."), THE STRETCH can't enter the light. EXIT on the right: run ramps back up, "IT WAS WAITING.", it comes back closer.
+- How: Milo stays at x 150 like the runner; walking moves the world under him. No new scene, no camera change. Touch: left half = move thumb (like the arenas), right half jumps; keyboard arrows/A-D. Slide on a desk drops through (like the Matron's beds).
+- Greybox only. Next: his playtest, then decide room size, what to find, and whether stations get their own camera.

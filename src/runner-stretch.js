@@ -9,6 +9,7 @@ export const StretchFeatures = {
   // ---------------- the chaser ----------------
   stepChaser(dt) {
     if (this.dead) return;
+    if (this.stationSafe()) { this.light = 1; this.gapVis = this.gap; this.nextHeadline(); return; } // v9: the light keeps it out
     this.slowT += dt;
     this.runSlow = this.slowT < 0.9 ? 0.72 + 0.28 * (this.slowT / 0.9) : 1;
     if (!this.flying) {
@@ -316,7 +317,7 @@ export const StretchFeatures = {
     const fh = sd.frame.realHeight || sd.height || 46;
     const thin = STRETCH_SCALE * (0.62 + 0.08 * near);
     sd.setPosition(Math.round(foot), FLOOR + 2).setRotation(lean).setScale(thin, len / fh);
-    const want2 = this.dead ? 0 : (0.5 + 0.35 * near) * enter;
+    const want2 = this.dead || this.stationSafe() ? 0 : (0.5 + 0.35 * near) * enter;
     sd.setAlpha(sd.alpha + (want2 - sd.alpha) * 0.25);
   },
 

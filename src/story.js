@@ -75,7 +75,7 @@ export const StoryFeatures = {
     // an ally waits at their spot the first time
     for (const [id, a] of Object.entries(ALLIES)) {
       if (a.zone !== this.zoneIndex || this.storyMet.includes(id)) continue;
-      if (!this.ally && inWorld >= a.at - 14 && inWorld < a.at + 40) this.meetAlly(id, a);
+      if (!this.ally && !this.stationBusy?.() && inWorld >= a.at - 14 && inWorld < a.at + 40) this.meetAlly(id, a);
     }
     if (this.ally) this.stepAlly();
     // the boss: the floor clears, then the arena

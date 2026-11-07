@@ -4,8 +4,10 @@ import { test, expect } from '@playwright/test';
 const scenes = (page) => page.evaluate(() => window.__game.scene.getScenes(true).map((s) => s.scene.key));
 const play = (page, fn, arg) => page.evaluate(([src, a]) => (0, eval)(src)(window.__game.scene.getScene('play'), a), [fn.toString(), arg]);
 
-async function boot(page, save) {
+async function boot(page, save, { stations = false } = {}) {
   const errors = [];
+  // v9: most tests step through Ward 4 without walking; the station test turns the nurse stations on
+  await page.addInitScript((on) => { window.__noStations = !on; }, stations);
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
   await page.evaluate((s) => { localStorage.clear(); if (s) localStorage.setItem(s.key, JSON.stringify(s.value)); }, save);
@@ -782,5 +784,64 @@ test('v8 Matron: keyboard and touch play the same fight (move, jump, dodge, drop
   await page.waitForTimeout(40);
   expect((await B()).dodgeT).toBeGreaterThan(0);
   await page.mouse.up();
+  expect(errors).toEqual([]);
+});
+
+test('v9 prototype: run into the nurse station, walk and jump, it cannot get you, leave by the exit, run again (twice)', async ({ page }) => {
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 8, storySeen: true, runs: 5, story: { met: ['ivy'], beaten: ['matron'] } } }, { stations: true });
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(1500);
+  const r = await play(page, (s) => {
+    s.openingDone = true; s.started = true;
+    const real = s.inputMap.held;
+    let dir = '';
+    s.inputMap.held = (k) => k === dir || real(k);
+    const step = (sec, hold = false) => { for (let i = 0; i < sec * 120 && !s.dead; i++) { s.invuln = 1e9; s.step(1 / 120, hold); } };
+    const out = [];
+    for (let visit = 0; visit < 2; visit++) {
+      let n = 0;
+      while (!s.stationFree() && n < 120000 && !s.dead) { s.invuln = 1e9; s.gap = 118; s.step(1 / 120, false); n++; }
+      const st = s.station, wx0 = st.wx0;
+      const o = { inside: s.stationFree(), m: Math.round(s.worldX / 24), speed: s.speed, traps: s.traps.filter((t) => !t.gone && Math.abs(t.wx - s.worldX) < 900).length };
+      // it can't come in: even right behind you, nothing happens
+      s.gap = 30; step(4); o.caught = s.dead; o.light = s.light;
+      // walk left to the wall, it stops there
+      dir = 'left'; step(5); o.leftWall = Math.round(s.worldX - wx0); s.render(0); o.faceLeft = s.player.flipX;
+      // walk right onto the desk: jump, land on it
+      dir = 'right'; while (s.worldX - wx0 < 500) step(1 / 120);
+      dir = ''; step(0.3); s.jumpLatch = true; step(0.9, true); o.onDesk = Math.round(324 - (s.py + 22));
+      // drop through it with a slide
+      s.slideLatch = true; step(0.6); o.dropped = Math.round(324 - (s.py + 22));
+      // the chart up on the cabinet
+      if (visit === 0) { s.worldX = wx0 + 170; s.py = 324 - 172 - 22; s.vy = 0; s.grounded = true; step(0.1); o.read = st.read; }
+      // touch: the left-half thumb walks too
+      s.stThumb = { id: 9, x0: 100, x: 140 }; o.thumbDir = s.stationDir(); s.stThumb = null;
+      // out the exit: the run picks back up and it chases again
+      dir = 'right'; step(8); dir = '';
+      o.after = { phase: s.station ? s.station.phase : null, next: s.station ? Math.round(s.station.wx0 / 24) : null, run: Math.round(s.speed), gap: Math.round(s.gap), light: s.light < 1 };
+      step(1.5); o.gapLater = s.gap; o.dead = s.dead;
+      out.push(o);
+    }
+    s.inputMap.held = real;
+    return out;
+  });
+  for (const [i, o] of r.entries()) {
+    expect(o.inside).toBe(true);
+    expect(o.m).toBe([55, 170][i] + 5);
+    expect(o.speed).toBe(0);
+    expect(o.traps).toBe(0);
+    expect(o.caught).toBe(false);
+    expect(o.light).toBe(1);
+    expect(o.leftWall).toBe(24);
+    expect(o.faceLeft).toBe(true);
+    expect(o.onDesk).toBe(52);
+    expect(o.dropped).toBe(0);
+    expect(o.thumbDir).toBeGreaterThan(0.9);
+    expect(o.after.run).toBeGreaterThan(220);
+    expect(o.dead).toBe(false);
+  }
+  expect(r[0].read).toBe(true);
+  expect(r[0].after.next).toBe(170);
+  expect(r[1].after.phase === null || r[1].after.phase === 'out').toBe(true);
   expect(errors).toEqual([]);
 });

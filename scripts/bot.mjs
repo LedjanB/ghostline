@@ -323,7 +323,7 @@ function brain(s, opts) {
 function playRun(s, cfg) {
   const make = (0, eval)('(' + cfg.brain + ')');
   const bot = make(s, cfg);
-  s.inputMap = { ...s.inputMap, held: (k) => (k === 'slide' ? bot.held() : false), pressed: () => false, update: () => {} };
+  s.inputMap = { ...s.inputMap, held: (k) => (k === 'slide' ? bot.held() : k === 'right' ? s.stationFree?.() : false), pressed: () => false, update: () => {} };
   s.openingDone = true; s.openingT = 9;
   if (cfg.world !== undefined) { // start just before this world's flight section
     s.worldX = (cfg.world * 400 + 150) * 24; s.zoneIndex = cfg.world; s.nextTrapX = s.worldX + 99999; s.cleanFromX = s.worldX;

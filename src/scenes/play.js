@@ -20,6 +20,7 @@ import { SetPieceFeatures } from '../setpieces.js';
 import { EndingFeatures } from '../ending.js';
 import { ScareFeatures } from '../scares.js';
 import { StoryFeatures } from '../story.js';
+import { StationFeatures } from '../station.js';
 
 const STEP = 1 / 120;
 const MAX_STEPS = 12;
@@ -151,7 +152,7 @@ export class PlayScene extends Phaser.Scene {
     this.storyInit(save); // v8: allies and boss arenas (src/story.js, src/scenes/boss.js)
     this.featInit(save);
     this.scoreInit(save);
-    this.runnerInit(); // v6: Milo runs, THE STRETCH chases (src/runner.js)
+    this.runnerInit(); this.stationInit(); // v6: Milo runs, THE STRETCH chases (src/runner.js)
   }
 
   create() {
@@ -199,6 +200,7 @@ export class PlayScene extends Phaser.Scene {
     this.featCreate();
     this.scoreCreate();
     this.runnerCreate();
+    this.stationCreate(); // v9 prototype: the nurse stations (src/station.js)
     this.scene.launch('hud');
 
     this.onHidden = () => this.requestPause();
@@ -259,6 +261,7 @@ export class PlayScene extends Phaser.Scene {
     const meters = this.worldX / PX_PER_METER;
     const pace = difficulty(meters);
     if (!this.dead) this.speed = speedAt(meters) * this.speedMul * Math.min(1, 0.3 + this.openingT * 0.9) * this.runSlow;
+    if (this.station && !this.dead && this.runner) this.speed = this.stationSpeed(this.speed, dt);
     const move = this.speed * dt;
     this.worldX += move;
     this.scroll += move;
@@ -267,12 +270,13 @@ export class PlayScene extends Phaser.Scene {
     const air = !this.runner || this.flying;
     if (this.dead) this.stepDeath(dt);
     else if (air) this.stepPlayer(dt, holding);
+    else if (this.stationSafe()) this.stepStation(dt, holding);
     else this.stepRun(dt, holding);
     this.stepRunnerFlight(dt);
     const airHold = holding && (!this.runner || this.flying);
     this.stepGhost(dt, this.runner ? this.flying : holding);
     this.stepZones();
-    if (this.runner) { this.stepDoor(); this.stepStory(); }
+    if (this.runner) { this.stepDoor(); this.stepStory(); if (this.stationBusy()) this.storyHold = true; }
     if (!this.dead) {
       if (!this.runner || this.flying) { // the v5 hazards are the air traps
         this.spawner(meters, pace);
@@ -913,7 +917,8 @@ export class PlayScene extends Phaser.Scene {
     // player
     if (!this.dead) {
       const key = this.grounded ? `${this.char.id}_run` : `${this.char.id}_flyA`;
-      if (this.player.anims.currentAnim?.key !== key) this.player.play(key);
+      if (this.stationIdle()) { if (this.player.anims.isPlaying) { this.player.anims.stop(); this.player.setTexture(`${this.char.id}_run1`); } }
+      else if (this.player.anims.currentAnim?.key !== key || !this.player.anims.isPlaying) this.player.play(key);
       this.player.rotation = this.grounded ? 0 : Phaser.Math.Clamp(this.vy / 2200, -0.15, 0.25);
       this.player.setAlpha(this.invuln > 0 && Math.floor(this.invuln * 16) % 2 ? 0.3 : 1);
     }
@@ -992,6 +997,7 @@ export class PlayScene extends Phaser.Scene {
     this.renderFeatures(lead, py);
     this.renderFlight(lead, py);
     this.renderRunner(lead, py);
+    this.renderStation(lead);
 
     let flick = 0;
     if (this.clock < this.flickerUntil) flick = (Math.floor(this.clock * 30) % 2) * 0.3;
@@ -1040,4 +1046,4 @@ export class PlayScene extends Phaser.Scene {
   }
 }
 
-Object.assign(PlayScene.prototype, Features, ScoreFeatures, RunnerFeatures, TrickFeatures, SetPieceFeatures, EndingFeatures, ScareFeatures, StoryFeatures);
+Object.assign(PlayScene.prototype, Features, ScoreFeatures, RunnerFeatures, TrickFeatures, SetPieceFeatures, EndingFeatures, ScareFeatures, StoryFeatures, StationFeatures);

@@ -87,10 +87,11 @@ export function createInput(scene, opts = {}) {
   // Pointers (v6 runner): tap = jump, hold = higher jump / rise, swipe down = slide.
   // A touch waits 70 ms (or until it lifts) before it counts as a jump, so a swipe never jumps first.
   const ptrs = new Map();
+  let leftFree = false; // v9 station: the left half is a move thumb, not a jump
   let tapLatch = false, swipeLatch = false;
   const SWIPE_PX = 22, HOLD_MS = 70;
   // opts.pointers === false: the scene reads touch itself (the boss arena's two-thumb controls)
-  if (opts.pointers !== false) scene.input.on('pointerdown', (p) => { if (!p.__ui) ptrs.set(p.id, { y0: p.y, t0: performance.now(), state: 'pending' }); });
+  if (opts.pointers !== false) scene.input.on('pointerdown', (p) => { if (!p.__ui && !(leftFree && p.x < scene.scale.width / 2)) ptrs.set(p.id, { y0: p.y, t0: performance.now(), state: 'pending' }); });
   scene.input.on('pointermove', (p) => {
     const s = ptrs.get(p.id);
     if (s && p.isDown && s.state !== 'swipe' && p.y - s.y0 > SWIPE_PX) { s.state = 'swipe'; swipeLatch = true; }
@@ -133,6 +134,7 @@ export function createInput(scene, opts = {}) {
     held: (a) => !!now[a] || codesFor[a].some((c) => latched.has(c)),
     pressed: (a) => !!edge[a],
     // mark pointers currently down as belonging to UI so a button press doesn't float
+    leftFree(on) { leftFree = on; },
     claimPointers() { scene.input.manager.pointers.forEach((p) => { if (p.isDown) { p.__ui = true; ptrs.delete(p.id); } }); },
   };
   scene.input.on('pointerup', (p) => { p.__ui = false; });
