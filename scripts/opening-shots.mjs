@@ -1,0 +1,61 @@
+// Screenshots of THE WRONG SIDE OF THE BED (opening v2). node scripts/opening-shots.mjs [outDir]
+// 1 both Milos after the awakening, 2 Milo reaching for his own hand, 3 the Ghostline going into the floor,
+// 4 the thread stays on his wrist when he walks away, 5 the door at the far end, 6 the sprite sheet (art review).
+import { chromium } from '@playwright/test';
+import http from 'node:http';
+import { readFile, mkdir } from 'node:fs/promises';
+import { extname, join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const OUT = process.argv[2] || join(ROOT, 'shots', 'opening');
+await mkdir(OUT, { recursive: true });
+const server = http.createServer(async (req, res) => {
+  try {
+    const p = join(ROOT, decodeURIComponent(req.url.split('?')[0]).replace(/\/$/, '/index.html'));
+    const type = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.woff2': 'font/woff2', '.png': 'image/png' }[extname(p)] || 'application/octet-stream';
+    res.writeHead(200, { 'content-type': type }); res.end(await readFile(p));
+  } catch { res.writeHead(404); res.end(); }
+}).listen(8125);
+const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || undefined, args: ['--use-gl=swiftshader', '--mute-audio'] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+const errors = [];
+page.on('pageerror', (e) => errors.push(e.message));
+await page.goto('http://localhost:8125/?opening=1');
+await page.waitForFunction(() => window.__opening);
+await page.evaluate(() => { const s = window.__opening; s.begin(); });
+// run the sim to a moment (frozen: update() only draws), then let it draw
+const at = async (fn, name) => {
+  const err = await page.evaluate((src) => { const S = window.__opening; S.freeze = true; try { (0, eval)('(' + src + ')')(S); } catch (e) { return e.stack; } return ''; }, fn.toString());
+  if (err) console.log(name, err.split(String.fromCharCode(10)).slice(0, 6).join(' / '));
+  await page.waitForTimeout(250);
+  if (name) await page.screenshot({ path: join(OUT, name + '.png') });
+};
+const N = (S, sec, x = 0) => { S.debugInput = { x }; for (let i = 0; i < sec * 60; i++) S.step(1 / 60); S.debugInput = { x: 0 }; };
+await at((S) => { for (let i = 0; i < 60 * 8.4; i++) S.step(1 / 60); }, '0-separating');
+await at((S) => { while (S.rise >= 0) S.step(1 / 60); for (let i = 0; i < 60; i++) S.step(1 / 60); }, '1-both-milos');
+await at((S) => { while (S.phase !== 'explore') S.step(1 / 60); S.debugInput = { x: -1 }; while (S.phase !== 'discover') S.step(1 / 60); S.debugInput = { x: 0 }; while (S.pose !== 'reach2') S.step(1 / 60); for (let i = 0; i < 20; i++) S.step(1 / 60); }, '2-reaching');
+await at((S) => { while (S.pose !== 'reach3') S.step(1 / 60); for (let i = 0; i < 8; i++) S.step(1 / 60); }, '2b-through');
+await at((S) => { while (!S.bubble) S.step(1 / 60); for (let i = 0; i < 70; i++) S.step(1 / 60); }, '2c-thats-me');
+await at((S) => { while (S.gl.stage < 1) S.step(1 / 60); for (let i = 0; i < 40; i++) S.step(1 / 60); }, '3a-pulse');
+await at((S) => { while (!(S.gl.stage === 3 && S.gl.k > 0.85)) S.step(1 / 60); }, '3-ghostline-floor');
+await at((S) => { while (S.phase !== 'explore2') S.step(1 / 60); S.debugInput = { x: 1 }; for (let i = 0; i < 132; i++) S.step(1 / 60); S.debugInput = { x: 0 }; for (let i = 0; i < 20; i++) S.step(1 / 60); }, '4-thread-follows');
+await at((S) => { S.m.x = 600; S.m.vx = 0; for (let i = 0; i < 300; i++) S.step(1 / 60); }, '5-room-window');
+await at((S) => { S.debugInput = { x: 1 }; while (S.phase !== 'boo') S.step(1 / 60); S.debugInput = { x: 0 }; for (let i = 0; i < 60 * 2.5; i++) S.step(1 / 60); }, '7-boo-unchanged');
+// sprite sheet: every Milo frame, living body, at 4x on black
+await page.evaluate(() => {
+  const S = window.__opening;
+  const keys = ['op_milo_idle', 'op_milo_look', 'op_milo_unsure', 'op_milo_reach1', 'op_milo_reach2', 'op_milo_reach3', 'op_milo_recoil', 'op_milo_run0', 'op_milo_run1', 'op_milo_run2', 'op_milo_run3', 'op_milo_jump', 'op_milo_fall', 'op_milo_sit', 'op_milo_lie', 'op_body', 'op_hand0', 'op_hand1', 'op_chair', 'op_door_shut'];
+  const c = document.createElement('canvas'); c.width = 1280; c.height = 720; const x = c.getContext('2d'); x.imageSmoothingEnabled = false;
+  x.fillStyle = '#20222c'; x.fillRect(0, 0, 1280, 720);
+  let px = 10, py = 10, rowH = 0;
+  for (const k of keys) {
+    const img = S.textures.get(k).getSourceImage(); const w = img.width * 4, h = img.height * 4;
+    if (px + w > 1270) { px = 10; py += rowH + 10; rowH = 0; }
+    x.drawImage(img, px, py, w, h); px += w + 10; rowH = Math.max(rowH, h);
+  }
+  document.body.innerHTML = ''; document.body.style.margin = '0'; document.body.appendChild(c);
+});
+await page.screenshot({ path: join(OUT, '6-sprites.png') });
+console.log('errors:', errors.length ? errors : 'none');
+await browser.close(); server.close();

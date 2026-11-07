@@ -57,3 +57,13 @@ Already in (commit "Arenas teach"): first time an attack comes it's slower with 
 - Built `src/scenes/opening.js` (+ `opening-art.js`, `opening-audio.js`): self-contained scene, own camera following Milo's world x. First launch plays it instead of the old story cards; `?opening=1` replays it. Ends at Boo's "LATER. RUN." with REPLAY OPENING / CONTINUE TO THE RUN (temporary handoff).
 - Beats fire on where the player walks (bed -> Ghostline once; past the window -> the shadow; shadow close or Milo at the door -> Boo), never on a timer. THE STRETCH is only shadow + sound. Nothing can hurt Milo here. Uses `storySeen` (no save change).
 - Next: his playtest (PC + iPhone). Then the corridor chase and the nurse station, only after he approves.
+
+## Nov 8: Opening V2, part 1 (awakening + Ghostline discovery), waiting for his review
+- His playtest of the first opening: pixels too chunky, weak framing, the ghost reveal too fast and unclear, the Ghostline looked like a thick rope, weak guidance, no emotional weight.
+- Decisions: the opening uses a 3 px art grid (room, Milo, body, bed all redrawn to Milo's scale: 28 art px tall) and ONE camera zoom (4/3, so an art pixel is always 4 screen px). No close-ups, no zoom changes.
+- Milo wears hospital pajamas with a white wristband. Living boy and spirit are the same drawing in two palettes.
+- Awakening = one held medium-wide shot (3:32 -> 3:33, power dies, monitor on battery, bedside lamp stays, spirit separates slowly, both Milos held ~2 s). Then control.
+- Discovery: stop, look, hesitate, reach, hand through, living fingers twitch, "NO. THAT'S ME.", then the Ghostline: pulse wrist -> wrist, flash at the living wrist, down into the floor seam under the bed. It stays as a faint 1 px thread on his wrist.
+- No invisible walls before the discovery: the door is shut (he can walk into it); it drifts open after the Ghostline. The monitor beeps louder and the body's fingers move to call him back.
+- Shadow and Boo sequences unchanged (only moved onto the new grid). They are the next redesign, after his review.
+- Screenshots: `node scripts/opening-shots.mjs` -> shots/opening/.

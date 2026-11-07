@@ -1,7 +1,7 @@
 // Service worker: caches the whole game so the home screen app works offline.
 // Serves from cache right away, then refreshes the cache in the background,
 // so a new version shows up on the next launch.
-const CACHE = 'ghostline-v6-runner-23';
+const CACHE = 'ghostline-v6-runner-24';
 const FILES = [
   './', './index.html', './manifest.webmanifest', './vendor/phaser.min.js', './fonts/press-start-2p.woff2',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',

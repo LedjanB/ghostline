@@ -1,8 +1,11 @@
 // THE WRONG SIDE OF THE BED: the playable opening (first launch, or ?opening=1).
-// 1 AWAKENING: black, the monitor, the clock flips to 3:33, the power dies, Milo rises out of his body.
-// 2 DISCOVERY: walk the room; at the bed his hand goes through his own, the Ghostline shows (wrist -> floor).
-// 3 THE SHADOW: near the exit the vent stops, keys click, something behind bed 8's curtain, a long shadow creeps.
-// 4 BOO: a lantern lights in the doorway, the shadow flinches, three lines, end (replay / temporary handoff).
+// v2 (Nov 7, part 1 of the opening redesign): finer art (3 px grid, camera fixed at 4/3 so one art pixel = 4 screen px).
+// 1 AWAKENING: one medium-wide shot of bed 7. Monitor, rain, 3:32 -> 3:33, the power dies, the monitor goes on battery,
+//   the bedside lamp stays. His spirit separates slowly from his body and lands beside the bed; both stay in shot ~2 s.
+// 2 DISCOVERY: walk to the bed; Milo stops, looks, hesitates, reaches for his own hand: his fingers pass through,
+//   the living fingers twitch. "NO. THAT'S ME." Then the Ghostline: a pulse wrist to wrist, a flash at the living wrist,
+//   and the filament bends down into the seam under the bed. The door drifts open.
+// 3 THE SHADOW and 4 BOO: unchanged for now (their own redesign comes next).
 // Self-contained: own art (opening-art.js), own sound (opening-audio.js), own camera that follows Milo's world x.
 // Story beats fire on where the player goes, never on a clock. Nothing here can hurt Milo.
 import { W, H } from '../data.js';
@@ -10,56 +13,68 @@ import { Save } from '../save.js';
 import { Audio } from '../audio.js';
 import { text, button, focusGroup } from '../ui.js';
 import { createInput, Device } from '../input.js';
-import { makeOpeningArt, OP_L, ROOM_W, LAMPS } from '../opening-art.js';
+import { makeOpeningArt, OP_G, ROOM_W, LAMPS, WRISTS, BODY_AT, BODY_HAND, BODY_WRIST, BODY_CHEST, SEAM_Y, DIGITS } from '../opening-art.js';
 import { makeOpeningAudio } from '../opening-audio.js';
 
-const L = OP_L;
-const WORLD_W = ROOM_W * L; // 1120
+const G = OP_G;
+const Z = 4 / 3; // the only zoom: 3 world px * 4/3 = 4 screen px per art pixel
+const WORLD_W = ROOM_W * G;
 const FEET = 320;
 const SPEED = 105, ACCEL = 1000, GRAV = 1150, JUMP_V = 400;
+const CAM_Y = H - H / (2 * Z); // floor at the bottom of the frame
+const art = (x, y) => ({ x: x * G, y: y * G });
 // key places in world px
 const P = {
-  clock: { x: 152, y: 200 },
-  bed: { x: 262, y: 222 },
-  bodyWrist: { x: 283, y: 213 },
-  under: { x: 262, y: 288 }, // where the Ghostline goes into the floor (down to the well)
-  land: 400, discoverX: 345, reachX: 322, nudgeX: 760,
-  shadowAt: 640, curtainEdge: 566, maxX: 815, minX: 40, door: 950,
-  window: { x: 615, y: 65, w: 110, h: 110 },
-  monitor: { x: 35, y: 105, w: 70, h: 50 },
-  chair: { x0: 783, x1: 822, y: 275 },
+  bodyWrist: art(BODY_AT.x + BODY_WRIST.x, BODY_AT.y + BODY_WRIST.y),
+  bodyHand: art(BODY_AT.x + BODY_HAND.x + 2, BODY_AT.y + BODY_HAND.y + 1),
+  seam: art(BODY_AT.x + 18, SEAM_Y + 0.5), // where the Ghostline goes into the floor (down to the well)
+  liePos: art(BODY_AT.x - 1, BODY_AT.y - 1),
+  sitPos: art(BODY_AT.x - 4, BODY_AT.y - 11),
+  land: 372, discoverX: 345, nudgeX: 760, doorStop: 893,
+  shadowAt: 640, curtainEdge: 566, maxX: 815, minX: 40, door: 948,
+  window: { x: 624, y: 102, w: 96, h: 108 },
+  monitor: { x: 135, y: 213, w: 33, h: 36 },
+  chair: { x0: 783, x1: 825, y: 296 },
+  shot: 300, // the opening shot's centre x: bed, monitor, clock and the landing spot in one frame
 };
+// he stands here to reach his own hand (his reach2 hand lands right over it)
+P.reachX = Math.round(P.bodyHand.x + 9.5 * G);
 const lerp = (a, b, k) => a + (b - a) * k;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const ease = (k) => (k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k));
+const RISE = { lie: 2.0, sit: 1.0, stand: 0.9, drift: 1.3 }; // the separation, in seconds
+const RISE_T = RISE.lie + RISE.sit + RISE.stand + RISE.drift;
 
 export class OpeningScene extends Phaser.Scene {
   constructor() { super('opening'); }
 
   init() {
     this.phase = 'gate';
-    this.control = false;
+    this.control = false; this.ctlT = 0;
     this.t = 0;
     this.tl = []; this.tlT = 0;
     this.flags = { discover: 0, shadow: 0, boo: 0, ended: 0 };
-    this.m = { x: P.bed.x, y: FEET, vx: 0, vy: 0, ground: true, face: -1, shown: false, walkT: 0 };
-    this.auto = null;
-    this.cam = { x: P.clock.x, y: P.clock.y, z: 5 };
-    this.camT = { ...this.cam }; this.camK = 3; this.camMode = 'fixed'; this.look = -30;
+    this.m = { x: P.land, y: FEET, vx: 0, vy: 0, ground: true, face: -1, shown: false, walkT: 0 };
+    this.auto = null; this.pose = null; this.backT = 0; this.gx = P.land; this.gy = FEET;
+    this.cam = { x: P.shot, y: CAM_Y, z: Z };
+    this.camT = { ...this.cam }; this.camK = 3; this.camMode = 'fixed'; this.look = -30; this.maxZ = Z;
     this.lb = 1; this.lbT = 1; // letterbox
     this.fade = 1; this.fadeT = 1; this.fadeK = 1.5;
     this.beatOn = false; this.beatT = 0.3; this.hr = 62; this.hrT = 62; this.loud = 0; this.battery = false;
-    this.ecg = new Array(14).fill(0); this.ecgCol = 0; this.ecgAcc = 0; this.ecgQ = [];
+    this.ecg = new Array(11).fill(0); this.ecgCol = 0; this.ecgAcc = 0; this.ecgQ = [];
     this.clockState = '32'; this.blackout = 0;
     this.lamps = 1; this.flicker = 0; this.dark = 0.35; this.darkT = 0.35; this.warm = 1;
     this.elamp = 0; this.elampT = 0; this.eFlick = 0; this.cold = 0; this.coldT = 0; this.flash = 0; this.nextFlash = 18;
-    this.rise = -1; this.reach = 0; this.reachT = 0; this.ripple = -1; this.line = -1; this.lineK = 1;
+    this.rise = -1; this.ripple = -1; this.twitch = 0; this.nextTwitch = 7; this.wristFlash = 0;
+    // the Ghostline: stage 0 hidden, 1 pulse wrist -> wrist, 2 flash, 3 down into the floor, 4 settled
+    this.gl = { stage: 0, t: 0, k: 0, a: 0 }; this.line = -1; this.glPts = null;
+    this.doorOpen = 0; this.doorT = 0;
     this.sil = { x: 400, a: 0, aT: 0, sway: 0, flash: 0, move: false };
     this.sh = { on: false, t: 0, tip: P.curtainEdge, wall: 0, recoil: 0, lurch: 0 };
-    this.boo = { a: 0, aT: 0, x: P.door, y: 232, face: -1 };
+    this.boo = { a: 0, aT: 0, x: P.door, y: 226, face: -1 };
     this.lantern = 0; this.lanternT = 0; this.lanternShown = false;
     this.thumb = null; this.jumpTap = false;
-    this.moved = 0; this.hintShown = false; this.nudged = false; this.glance = 0;
+    this.moved = 0; this.hintShown = false; this.nudged = false; this.bumped = 0; this.glance = 0;
     this.bubble = null; this.motes = []; this.moteT = 0; this.ghostFlick = 0;
     this.debugInput = null;
   }
@@ -72,68 +87,72 @@ export class OpeningScene extends Phaser.Scene {
     const cam = this.cameras.main;
     cam.setBackgroundColor('#000000');
     this.uiCam = this.cameras.add(0, 0, W, H);
-    // each camera skips the other's layer (set on the layer, so children added later follow)
     this.uiL.cameraFilter |= cam.id;
     this.worldL.cameraFilter |= this.uiCam.id;
     const w = (o, d) => { o.setDepth(d); this.worldL.add(o); return o; };
     const u = (o, d = 0) => { o.setDepth(d); this.uiL.add(o); return o; };
-    const img = (x, y, key, d, ox = 0, oy = 0) => w(this.add.image(x, y, key).setOrigin(ox, oy).setScale(L), d);
+    const img = (x, y, key, d, ox = 0, oy = 0) => w(this.add.image(x, y, key).setOrigin(ox, oy).setScale(G), d);
     const add = (key, x, y, d, sx = 1, sy = sx) => w(this.add.image(x, y, key).setScale(sx, sy).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0), d);
 
     // ---- the room ----
-    this.outside = img(390, 60, 'op_outside', -3).setScrollFactor(0.7, 1);
+    this.outside = img(330, 66, 'op_outside', -3).setScrollFactor(0.7, 1);
     this.winG = w(this.add.graphics(), -2);
-    img(0, 0, 'op_room', 0);
+    img(0, 0, 'op2_room', 0);
     this.glassG = w(this.add.graphics(), 0.5);
     this.monG = w(this.add.graphics(), 1);
-    this.clock = img(110, 180, 'op_clock_32', 1);
-    this.bulbs = LAMPS.map((lx) => img((lx - 2) * L, 16 * L, 'op_bulb_on', 1));
-    this.elampSpr = img(50 * L, 24 * L, 'op_elamp_on', 1).setAlpha(0);
-    this.exitSpr = img(181 * L, 4 * L, 'op_exit_lit', 1).setAlpha(0.85);
-    img(66 * L, 9 * L, 'op_curtain_bunch', 1);
-    this.panels = [0, 1, 2, 3].map((i) => w(this.add.image((74 + i * 10 + 5) * L, 9 * L, 'op_curtain').setOrigin(0.5, 0).setScale(L), 1));
-    this.silCurtain = w(this.add.image(400, 268, 'op_sil0').setOrigin(0.5, 1).setAlpha(0), 1.2);
+    this.clock = img(30 * G, 52 * G, 'op_clock_32', 1);
+    this.bulbs = LAMPS.map((lx) => img((lx - 2) * G, 37 * G, 'op_bulb_on', 1));
+    this.elampSpr = img(67 * G, 72 * G, 'op_elamp_off', 1);
+    this.exitSpr = img(306 * G, 40 * G, 'op_exit_lit', 1).setAlpha(0.85);
+    this.doorShut = img(304 * G, 52 * G, 'op_door_shut', 1);
+    this.doorOpenSpr = img(331 * G, 52 * G, 'op_door_open', 1).setAlpha(0);
+    img(114 * G, 23 * G, 'op_curtain_bunch', 1);
+    this.panels = [0, 1, 2, 3].map((i) => w(this.add.image(395 + i * 50, 23 * G, 'op_curtain').setOrigin(0.5, 0).setScale(G), 1));
+    this.silCurtain = w(this.add.image(400, 296, 'op_sil0').setOrigin(0.5, 1).setAlpha(0), 1.2);
     // the boy in the bed
-    this.blanket = img(46 * L, 48 * L, 'op_blanket', 2, 0, 1);
-    img(41.8 * L, 45 * L, 'op_body_head', 2.1, 0, 1);
-    img(48 * L, 42.6 * L, 'op_body_collar', 2.05);
-    img(48.6 * L, 40.6 * L, 'op_body_arm', 2.2);
-    this.chair = img(156 * L, FEET, 'op_chair', 3, 0, 1);
+    this.blanket = img(P.liePos.x, P.liePos.y, 'op_body', 2);
+    this.breath = img((BODY_AT.x + BODY_CHEST.x) * G, (BODY_AT.y + BODY_CHEST.y) * G, 'op_body_breath', 2.05).setAlpha(0);
+    this.hand = img((BODY_AT.x + BODY_HAND.x) * G, (BODY_AT.y + BODY_HAND.y) * G, 'op_hand0', 2.2);
+    this.ivG = w(this.add.graphics(), 2.1);
+    this.drawIv();
+    this.chair = img(P.chair.x0, FEET, 'op_chair', 3, 0, 1);
 
     // ---- light: darkness over the room, then light added back ----
     this.darkR = w(this.add.rectangle(0, 0, WORLD_W, H, 0x000000).setOrigin(0), 6);
     this.coldR = w(this.add.rectangle(0, 0, WORLD_W, H, 0x0a1838).setOrigin(0).setAlpha(0), 6.2);
     this.warmR = w(this.add.rectangle(0, 0, WORLD_W, H, 0xffa040).setOrigin(0).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.05), 6.4);
     this.lampL = LAMPS.map((lx) => ({
-      g: add('op_glow_warm', lx * L, 84, 7, 2.2), p: add('op_pool_warm', lx * L, 304, 7, 3), s: add('op_streak_warm', lx * L, 296, 7, 2, 1.1).setOrigin(0.5, 0),
+      g: add('op_glow_warm', lx * G + 1, 114, 7, 1.7), p: add('op_pool_warm', lx * G, 312, 7, 2.2), s: add('op_streak_warm', lx * G, 300, 7, 1.5, 0.9).setOrigin(0.5, 0),
     }));
-    this.eL = { g: add('op_glow_amber', 257, 128, 7, 3.8), p: add('op_pool_amber', 262, 302, 7, 3.4), s: add('op_streak_amber', 257, 294, 7, 2.2, 1.2).setOrigin(0.5, 0) };
-    this.winL = { g: add('op_glow_cold', 670, 120, 7, 2.8), p: add('op_pool_cold', 670, 304, 7, 3.6), s: add('op_streak_cold', 670, 294, 7, 4, 1.2).setOrigin(0.5, 0) };
-    this.monL = { g: add('op_glow_green', 70, 130, 7, 1.4), p: add('op_pool_green', 70, 298, 7, 1.3) };
-    this.exitL = add('op_glow_red', 952, 40, 7, 1.2).setAlpha(0.3);
-    this.clockL = add('op_glow_red', 152, 200, 7, 0.9);
-    this.lanL = { g: add('op_glow_amber', P.door, 260, 7, 4), c: add('op_glow_warm', P.door, 260, 7.1, 1.3), p: add('op_pool_amber', P.door, 312, 7, 4.6), s: add('op_streak_amber', P.door, 300, 7, 2.6, 1).setOrigin(0.5, 0) };
+    this.eL = { g: add('op_glow_amber', 212, 226, 7, 2.1), p: add('op_pool_amber', 236, 300, 7, 1.9), b: add('op_glow_warm', 236, 278, 7, 1.1, 0.5), s: add('op_streak_amber', 230, 296, 7, 1.6, 0.8).setOrigin(0.5, 0) };
+    this.winL = { g: add('op_glow_cold', 672, 156, 7, 2.2), p: add('op_pool_cold', 672, 304, 7, 2.6), s: add('op_streak_cold', 672, 294, 7, 3.2, 0.9).setOrigin(0.5, 0) };
+    this.monL = { g: add('op_glow_green', 160, 232, 7, 0.9), p: add('op_pool_green', 162, 312, 7, 0.9) };
+    this.exitL = add('op_glow_red', 948, 132, 7, 1).setAlpha(0.3);
+    this.clockL = add('op_glow_red', 118, 170, 7, 0.7);
+    this.lanL = { g: add('op_glow_amber', P.door, 260, 7, 3), c: add('op_glow_warm', P.door, 260, 7.1, 1), p: add('op_pool_amber', P.door, 312, 7, 3.4), s: add('op_streak_amber', P.door, 300, 7, 2, 0.9).setOrigin(0.5, 0) };
     // ---- THE STRETCH: only ever its shadow ----
     this.silWall = w(this.add.image(0, 252, 'op_sil0').setOrigin(0.5, 1).setAlpha(0), 7.5);
     this.shG = w(this.add.graphics(), 7.6);
     // ---- Milo's spirit, the Ghostline, Boo ----
-    this.ghostL = { g: add('op_glow_blue', 0, 0, 9.5, 1.7), p: add('op_pool_blue', 0, 0, 9.4, 1.3) };
-    this.ghost = w(this.add.image(0, 0, 'op_milo_idle').setScale(L).setOrigin(0.5, 1).setAlpha(0), 10);
-    this.armG = w(this.add.graphics(), 10.2);
+    this.ghostL = { g: add('op_glow_blue', 0, 0, 9.5, 1.2), p: add('op_pool_blue', 0, 0, 9.4, 1) };
+    this.lie = img(P.liePos.x, P.liePos.y, 'op_milo_lie', 9.8).setAlpha(0);
+    this.sit = img(P.sitPos.x, P.sitPos.y, 'op_milo_sit', 9.9).setAlpha(0);
+    this.ghost = w(this.add.image(0, 0, 'op_milo_idle').setScale(G).setAlpha(0), 10);
     this.lineG = w(this.add.graphics(), 10.5);
-    this.boo.spr = w(this.add.image(P.door, 232, 'op_boo0').setScale(L).setAlpha(0).setFlipX(true), 11);
-    this.lanSpr = w(this.add.image(P.door, 220, 'op_lantern_off').setScale(L).setOrigin(0.5, 0).setAlpha(0), 11.1);
+    this.fxG = w(this.add.graphics(), 10.6);
+    this.boo.spr = w(this.add.image(P.door, 226, 'op_boo0').setScale(G).setAlpha(0).setFlipX(true), 11);
+    this.lanSpr = w(this.add.image(P.door, 220, 'op_lantern_off').setScale(G).setOrigin(0.5, 0).setAlpha(0), 11.1);
 
     // ---- screen layer (not zoomed) ----
-    this.vig = u(this.add.image(W / 2, H / 2, 'op_vignette').setScale(4).setAlpha(0.9), 0);
+    this.vig = u(this.add.image(W / 2, H / 2, 'op_vignette').setScale(4).setAlpha(0.85), 0);
     this.flashR = u(this.add.rectangle(0, 0, W, H, 0xcfe0ff).setOrigin(0).setAlpha(0), 1);
     this.barT = u(this.add.rectangle(0, 0, W, 28, 0x000000).setOrigin(0), 2);
     this.barB = u(this.add.rectangle(0, H, W, 28, 0x000000).setOrigin(0, 1), 2);
     this.stickG = u(this.add.graphics(), 3);
     this.bubG = u(this.add.graphics(), 4);
     this.bubT = u(text(this, 0, 0, '', 8, '#e6f0ff', 0), 5);
-    this.hint = u(text(this, W / 2, H - 46, '', 8, '#9aa6c8').setAlpha(0), 5);
-    this.caption = u(text(this, 18, H - 44, 'ST. MERCY.  WARD 4.  3:33 AM', 8, '#8f9abc', 0).setAlpha(0), 5);
+    this.hint = u(text(this, W / 2, H - 42, '', 8, '#9aa6c8').setAlpha(0), 5);
+    this.caption = u(text(this, 18, H - 44, '', 8, '#8f9abc', 0).setAlpha(0), 5);
     this.fadeR = u(this.add.rectangle(0, 0, W, H, 0x000000).setOrigin(0), 8);
     this.gate = [
       u(text(this, W / 2, H / 2 - 10, 'PRESS ANY KEY OR TAP', 8, '#a8b0d0'), 9),
@@ -163,6 +182,7 @@ export class OpeningScene extends Phaser.Scene {
   }
 
   // ---------------------------------------------------------------- story
+  // one held medium-wide shot: no zoom, no cut, the whole awakening plays in it
   begin() {
     if (this.phase !== 'gate') return;
     this.phase = 'intro';
@@ -170,28 +190,29 @@ export class OpeningScene extends Phaser.Scene {
     Audio.music(null);
     this.gate.forEach((g) => g.setVisible(false));
     const s = this.snd;
+    const r0 = 7.2;
     this.run([
-      [0, () => { s.rain(0.45, true); s.vent(true); this.beatOn = true; }],
-      [1.3, () => { this.fadeT = 0; this.fadeK = 1.6; }],
-      [2.9, () => { this.clockState = '33'; s.flip(); this.tw(this.caption, 1, 700); }],
-      [3.9, () => { s.fail(); this.flicker = 0.62; }],
-      [4.52, () => {
-        this.flicker = 0; this.lamps = 0; this.clockState = 'off'; this.darkT = 0.62; this.warm = 0; this.blackout = 0.35;
-        this.tw(this.caption, 0, 600);
+      [0, () => { s.rain(0.45, true); s.vent(true); this.beatOn = true; this.fadeT = 0; this.fadeK = 0.9; }],
+      [2.0, () => { this.caption.setText('ST. MERCY.  WARD 4.'); this.tw(this.caption, 1, 900); }],
+      [3.4, () => { this.clockState = '33'; s.flip(); this.caption.setText('ST. MERCY.  WARD 4.  3:33 AM'); }],
+      [4.6, () => { s.fail(); this.flicker = 0.62; }],
+      [5.22, () => {
+        this.flicker = 0; this.lamps = 0; this.clockState = 'off'; this.darkT = 0.6; this.warm = 0; this.blackout = 0.4;
+        this.tw(this.caption, 0, 700);
         s.rain(0.55, false, 1.5);
       }],
-      [4.9, () => { this.battery = true; s.batteryChirp(); }],
-      [5.3, () => { this.elampT = 1; this.eFlick = 0.5; s.clunk(); this.camTo(P.bed.x + 10, 215, 2.4, 1.5); }],
-      [6.1, () => { this.rise = 0; this.m.shown = true; s.rise(); s.pad(1, 2); }],
-      [9.2, () => { this.loud = 2; this.camTo((P.bed.x + P.land) / 2 - 10, 250, 2.0, 2); }],
-      [10.6, () => this.giveControl('explore')],
+      [5.65, () => { this.battery = true; s.batteryChirp(); }],
+      [6.15, () => { this.elampT = 1; this.eFlick = 0.45; s.clunk(); }],
+      [r0, () => { this.rise = 0; this.m.shown = true; s.rise(); s.pad(0.55, 2); }],
+      [r0 + RISE_T + 0.8, () => { this.twitch = 0.5; this.loud = 1; }], // the body: still alive
+      [r0 + RISE_T + 1.9, () => this.giveControl('explore')],
     ]);
   }
 
   giveControl(phase) {
     this.phase = phase;
-    this.control = true;
-    this.camMode = 'follow'; this.camK = 2.2;
+    this.control = true; this.ctlT = 0; this.pose = null;
+    this.camMode = 'follow'; this.camK = 1.6;
     this.lbT = 0;
   }
 
@@ -201,21 +222,28 @@ export class OpeningScene extends Phaser.Scene {
     this.tw(this.hint, 0, 300);
   }
 
+  // the impossible touch, then the Ghostline (a beat with its own timeline; control comes back after)
   startDiscover() {
     this.flags.discover++;
     this.phase = 'discover';
     this.lockControl();
-    this.walkTo(P.reachX, 70, () => {
+    const s = this.snd;
+    this.camTo((P.reachX + P.bodyWrist.x) / 2 - 10, CAM_Y, Z, 1.4);
+    this.walkTo(P.reachX, 52, () => {
       this.m.face = -1;
-      const s = this.snd;
-      this.camTo(300, 236, 1.8, 2.2);
+      s && s.pad(0, 1.2); s && s.rain(0.3, true, 0.8); // quiet for the reveal
       this.run([
-        [0.3, () => { this.reachT = 1; }],
-        [0.95, () => { this.reachT = 1.3; s.through(); this.ripple = 0; this.ghostFlick = 0.45; this.loud = 2; }],
-        [1.5, () => { this.reachT = 0; this.m.x += 6; }],
-        [2.0, () => { this.line = 0; s.line(); }],
-        [3.8, () => this.say('milo', 'WHAT...?', 1.9)],
-        [5.5, () => this.giveControl('explore2')],
+        [0.35, () => { this.pose = 'look'; }],
+        [1.4, () => { this.pose = 'unsure'; this.loud = 1; }],
+        [2.35, () => { this.pose = 'reach1'; }],
+        [2.75, () => { this.pose = 'reach2'; }],
+        [3.45, () => { this.pose = 'reach3'; s && s.through(); this.ripple = 0; this.ghostFlick = 0.4; }],
+        [3.75, () => { this.twitch = 0.7; this.loud = 2; }],
+        [4.35, () => { this.pose = 'recoil'; this.backT = 0.3; }],
+        [5.0, () => this.say('milo', "NO. THAT'S ME.", 2.0)],
+        [7.5, () => { this.gl.stage = 1; this.gl.t = 0; this.line = 0; s && s.pulse(); }],
+        [9.9, () => { this.doorT = 1; s && s.door(); s && s.rain(0.5, false, 2); }],
+        [10.4, () => this.giveControl('explore2')],
       ]);
     });
   }
@@ -245,7 +273,7 @@ export class OpeningScene extends Phaser.Scene {
     const midX = (this.m.x + P.door) / 2;
     this.run([
       [0, () => { s.strike(); this.lanternShown = true; this.lanternT = 0.15; }],
-      [0.35, () => { s.ignite(); s.hum(1, 0.2); this.lanternT = 1; this.camTo(midX, 225, 1.3, 2.2); this.hrT = 104; }],
+      [0.35, () => { s.ignite(); s.hum(1, 0.2); this.lanternT = 1; this.camTo(midX, CAM_Y, Z, 2.2); this.hrT = 104; }],
       [0.6, () => { s.recoil(); this.sh.recoil = 1; this.coldT = 0.2; this.darkT = 0.6; this.shake(260, 0.004); }],
       [1.0, () => { this.boo.aT = 1; s.rain(0.35, false, 1.5); }],
       [1.9, () => this.say('boo', 'THERE YOU ARE.', 1.9)],
@@ -281,14 +309,27 @@ export class OpeningScene extends Phaser.Scene {
 
   // ---------------------------------------------------------------- helpers
   run(list) { this.tl = list.map(([t, fn]) => ({ t, fn, done: false })); this.tlT = 0; }
-  camTo(x, y, z, k = 2) { this.camMode = 'fixed'; this.camT = { x, y, z }; this.camK = k; }
+  camTo(x, y, z, k = 2) { this.camMode = 'fixed'; this.camT = { x, y, z: Z }; this.camK = k; }
   walkTo(x, speed, done, run = false) { this.auto = { x, speed, done, run }; }
   tw(o, alpha, ms) { this.tweens.killTweensOf(o); this.tweens.add({ targets: o, alpha, duration: ms }); }
   say(who, str, dur) { this.bubble = { who, str, n: 0, t: 0, dur, acc: 0 }; }
   lightning(v) { this.flash = Math.max(this.flash, v); }
   shake(ms, k) { if (Save.get().settings.shake) this.cameras.main.shake(ms, k); }
-  wrist() { return { x: this.m.x - 20, y: this.m.y - 42 + this.bob() }; }
-  bob() { return this.m.ground && Math.abs(this.m.vx) < 10 && this.rise < 0 ? Math.round(Math.sin(this.t * 2.2) * 1.5) : 0; }
+  frameKey() {
+    const m = this.m;
+    if (this.pose) return `op_milo_${this.pose}`;
+    if (this.rise >= 0) return 'op_milo_fall';
+    if (!m.ground) return m.vy < 0 ? 'op_milo_jump' : 'op_milo_fall';
+    if (Math.abs(m.vx) > 12) return `op_milo_run${Math.floor(m.walkT) % 4}`;
+    return 'op_milo_idle';
+  }
+  faceLeft() { return this.glance > 0 && Math.abs(this.m.vx) < 10 ? true : this.m.face < 0; }
+  // the spirit's wristband in world px, whatever frame he is in (the Ghostline hangs from it)
+  wrist() {
+    const o = WRISTS[this.frameKey()] || { x: -0.5, y: -9 };
+    const f = this.faceLeft() ? -1 : 1;
+    return { x: this.gx + o.x * G * f, y: this.gy + o.y * G };
+  }
 
   readInput() {
     if (this.debugInput) return { x: this.debugInput.x || 0, jump: !!this.debugInput.jump, held: !!this.debugInput.jump };
@@ -302,6 +343,7 @@ export class OpeningScene extends Phaser.Scene {
   }
 
   update(time, delta) {
+    if (this.freeze) { this.render(); return; } // screenshots: the sim is driven from outside
     this.im.update();
     if (this.phase === 'gate' && (this.im.pressed('confirm') || this.im.pressed('float'))) this.begin();
     if (this.phase === 'end' && this.endGroup && !this.leaving) this.endGroup.handle(this.im);
@@ -313,6 +355,7 @@ export class OpeningScene extends Phaser.Scene {
   step(dt) {
     this.t += dt;
     this.tlT += dt;
+    if (this.control) this.ctlT += dt;
     for (const e of this.tl) if (!e.done && this.tlT >= e.t) { e.done = true; e.fn(); }
     const s = this.snd;
     const m = this.m;
@@ -329,7 +372,7 @@ export class OpeningScene extends Phaser.Scene {
       }
     }
     this.ecgAcc += dt;
-    while (this.ecgAcc > 0.07) { this.ecgAcc -= 0.07; this.ecgCol = (this.ecgCol + 1) % this.ecg.length; this.ecg[this.ecgCol] = this.ecgQ.length ? this.ecgQ.shift() : 0; }
+    while (this.ecgAcc > 0.08) { this.ecgAcc -= 0.08; this.ecgCol = (this.ecgCol + 1) % this.ecg.length; this.ecg[this.ecgCol] = this.ecgQ.length ? this.ecgQ.shift() : 0; }
     this.blackout = Math.max(0, this.blackout - dt);
 
     // light
@@ -346,11 +389,12 @@ export class OpeningScene extends Phaser.Scene {
     }
     this.lantern = lerp(this.lantern, this.lanternT, 1 - Math.exp(-dt * (this.lanternT > 0.5 ? 7 : 3)));
     this.boo.a = lerp(this.boo.a, this.boo.aT, 1 - Math.exp(-dt * 3));
+    this.doorOpen = lerp(this.doorOpen, this.doorT, 1 - Math.exp(-dt * 1.5));
 
-    // the rise: out of the body, upright, then down to the floor beside the bed
+    // the separation: he fades in inside his body, sits up out of it, stands, drifts down beside the bed
     if (this.rise >= 0) {
       this.rise += dt;
-      if (this.rise >= 3.0) { this.rise = -1; m.x = P.land; m.y = FEET; m.ground = true; m.face = -1; s && s.land(); }
+      if (this.rise >= RISE_T) { this.rise = -1; m.x = P.land; m.y = FEET; m.ground = true; m.face = -1; m.vx = 0; s && s.land(); this.puff(); }
     }
 
     // movement (player, or an automatic walk in a beat)
@@ -359,17 +403,20 @@ export class OpeningScene extends Phaser.Scene {
       if (this.control) ({ x: ix, jump, held } = this.readInput());
       else if (this.auto) {
         const d = this.auto.x - m.x;
-        if (Math.abs(d) < 3) { m.x = this.auto.x; m.vx = 0; const done = this.auto.done; this.auto = null; if (done) done(); }
-        else ix = Math.sign(d) * (this.auto.speed / SPEED);
+        if (Math.abs(d) < 2 && m.ground) { m.x = this.auto.x; m.vx = 0; const done = this.auto.done; this.auto = null; if (done) done(); }
+        else ix = Math.sign(d) * Math.min(1, Math.abs(d) / 24 + 0.25) * (this.auto.speed / SPEED); // eases into the stop
       }
       m.vx += clamp(ix * SPEED - m.vx, -ACCEL * dt, ACCEL * dt);
       if (ix) { m.face = Math.sign(ix); this.glance = 0; }
       if (jump && m.ground) { m.vy = -JUMP_V; m.ground = false; s && s.jump(); }
+      if (this.backT > 0) { this.backT -= dt; m.x += dt * 16; } // recoils a step, still facing the bed
       const py = m.y;
       if (!m.ground) m.vy += (m.vy < 0 && held ? GRAV * 0.6 : GRAV) * dt;
       m.x += m.vx * dt;
       m.y += m.vy * dt;
-      const maxX = this.auto && this.auto.run ? P.maxX + 45 : P.maxX;
+      // the door is shut until he knows: he walks into it (a real door, not a wall in the air)
+      const maxX = this.auto && this.auto.run ? P.maxX + 45 : this.phase === 'explore' ? P.doorStop : P.maxX;
+      if (this.phase === 'explore' && m.x >= P.doorStop && this.bumped <= 0) { this.bumped = 2.5; s && s.bump(); this.loud = 2; this.glance = 1.6; m.vx = -40; }
       m.x = clamp(m.x, P.minX, maxX);
       const onChair = m.x > P.chair.x0 && m.x < P.chair.x1;
       if (m.vy >= 0 && !m.ground) {
@@ -380,22 +427,37 @@ export class OpeningScene extends Phaser.Scene {
       this.moved += Math.abs(m.vx * dt);
       m.walkT += Math.abs(m.vx) * dt / 15;
     }
+    this.bumped = Math.max(0, this.bumped - dt);
 
     // story triggers: where Milo goes, never a timer
     if (this.phase === 'explore') {
       if (m.x < P.discoverX) this.startDiscover();
-      else if (m.x > P.nudgeX && !this.nudged) { this.nudged = true; this.loud = 2; this.glance = 1.4; } // the monitor calls him back
-      if (!this.hintShown && this.tlT > 12.6 && this.moved < 30) { this.hintShown = true; this.showHint(); }
+      else if (m.x > P.nudgeX && !this.nudged) { this.nudged = true; this.loud = 2; this.glance = 1.4; this.twitch = 0.5; } // the monitor calls him back
+      if (!this.hintShown && this.ctlT > 4.5 && this.moved < 30) { this.hintShown = true; this.showHint(); }
     }
     if ((this.phase === 'explore' || this.phase === 'explore2') && this.hintShown && this.moved > 90) this.tw(this.hint, 0, 400);
     if (this.phase === 'explore2' && m.x > P.shadowAt) this.startShadow();
     this.glance = Math.max(0, this.glance - dt);
 
-    // reach + the Ghostline
-    this.reach = lerp(this.reach, this.reachT, 1 - Math.exp(-dt * (this.reachT > this.reach ? 5 : 9)));
+    // the body: a finger moves now and then (it's alive), more often while he hasn't looked yet
+    this.twitch = Math.max(0, this.twitch - dt);
+    if (this.phase === 'explore') { this.nextTwitch -= dt; if (this.nextTwitch <= 0) { this.nextTwitch = 6 + Math.random() * 3; this.twitch = 0.35; } }
     if (this.ripple >= 0) { this.ripple += dt; if (this.ripple > 1) this.ripple = -1; }
-    if (this.line >= 0 && this.line < 1) this.line = Math.min(1, this.line + dt / 1.6);
     this.ghostFlick = Math.max(0, this.ghostFlick - dt);
+    this.wristFlash = Math.max(0, this.wristFlash - dt);
+
+    // the Ghostline reveal
+    const gl = this.gl;
+    if (gl.stage > 0) {
+      gl.t += dt;
+      if (gl.stage === 1) { gl.k = Math.min(1, gl.t / 0.9); if (gl.k >= 1) { gl.stage = 2; gl.t = 0; this.wristFlash = 0.5; this.twitch = 0.3; s && s.tick(); } }
+      else if (gl.stage === 2) { if (gl.t > 0.45) { gl.stage = 3; gl.t = 0; gl.k = 0; s && s.descend(); } }
+      else if (gl.stage === 3) { gl.k = Math.min(1, gl.t / 1.1); if (gl.k >= 1) { gl.stage = 4; gl.t = 0; } }
+      this.line = gl.stage === 4 ? 1 : gl.stage === 3 ? 0.6 + gl.k * 0.39 : gl.stage === 2 ? 0.5 : gl.k * 0.5;
+      // bright while it's found, then it settles to a faint thread (still there, never dominant)
+      const aT = gl.stage < 4 ? 1 : gl.t < 1.5 ? 1 : (this.phase === 'shadow' || this.phase === 'boo' ? 0.5 : 0.32);
+      gl.a = lerp(gl.a, aT, 1 - Math.exp(-dt * 1.5));
+    }
 
     // the curtain and the thing behind it
     const sil = this.sil;
@@ -417,37 +479,39 @@ export class OpeningScene extends Phaser.Scene {
     }
     if (this.phase === 'shadow' && !sh.on && this.tlT > 9) { sh.on = true; } // safety: never stall
 
-    // Boo drifts into the corridor at the end
     if (this.boo.go) this.boo.x = Math.min(P.door + 40, this.boo.x + dt * 60);
 
     // bubble
     const b = this.bubble;
     if (b) {
       b.t += dt;
-      const n = Math.min(b.str.length, Math.floor(b.t * 28));
+      const n = Math.min(b.str.length, Math.floor(b.t * 24));
       if (n > b.n) { b.n = n; if (s && b.str[n - 1] !== ' ' && n % 2) s.blip(b.who === 'boo' ? 330 : 620); }
-      if (b.t > b.dur + b.str.length / 28) this.bubble = null;
+      if (b.t > b.dur + b.str.length / 24) this.bubble = null;
     }
 
     // ghost motes
     this.moteT -= dt;
-    if (m.shown && this.moteT <= 0) { this.moteT = 0.14; this.motes.push({ x: m.x + (Math.random() - 0.5) * 30, y: m.y - 10 - Math.random() * 60, life: 1 }); }
-    this.motes.forEach((p) => { p.y -= dt * 14; p.life -= dt * 0.9; });
+    if (m.shown && this.rise < 0 && this.moteT <= 0) { this.moteT = 0.2; this.motes.push({ x: m.x + (Math.random() - 0.5) * 24, y: m.y - 6 - Math.random() * 70, life: 1 }); }
+    this.motes.forEach((p) => { p.y -= dt * 12; p.life -= dt * 0.9; });
     this.motes = this.motes.filter((p) => p.life > 0);
 
-    // camera: follows Milo's world x with a little look-ahead; beats frame things on their own
+    // camera: follows Milo's world x with a little look-ahead; beats frame things on their own. Zoom never changes.
     if (this.camMode === 'follow') {
-      this.look = lerp(this.look, m.face * 55, 1 - Math.exp(-dt * 1.8));
-      this.camT = { x: m.x + this.look, y: 180, z: 1 };
+      this.look = lerp(this.look, m.face * 40, 1 - Math.exp(-dt * 1.5));
+      this.camT = { x: m.x + this.look, y: CAM_Y, z: Z };
     }
     const k = 1 - Math.exp(-dt * this.camK);
     this.cam.x = lerp(this.cam.x, this.camT.x, k);
     this.cam.y = lerp(this.cam.y, this.camT.y, k);
-    this.cam.z = lerp(this.cam.z, this.camT.z, k);
+    this.cam.z = Z;
+    this.maxZ = Math.max(this.maxZ, this.cam.z);
     this.lb = lerp(this.lb, this.lbT, 1 - Math.exp(-dt * 4));
     this.fade = lerp(this.fade, this.fadeT, 1 - Math.exp(-dt * this.fadeK * 2));
     this.applyCam();
   }
+
+  puff() { for (let i = 0; i < 8; i++) this.motes.push({ x: this.m.x + (i - 3.5) * 5, y: FEET - 4 - Math.random() * 8, life: 0.9 }); }
 
   applyCam() {
     const c = this.cam, z = c.z;
@@ -462,42 +526,48 @@ export class OpeningScene extends Phaser.Scene {
 
   showHint() {
     const d = Device.get();
-    const str = d === 'touch' ? 'DRAG LEFT THUMB: MOVE    TAP RIGHT: JUMP'
+    const str = d === 'touch' ? 'LEFT THUMB: MOVE    TAP RIGHT: JUMP'
       : d === 'gamepad' ? 'STICK: MOVE    A: JUMP' : 'A D / ARROWS: MOVE    SPACE: JUMP';
     this.hint.setText(str);
-    this.tw(this.hint, 0.85, 600);
+    this.tw(this.hint, 0.7, 800);
   }
 
   // ---------------------------------------------------------------- drawing
   render() {
-    const t = this.t, m = this.m;
-    // lights
+    const t = this.t;
     const lamp = this.lamps;
-    this.bulbs.forEach((b) => b.setTexture(lamp > 0.5 ? 'op_bulb_on' : this.t < 6.5 && this.phase === 'intro' ? 'op_bulb_ember' : 'op_bulb_off'));
-    this.lampL.forEach((l) => { l.g.setAlpha(lamp * 0.5); l.p.setAlpha(lamp * 0.32); l.s.setAlpha(lamp * 0.22); });
+    this.bulbs.forEach((b) => b.setTexture(lamp > 0.5 ? 'op_bulb_on' : this.t < 7 && this.phase === 'intro' ? 'op_bulb_ember' : 'op_bulb_off'));
+    this.lampL.forEach((l) => { l.g.setAlpha(lamp * 0.45); l.p.setAlpha(lamp * 0.3); l.s.setAlpha(lamp * 0.2); });
     this.warmR.setAlpha(this.warm * lamp * 0.05);
     this.darkR.setAlpha(this.dark);
     this.coldR.setAlpha(this.cold * 0.75);
     const e = this.elamp * (1 - this.cold * 0.35);
-    this.elampSpr.setAlpha(e);
-    this.eL.g.setAlpha(e * 0.62); this.eL.p.setAlpha(e * 0.42); this.eL.s.setAlpha(e * 0.28);
+    this.elampSpr.setTexture(e > 0.4 ? 'op_elamp_on' : 'op_elamp_off');
+    this.eL.g.setAlpha(e * 0.55); this.eL.p.setAlpha(e * 0.5); this.eL.b.setAlpha(e * 0.32); this.eL.s.setAlpha(e * 0.22);
     const f = this.flash;
-    this.winL.g.setAlpha(0.2 + f * 0.6); this.winL.p.setAlpha(0.26 + f * 0.5); this.winL.s.setAlpha(0.18 + f * 0.4);
+    this.winL.g.setAlpha(0.2 + f * 0.6); this.winL.p.setAlpha(0.24 + f * 0.5); this.winL.s.setAlpha(0.16 + f * 0.4);
     this.flashR.setAlpha(f * 0.1);
     const mon = this.blackout > 0 ? 0 : 1;
-    this.monL.g.setAlpha(mon * 0.3); this.monL.p.setAlpha(mon * 0.14);
+    const beatGlow = this.ecg[this.ecgCol] < -2 ? 0.12 : 0;
+    this.monL.g.setAlpha(mon * (0.3 + beatGlow)); this.monL.p.setAlpha(mon * 0.14);
     this.clock.setTexture(`op_clock_${this.clockState}`);
     this.clockL.setAlpha(this.clockState === 'off' ? 0 : (lamp > 0.5 ? 0.35 : 0.1));
     this.exitL.setAlpha(0.22 + Math.sin(t * 1.3) * 0.03);
+    this.doorShut.setAlpha(1 - ease(this.doorOpen * 1.4));
+    this.doorOpenSpr.setAlpha(ease(this.doorOpen * 1.4));
+    // the living body: breathing, a finger now and then
+    const inhale = Math.sin(t * Math.PI * 2 / 4.6) > 0.35;
+    this.breath.setAlpha(inhale ? 1 : 0);
+    this.hand.setTexture(this.twitch > 0 && Math.floor(this.twitch * 10) % 2 === 0 ? 'op_hand1' : 'op_hand0');
     // lantern + Boo
     const la = this.lantern;
-    const boo = this.boo, bob = Math.sin(t * 2) * 3;
+    const boo = this.boo, bob = Math.round(Math.sin(t * 2) * 1.5) * G / 2;
     boo.spr.setTexture(Math.floor(t * 5) % 2 ? 'op_boo1' : 'op_boo0').setPosition(Math.round(boo.x), Math.round(boo.y + bob)).setAlpha(boo.a * 0.95).setFlipX(boo.face < 0);
-    const lx = boo.x + (boo.face < 0 ? -42 : 42), ly = boo.y - 2 + bob;
+    const lx = boo.x + (boo.face < 0 ? -26 : 26), ly = boo.y - 2 + bob;
     this.lanSpr.setVisible(this.lanternShown).setAlpha(this.lanternShown ? 1 : 0).setTexture(la > 0.3 ? 'op_lantern_on' : 'op_lantern_off')
       .setPosition(Math.round(lx), Math.round(ly)).setAngle(Math.sin(t * 1.7) * 7 + (boo.go ? 12 : 0));
     const lfl = la * (0.92 + Math.sin(t * 17) * 0.04 + Math.sin(t * 7.3) * 0.04);
-    const lc = { x: lx, y: ly + 26 };
+    const lc = { x: lx, y: ly + 16 };
     this.lanL.g.setPosition(lc.x, lc.y).setAlpha(lfl * 0.62);
     this.lanL.c.setPosition(lc.x, lc.y).setAlpha(lfl * 0.9);
     this.lanL.p.setPosition(lc.x - 10, 312).setAlpha(lfl * 0.5);
@@ -510,40 +580,50 @@ export class OpeningScene extends Phaser.Scene {
     this.drawGhost();
     this.drawLine();
     this.drawUi();
-    // breathing
-    this.blanket.setScale(L, L * (1 + 0.05 * Math.max(0, Math.sin(t * Math.PI * 2 / 4.4))));
+  }
+
+  drawIv() { // the drip tube from the bag down to the back of his hand
+    const g = this.ivG;
+    g.clear();
+    const a = { x: 107.5 * G, y: 45 * G }, b = { x: (BODY_AT.x + BODY_HAND.x + 1) * G, y: (BODY_AT.y + BODY_HAND.y) * G };
+    g.fillStyle(0x9ab4c4, 0.55);
+    for (let i = 0; i <= 40; i++) {
+      const k = i / 40;
+      const x = lerp(a.x, b.x, k), y = lerp(a.y, b.y, k) + Math.sin(k * Math.PI) * 14;
+      g.fillRect(Math.round(x), Math.round(y), 2, 2);
+    }
   }
 
   drawWindow() {
     const g = this.winG, w = P.window, t = this.t;
     g.clear();
-    g.fillStyle(0x9fc0ff, 0.12 + this.flash * 0.5); g.fillRect(w.x, w.y, w.w, w.h);
-    g.fillStyle(0xa8c4f0, 0.32);
-    for (let i = 0; i < 30; i++) {
+    g.fillStyle(0x9fc0ff, 0.1 + this.flash * 0.5); g.fillRect(w.x, w.y, w.w, w.h);
+    g.fillStyle(0xa8c4f0, 0.3);
+    for (let i = 0; i < 28; i++) {
       const sp = 260 + (i * 37) % 90;
       const y = w.y + ((i * 53 + t * sp) % (w.h + 20)) - 10;
       const x = w.x + ((i * 71 - t * sp * 0.25) % w.w + w.w) % w.w;
-      g.fillRect(Math.round(x), Math.round(y), 1, 7);
+      g.fillRect(Math.round(x), Math.round(y), 1, 6);
     }
     const gg = this.glassG;
     gg.clear();
-    // drops crawling down the glass
-    gg.fillStyle(0xbfd6ff, 0.35);
-    for (let i = 0; i < 7; i++) {
+    // drops crawling down the glass (on the art grid)
+    for (let i = 0; i < 9; i++) {
       const x = w.x + 6 + ((i * 29) % (w.w - 12));
-      const y = w.y + ((i * 41 + t * (6 + i * 2)) % w.h);
-      if (Math.abs(x - 672) < 6 || Math.abs(y - 120) < 5) continue;
-      gg.fillRect(Math.round(x), Math.round(y), 3, 3);
-      gg.fillStyle(0xbfd6ff, 0.12); gg.fillRect(Math.round(x) + 1, Math.round(y) - 10, 1, 10); gg.fillStyle(0xbfd6ff, 0.35);
+      const y = w.y + ((i * 41 + t * (5 + i * 2)) % w.h);
+      if (Math.abs(x - 672) < 7 || Math.abs(y - 156) < 6) continue;
+      const sx = Math.floor(x / G) * G, sy = Math.floor(y / G) * G;
+      gg.fillStyle(0xbfd6ff, 0.35); gg.fillRect(sx, sy, G, G);
+      gg.fillStyle(0xbfd6ff, 0.12); gg.fillRect(sx + 1, sy - 9, 1, 9);
     }
-    // frost creeps in from the corners when it comes
+    // frost creeps in from the corners of each pane when it comes
     if (this.cold > 0.02) {
       gg.fillStyle(0xd8ecff, 0.42);
-      for (let gx = 0; gx < 22; gx++) for (let gy = 0; gy < 22; gy++) {
-        if (gx === 10 || gx === 11 || gy === 10 || gy === 11) continue;
-        const lx = gx < 10 ? gx : gx - 12, ly = gy < 10 ? gy : gy - 12;
-        const d = Math.min(lx, 9 - lx) + Math.min(ly, 9 - ly) + ((gx * 7 + gy * 13) % 5) * 0.5;
-        if (d < this.cold * 9) gg.fillRect(w.x + gx * L, w.y + gy * L, L, L);
+      for (let gx = 0; gx < 32; gx++) for (let gy = 0; gy < 36; gy++) {
+        if (gx === 15 || gx === 16 || gy === 17 || gy === 18) continue;
+        const lx = gx < 15 ? gx : gx - 17, ly = gy < 17 ? gy : gy - 19;
+        const d = Math.min(lx, 14 - lx) + Math.min(ly, 16 - ly) + ((gx * 7 + gy * 13) % 5) * 0.6;
+        if (d < this.cold * 12) gg.fillRect(w.x + gx * G, w.y + gy * G, G, G);
       }
     }
   }
@@ -552,37 +632,40 @@ export class OpeningScene extends Phaser.Scene {
     const g = this.monG, mo = P.monitor;
     g.clear();
     if (this.blackout > 0) return;
-    g.fillStyle(0x0a2a18, 0.6); g.fillRect(mo.x, mo.y, mo.w, mo.h);
-    g.fillStyle(0x4cff96, 1);
-    const base = mo.y + 6 * L;
+    g.fillStyle(0x0a2a18, 0.55); g.fillRect(mo.x, mo.y, mo.w, mo.h);
+    const base = mo.y + 6 * G;
     let prev = 0;
     for (let i = 0; i < this.ecg.length; i++) {
       const dist = (this.ecgCol - i + this.ecg.length) % this.ecg.length;
       if (dist === this.ecg.length - 1) { prev = this.ecg[i]; continue; } // the gap ahead of the sweep
       const v = this.ecg[i];
       const a = Math.min(prev, v), b = Math.max(prev, v);
-      g.fillStyle(0x4cff96, dist === 0 ? 1 : Math.max(0.25, 1 - dist / 14));
-      g.fillRect(mo.x + i * L, base + a * L, L, (b - a) * L + 3);
+      g.fillStyle(0x4cff96, dist === 0 ? 1 : Math.max(0.25, 1 - dist / 11));
+      g.fillRect(mo.x + i * G, base + a * G, G, (b - a + 1) * G);
       prev = v;
     }
+    // heart rate, in green, and the amber battery once the power is gone
+    const hr = String(Math.round(this.hr));
+    g.fillStyle(0x4cff96, 0.9);
+    [...hr].forEach((ch, j) => DIGITS[ch].forEach((row, y) => [...row].forEach((bit, x) => { if (bit === '1') g.fillRect((57 + j * 4 + x) * G - 3, (72 + y) * G, G - 1, G - 1); })));
     if (this.battery) {
       const on = Math.floor(this.t * 1.5) % 2 === 0;
-      g.fillStyle(0xffb040, on ? 1 : 0.4); g.fillRect(mo.x + 2, mo.y + 2, 10, 5); g.fillRect(mo.x + 12, mo.y + 3, 2, 3);
+      g.fillStyle(0xffb040, on ? 1 : 0.45); g.fillRect(57 * G, 79 * G, 4 * G, 2 * G); g.fillRect(61 * G, 79 * G + 1, 2, G);
     }
   }
 
   drawCurtain() {
     const t = this.t, sil = this.sil;
     this.panels.forEach((p, i) => {
-      const cx = (74 + i * 10 + 5) * L;
+      const cx = 395 + i * 50;
       const near = sil.move || sil.flash > 0 ? Math.max(0, 1 - Math.abs(sil.x - cx) / 60) : 0;
       const sway = sil.sway * Math.sin(t * 2.3 + i * 1.3) * 2;
-      p.setPosition(Math.round(cx + sway + near * 3), 9 * L + Math.round(near * 2));
-      p.setScale(L * (1 + near * 0.09), L);
+      p.setPosition(Math.round(cx + sway + near * 3), 23 * G + Math.round(near * 2));
+      p.setScale(G * (1 + near * 0.09), G);
     });
     const tex = this.textures.get('op_sil0').getSourceImage();
     const a = sil.flash > 0 ? 0.62 : sil.a;
-    this.silCurtain.setTexture(`op_sil${Math.floor(t * 3) % 4}`).setPosition(Math.round(sil.x), 268).setScale(L * 0.75, 215 / tex.height).setAlpha(a);
+    this.silCurtain.setTexture(`op_sil${Math.floor(t * 3) % 4}`).setPosition(Math.round(sil.x), 296).setScale(3.75, 225 / tex.height).setAlpha(a);
   }
 
   drawShadow() {
@@ -603,7 +686,6 @@ export class OpeningScene extends Phaser.Scene {
     const pts = [...top, ...bot.reverse()];
     g.fillStyle(0x020206, 0.35); g.fillPoints(pts.map((p) => ({ x: p.x, y: p.y + (p.y > 306 ? 3 : -3) })), true);
     g.fillStyle(0x000000, 0.82); g.fillPoints(pts, true);
-    // fingers, feeling for him
     const ty = 296 + 22;
     g.lineStyle(3, 0x000000, 0.8);
     for (let f = 0; f < 4; f++) {
@@ -611,96 +693,153 @@ export class OpeningScene extends Phaser.Scene {
       const ex = tip + (12 + f * 5 + Math.sin(t * 4 + f) * 6) * curl, ey = ty + (f - 1.5) * 6 + Math.sin(t * 3 + f * 2) * 2;
       g.beginPath(); g.moveTo(tip - 8, ty + (f - 1.5) * 3); g.lineTo((tip + ex) / 2, ey - 3); g.lineTo(ex, ey); g.strokePath();
     }
-    // the long figure thrown up the wall, leaning toward him
     const fl = sh.recoil ? 0.75 + Math.sin(t * 20) * 0.04 : 1;
     this.silWall.setTexture(`op_sil${Math.floor(t * 2.5) % 4}`)
       .setPosition(Math.round(tip - 60), 252)
-      .setScale(L * 0.8 * fl, (sh.wall * 240 * fl) / tex.height)
+      .setScale(4 * fl, (sh.wall * 240 * fl) / tex.height)
       .setAngle(sh.recoil ? 8 : 22 + Math.sin(t * 1.4) * 2)
       .setAlpha(sh.wall * 0.62);
   }
 
   drawGhost() {
     const m = this.m, t = this.t, gs = this.ghost;
-    let x = m.x, y = m.y + this.bob(), angle = 0, alpha = 0.88;
-    gs.setOrigin(0.5, 1);
+    const shimmer = 0.82 + Math.sin(t * 7) * 0.06;
+    let x = m.x, y = m.y, alpha = 0.86;
+    this.lie.setAlpha(0); this.sit.setAlpha(0);
     if (this.rise >= 0) {
-      const r = this.rise;
-      m.shown = true;
-      if (r < 2.2) { // sits up out of the body
-        const k = ease(r / 2.2);
-        gs.setOrigin(0.5, 0.5);
-        x = lerp(P.bed.x - 2, P.bed.x + 4, k); y = lerp(P.bed.y - 4, 168, k); angle = lerp(-90, 0, k);
-        alpha = Math.min(0.88, r / 1.3) * (0.75 + Math.sin(t * 9) * 0.1);
-        m.face = 1;
-      } else { // and drifts down beside the bed
-        const k = ease((r - 2.2) / 0.8);
-        x = lerp(P.bed.x + 4, P.land, k); y = lerp(213, FEET, k) - Math.sin(k * Math.PI) * 14;
-        if (k > 0.7) m.face = -1;
+      // 1 the spirit shows inside the body and lifts off it by a pixel or two, 2 sits up, 3 stands, 4 drifts down beside the bed
+      const r = this.rise, R1 = RISE.lie, R2 = R1 + RISE.sit, R3 = R2 + RISE.stand;
+      m.shown = true; m.face = 1;
+      const standX = P.liePos.x + 42, standY = 280;
+      if (r < R1) {
+        const k = ease(r / R1);
+        this.lie.setAlpha(k * 0.7 * shimmer).setPosition(P.liePos.x, P.liePos.y - Math.round(k * 2) * G);
+        gs.setAlpha(0); this.gx = x; this.gy = y;
+        this.glowAt(P.liePos.x + 30, P.liePos.y + 12, k * 0.35, 0);
+        return;
       }
+      if (r < R2) {
+        const k = ease((r - R1) / RISE.sit);
+        this.lie.setAlpha((1 - k) * 0.7 * shimmer).setPosition(P.liePos.x, P.liePos.y - 2 * G);
+        this.sit.setAlpha(k * 0.85 * shimmer).setPosition(P.sitPos.x, P.sitPos.y - Math.round(k * 2) * G);
+        gs.setAlpha(0); this.gx = x; this.gy = y;
+        this.glowAt(P.sitPos.x + 45, P.sitPos.y + 20, 0.35, 0);
+        return;
+      }
+      if (r < R3) { // up out of the bed, upright, hanging in the air
+        const k = ease((r - R2) / RISE.stand);
+        this.sit.setAlpha((1 - k) * 0.85 * shimmer).setPosition(P.sitPos.x, P.sitPos.y - 2 * G - Math.round(k * 4) * G);
+        x = standX; y = standY - k * 6; alpha = k * 0.86;
+      } else {
+        const k = ease((r - R3) / RISE.drift);
+        x = lerp(standX, P.land, k); y = lerp(standY - 6, FEET, k * k) - Math.sin(k * Math.PI) * 10;
+        if (k > 0.6) m.face = -1; // turns back toward the bed as he comes down
+      }
+      m.x = x;
     }
-    if (!m.shown) { gs.setAlpha(0); this.ghostL.g.setAlpha(0); this.ghostL.p.setAlpha(0); return; }
-    let key = 'op_milo_idle';
-    if (this.rise < 0) {
-      if (!m.ground) key = m.vy < 0 ? 'op_milo_jump' : 'op_milo_fall';
-      else if (Math.abs(m.vx) > 12) key = `op_milo_run${Math.floor(m.walkT) % 4}`;
-    }
+    if (!m.shown) { gs.setAlpha(0); this.ghostL.g.setAlpha(0); this.ghostL.p.setAlpha(0); this.gx = m.x; this.gy = m.y; return; }
     if (this.ghostFlick > 0) alpha *= Math.random() < 0.5 ? 0.35 : 1;
-    const faceLeft = this.glance > 0 && Math.abs(m.vx) < 10 ? true : m.face < 0;
-    gs.setTexture(key).setPosition(Math.round(x), Math.round(y)).setAngle(angle).setFlipX(faceLeft).setAlpha(alpha * (1 - this.cold * 0.15));
-    const cy = this.rise >= 0 && this.rise < 2.2 ? y : y - 45;
-    this.ghostL.g.setPosition(x, cy).setAlpha(0.32 + Math.sin(t * 2) * 0.04);
-    this.ghostL.p.setPosition(x, Math.max(FEET + 2, y + 2)).setAlpha(this.rise >= 0 ? 0.1 : 0.22);
-    // reaching for his own hand
-    const ag = this.armG;
-    ag.clear();
-    if (this.reach > 0.03) {
-      const sx = m.x - 12, sy = m.y - 56;
-      const tx = lerp(sx, P.bodyWrist.x - (this.reach > 1 ? (this.reach - 1) * 40 : 0), Math.min(1, this.reach));
-      const ty = lerp(sy, P.bodyWrist.y + (this.reach > 1 ? (this.reach - 1) * 20 : 0), Math.min(1, this.reach));
-      ag.lineStyle(9, 0xb0e4ff, 0.9 * alpha); ag.lineBetween(sx, sy, tx, ty);
-      ag.lineStyle(5, 0x96c6f4, alpha); ag.lineBetween(sx, sy, tx, ty);
-      ag.fillStyle(0xe2f4ff, alpha); ag.fillRect(Math.round(tx) - 4, Math.round(ty) - 4, 8, 8);
-    }
-    // motes rising off him
-    ag.fillStyle(0xbfe6ff, 1);
-    this.motes.forEach((p) => { ag.fillStyle(0xbfe6ff, p.life * 0.5); ag.fillRect(Math.round(p.x), Math.round(p.y), 3, 3); });
+    const key = this.frameKey();
+    const tex = this.textures.get(key).getSourceImage();
+    this.gx = Math.round(x); this.gy = Math.round(y);
+    gs.setTexture(key).setOrigin(0.5, (tex.height - 1) / tex.height).setPosition(this.gx, this.gy)
+      .setFlipX(this.faceLeft()).setAlpha(alpha * shimmer * (1 - this.cold * 0.15));
+    this.glowAt(x, y - 42, 0.3 + Math.sin(t * 2) * 0.04, this.rise >= 0 ? 0.08 : 0.2, y);
   }
 
+  glowAt(x, y, a, pa, feet = FEET) {
+    this.ghostL.g.setPosition(x, y).setAlpha(a);
+    this.ghostL.p.setPosition(x, Math.max(FEET + 2, feet + 2)).setAlpha(pa);
+  }
+
+  // the Ghostline: a narrow silver-blue filament. Spirit wrist -> living wrist -> the seam under the bed -> gone.
   drawLine() {
-    const g = this.lineG, t = this.t;
-    g.clear();
+    const g = this.lineG, fx = this.fxG, t = this.t, gl = this.gl;
+    g.clear(); fx.clear();
+    // the ghost hand going through his own: a ring on the living hand, the hand shown through the spirit
     if (this.ripple >= 0) {
-      const r = this.ripple;
-      g.lineStyle(2, 0xbfe6ff, 1 - r); g.strokeEllipse(P.bodyWrist.x, P.bodyWrist.y, 10 + r * 50, 6 + r * 24);
+      const r = this.ripple, h = P.bodyHand;
+      fx.lineStyle(1, 0xcfeaff, 0.9 * (1 - r)); fx.strokeEllipse(h.x, h.y, 6 + r * 30, 3 + r * 12);
     }
-    if (this.line < 0) return;
-    const w = this.wrist(), a = P.under;
-    const c = { x: P.bodyWrist.x + 30, y: P.bodyWrist.y - 30 }; // it reaches toward the bed, then bends into the floor
-    const grow = ease(this.line);
-    const shake = this.phase === 'shadow' || this.phase === 'boo' ? 3 : 1;
-    const pts = [];
-    const N = 46;
-    for (let i = 0; i <= N; i++) {
-      const s = i / N;
-      if (s > grow) break;
-      const x = (1 - s) * (1 - s) * w.x + 2 * (1 - s) * s * c.x + s * s * a.x;
-      const y = (1 - s) * (1 - s) * w.y + 2 * (1 - s) * s * c.y + s * s * a.y;
-      const wob = Math.sin(t * 3 + s * 12) * 1.5 * shake * s * (1 - s) * 4;
-      pts.push({ x, y: y + wob });
+    // motes rising off him
+    this.motes.forEach((p) => { fx.fillStyle(0xbfe6ff, p.life * 0.45); fx.fillRect(Math.round(p.x), Math.round(p.y), 2, 2); });
+    if (gl.stage === 0) { this.glPts = null; return; }
+    const wr = this.wrist(), bw = P.bodyWrist, sm = P.seam;
+    const shake = this.phase === 'shadow' || this.phase === 'boo' ? 2.2 : 1;
+    // segment A: his wrist to the living wrist, nearly taut, trembling
+    const A = [];
+    const lenA = Math.hypot(bw.x - wr.x, bw.y - wr.y);
+    const NA = clamp(Math.round(lenA / 6), 6, 120);
+    for (let i = 0; i <= NA; i++) {
+      const s = i / NA;
+      const sag = Math.min(10, lenA * 0.02) * Math.sin(s * Math.PI); // a little weight, never a floating arc
+      const tr = (Math.sin(t * 23 + s * 41) * 0.6 + Math.sin(t * 9 + s * 17) * 0.5) * shake * Math.sin(s * Math.PI);
+      A.push({ x: lerp(wr.x, bw.x, s), y: lerp(wr.y, bw.y, s) + sag + tr });
     }
-    if (pts.length < 2) return;
-    g.lineStyle(6, 0x9fc6ff, 0.16); g.strokePoints(pts);
-    g.lineStyle(2, 0xe8eef8, 0.92); g.strokePoints(pts);
-    // light travelling along it, down toward the floor
-    for (let k = 0; k < 3; k++) {
-      const idx = Math.floor(((t * 0.35 + k / 3) % 1) * (pts.length - 1));
-      g.fillStyle(0xffffff, 0.9); g.fillRect(Math.round(pts[idx].x) - 1, Math.round(pts[idx].y) - 1, 3, 3);
+    // segment B: from the living wrist down past the blanket, under the frame, into the seam
+    const B = [];
+    const c = { x: bw.x + 4, y: sm.y - 4 };
+    for (let i = 0; i <= 18; i++) {
+      const s = i / 18;
+      const x = (1 - s) * (1 - s) * bw.x + 2 * (1 - s) * s * c.x + s * s * sm.x;
+      const y = (1 - s) * (1 - s) * bw.y + 2 * (1 - s) * s * c.y + s * s * sm.y;
+      const tr = Math.sin(t * 19 + s * 30) * 0.4 * shake * Math.sin(s * Math.PI);
+      B.push({ x: x + tr, y });
     }
-    if (grow >= 1) { // and on, into the floor, toward the well
-      for (let j = 0; j < 8; j++) { g.fillStyle(0xe8eef8, 0.7 - j * 0.085); g.fillRect(a.x - 1, a.y + j * 4, 2, 4); }
-      const p = (t * 0.8) % 1;
-      g.lineStyle(1, 0xbfe6ff, 0.6 * (1 - p)); g.strokeEllipse(a.x, a.y + 2, 8 + p * 26, 3 + p * 6);
+    this.glPts = { start: wr, mid: bw, end: sm, stage: gl.stage };
+    const a = gl.a;
+    const strokeFade = (pts, alpha, ends) => { // fainter in the middle of a long line, so it never dominates
+      const n = pts.length - 1;
+      for (let i = 0; i < n; i++) {
+        const s = (i + 0.5) / n;
+        const mid = ends ? 1 - Math.sin(s * Math.PI) * clamp((lenA - 80) / 300, 0, 0.75) : 1;
+        g.lineStyle(1, 0xdfeaff, alpha * mid); g.lineBetween(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y);
+      }
+    };
+    const part = (pts, k) => pts.slice(0, Math.max(2, Math.ceil(k * (pts.length - 1)) + 1));
+    if (gl.stage === 1) { // the first pulse travels from his wrist to the living wrist, drawing the thread behind it
+      const k = ease(gl.k), p = part(A, k);
+      g.lineStyle(3, 0x8fc4ff, 0.12); g.strokePoints(p);
+      strokeFade(p, 0.85, false);
+      const head = p[p.length - 1];
+      fx.fillStyle(0xffffff, 1); fx.fillRect(Math.round(head.x) - 1, Math.round(head.y) - 1, 3, 3);
+      fx.fillStyle(0xbfe0ff, 0.35); fx.fillRect(Math.round(head.x) - 3, Math.round(head.y) - 1, 7, 3); fx.fillRect(Math.round(head.x) - 1, Math.round(head.y) - 3, 3, 7);
+      fx.fillStyle(0xffffff, 0.9); fx.fillRect(Math.round(wr.x) - 1, Math.round(wr.y) - 1, 2, 2);
+      return;
+    }
+    // A is always there from here on
+    if (gl.stage < 4 || gl.t < 1.5) { g.lineStyle(3, 0x8fc4ff, 0.1 * a); g.strokePoints(A); }
+    strokeFade(A, 0.85 * a, true);
+    if (this.wristFlash > 0) { // the living wrist answers: a tiny flash
+      const k = this.wristFlash / 0.5;
+      fx.fillStyle(0xffffff, k); fx.fillRect(Math.round(bw.x) - 1, Math.round(bw.y) - 1, 3, 3);
+      fx.fillStyle(0xcfeaff, k * 0.6); fx.fillRect(Math.round(bw.x) - 5, Math.round(bw.y), 11, 1); fx.fillRect(Math.round(bw.x), Math.round(bw.y) - 5, 1, 11);
+      fx.lineStyle(1, 0xcfeaff, k * 0.5); fx.strokeCircle(bw.x, bw.y, 4 + (1 - k) * 10);
+    }
+    if (gl.stage === 2) return;
+    const kB = gl.stage === 3 ? ease(gl.k) : 1;
+    const pB = part(B, Math.min(1, kB * 1.25));
+    strokeFade(pB, 0.85 * a, false);
+    if (gl.stage === 3) {
+      const head = pB[pB.length - 1];
+      if (kB < 0.8) { fx.fillStyle(0xffffff, 1); fx.fillRect(Math.round(head.x) - 1, Math.round(head.y) - 1, 3, 3); }
+    }
+    if (kB >= 0.8) { // through the floor: the thread goes on below the seam and fades, a faint reflection stays
+      const sink = clamp((kB - 0.8) / 0.2, 0, 1);
+      for (let j = 0; j < 6; j++) { g.fillStyle(0xdfeaff, (0.5 - j * 0.08) * a * sink); g.fillRect(Math.round(sm.x), Math.round(sm.y) + 1 + j * 2, 1, 2); }
+      if (gl.stage === 3 && sink < 1) { fx.fillStyle(0xffffff, 1 - sink); fx.fillRect(Math.round(sm.x) - 1, Math.round(sm.y) + sink * 10, 3, 3); }
+      fx.fillStyle(0x9fd0ff, 0.22 * Math.max(a, 0.6)); fx.fillRect(Math.round(sm.x) - 6, Math.round(sm.y) + 1, 13, 1);
+      fx.fillStyle(0x9fd0ff, 0.12 * Math.max(a, 0.6)); fx.fillRect(Math.round(sm.x) - 10, Math.round(sm.y) + 2, 21, 1);
+      if (gl.stage === 3) { const p = sink; fx.lineStyle(1, 0xbfe6ff, 0.6 * (1 - p)); fx.strokeEllipse(sm.x, sm.y + 1, 6 + p * 22, 2 + p * 4); }
+    }
+    // after it's found: now and then a small light runs along it toward the body (the connection, quietly)
+    if (gl.stage === 4) {
+      const p = (t * 0.25) % 1.6;
+      if (p < 1) {
+        const all = [...A, ...B.slice(1)];
+        const q = all[Math.floor(p * (all.length - 1))];
+        fx.fillStyle(0xffffff, 0.55 * a + 0.15); fx.fillRect(Math.round(q.x) - 1, Math.round(q.y) - 1, 2, 2);
+      }
     }
   }
 
@@ -709,7 +848,6 @@ export class OpeningScene extends Phaser.Scene {
     this.barB.setY(H + 28 - 28 * this.lb);
     this.fadeR.setAlpha(this.fade);
     if (this.phase === 'gate') this.gate[0].setAlpha(0.55 + Math.sin(this.t * 3) * 0.35);
-    // touch stick
     const sg = this.stickG;
     sg.clear();
     if (this.thumb) {
@@ -721,12 +859,12 @@ export class OpeningScene extends Phaser.Scene {
     const bg = this.bubG, b = this.bubble;
     bg.clear();
     if (!b) { this.bubT.setText(''); return; }
-    const head = b.who === 'boo' ? { x: this.boo.x, y: this.boo.y - 52 } : { x: this.m.x, y: this.m.y - 98 };
+    const head = b.who === 'boo' ? { x: this.boo.x, y: this.boo.y - 34 } : { x: this.m.x, y: this.m.y - 92 };
     const sp = this.toScreen(head.x, head.y);
     const bw = b.str.length * 8 + 16, bh = 22;
     const bx = clamp(Math.round(sp.x - bw / 2), 8, W - bw - 8), by = clamp(Math.round(sp.y - bh - 10), 34, H - 60);
     const edge = b.who === 'boo' ? 0xffc870 : 0xa8e4ff;
-    const fadeOut = b.t > b.dur + b.str.length / 28 - 0.3 ? 0.4 : 1;
+    const fadeOut = b.t > b.dur + b.str.length / 24 - 0.3 ? 0.4 : 1;
     bg.fillStyle(0x0b0d1a, 0.88 * fadeOut); bg.fillRect(bx, by, bw, bh);
     bg.lineStyle(2, edge, fadeOut); bg.strokeRect(bx, by, bw, bh);
     const tx = clamp(sp.x, bx + 8, bx + bw - 8);

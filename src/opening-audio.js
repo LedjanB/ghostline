@@ -141,6 +141,25 @@ export function makeOpeningAudio() {
       o.frequency.setTargetAtTime(880, t + 0.6, 0.8); // it bends down, into the floor
       o.connect(g); g.connect(bus); o.start(t); v.start(t); o.stop(t + 3); v.stop(t + 3);
     },
+    // v2 Ghostline: a thin glassy shimmer that travels (wrist to wrist), a tiny tick at his living wrist,
+    // then a falling tone that sinks into the floor. Delicate, no music.
+    pulse() {
+      const t = now();
+      [1975.5, 2637, 3520].forEach((f, i) => tone(t + i * 0.16, f, 0.9 - i * 0.15, 'sine', 0.012 - i * 0.003, f * 1.02, bus, 0.12));
+      hiss(t, 0.8, 0.012, 5200, 'bandpass', 9, 7000, bus, 0.3);
+    },
+    tick() { const t = now(); tone(t, 3951, 0.18, 'sine', 0.02); tone(t + 0.01, 1318.5, 0.3, 'sine', 0.01); },
+    descend() {
+      const t = now();
+      const o = ctx.createOscillator(); o.frequency.value = 1568; const g = ctx.createGain(); g.gain.value = 0;
+      const v = ctx.createOscillator(); v.frequency.value = 7; const vg = ctx.createGain(); vg.gain.value = 10;
+      v.connect(vg); vg.connect(o.frequency);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.014, t + 0.15); g.gain.setTargetAtTime(0.0001, t + 0.9, 0.35);
+      o.frequency.exponentialRampToValueAtTime(392, t + 1.3);
+      o.connect(g); g.connect(far); o.start(t); v.start(t); o.stop(t + 2.6); v.stop(t + 2.6);
+    },
+    door() { const t = now(); tone(t, 70, 1.4, 'sawtooth', 0.012, 110, far, 0.3); hiss(t + 0.2, 1.0, 0.02, 700, 'bandpass', 2, 400, far, 0.3); },
+    bump() { const t = now(); tone(t, 75, 0.2, 'sine', 0.06, 50); hiss(t, 0.08, 0.03, 300, 'lowpass'); },
     keys(v = 0.5) { const t = now(); for (let i = 0; i < 5; i++) tone(t + i * 0.045 + Math.random() * 0.02, 2400 + Math.random() * 1200, 0.025, 'square', 0.03 * v, null, far); },
     curtain(v = 1) { const t = now(); hiss(t, 0.7, 0.05 * v, 1600, 'bandpass', 0.8, 900, bus, 0.15); },
     creak() { const t = now(); tone(t, 85, 1.1, 'sawtooth', 0.02, 130, far, 0.2); },

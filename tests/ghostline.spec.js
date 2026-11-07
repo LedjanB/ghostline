@@ -81,6 +81,93 @@ test('first launch plays the opening: body + ghost, Ghostline once, shadow, Boo,
   expect(errors).toEqual([]);
 });
 
+test('opening v2: both Milos in one shot, the impossible touch, the Ghostline wrist -> wrist -> floor, anchored', async ({ page }) => {
+  const errors = await boot(page);
+  await op(page, (s) => { s.begin(); });
+  // the awakening: one held shot, the zoom never changes, both Milos are in frame together after the rise
+  const shot = await op(page, (s) => {
+    let both = 0, zs = new Set();
+    while (s.phase !== 'explore') {
+      s.step(1 / 60); s.render(); zs.add(Math.round(s.cam.z * 1000));
+      const v = s.cameras.main.worldView;
+      const inView = (x, y) => x > v.x && x < v.right && y > v.y && y < v.bottom;
+      if (s.rise < 0 && s.m.shown && inView(s.gx, s.gy - 40) && inView(s.blanket.x + 20, s.blanket.y + 10)) both += 1 / 60;
+    }
+    return { both, zs: [...zs], clock: s.clockState, battery: s.battery };
+  });
+  expect(shot.zs).toEqual([1333]); // 4/3 only: one art pixel = 4 screen px, no close-ups
+  expect(shot.both).toBeGreaterThan(1.4); // held ~2 s with both of him in shot before control
+  expect(shot.clock).toBe('off');
+  expect(shot.battery).toBe(true);
+  // walking to the bed: Milo stops, looks, hesitates, reaches, his hand goes through, the hand twitches, the line
+  const beat = await op(page, (s) => {
+    s.debugInput = { x: -1 };
+    let n = 0;
+    while (s.phase !== 'discover' && n++ < 600) { s.step(1 / 60); s.render(); }
+    s.debugInput = { x: 0 };
+    const poses = [], stages = [], said = new Set();
+    let twitched = false, ctlDuring = false, overlap = 1e9, stageOrder = [];
+    while (s.phase === 'discover' && n++ < 2000) {
+      s.step(1 / 60); s.render();
+      if (s.pose && poses[poses.length - 1] !== s.pose) poses.push(s.pose);
+      if (s.twitch > 0) twitched = true;
+      if (s.control && s.phase === 'discover') ctlDuring = true;
+      if (s.bubble) said.add(s.bubble.str);
+      if (s.pose === 'reach2') { const w = s.wrist(); overlap = Math.min(overlap, Math.abs(w.x - 6 - s.hand.x - 6)); }
+      if (stageOrder[stageOrder.length - 1] !== s.gl.stage) stageOrder.push(s.gl.stage);
+    }
+    return { phase: s.phase, control: s.control, poses, twitched, ctlDuring, said: [...said], overlap, stageOrder, line: s.line };
+  });
+  expect(beat.phase).toBe('explore2');
+  expect(beat.control).toBe(true);
+  expect(beat.ctlDuring).toBe(false);
+  expect(beat.poses).toEqual(['look', 'unsure', 'reach1', 'reach2', 'reach3', 'recoil']);
+  expect(beat.twitched).toBe(true);
+  expect(beat.said).toContain("NO. THAT'S ME.");
+  expect(beat.overlap).toBeLessThan(12); // his hand is right over his own
+  expect(beat.stageOrder).toEqual([0, 1, 2, 3, 4]); // pulse wrist -> wrist, flash, into the floor, settled
+  expect(beat.line).toBe(1);
+  // the thread hangs from his moving wrist, ends at the living wrist and goes into the seam under the bed
+  const moves = await op(page, (s) => {
+    const out = [];
+    s.debugInput = { x: 1 };
+    for (let i = 0; i < 90; i++) { s.step(1 / 60); s.render(); if (i % 30 === 29) { const w = s.wrist(); out.push({ d: Math.hypot(w.x - s.glPts.start.x, w.y - s.glPts.start.y), x: w.x, mid: s.glPts.mid, end: s.glPts.end }); } }
+    s.debugInput = { x: 0 };
+    for (let i = 0; i < 300; i++) s.step(1 / 60);
+    return { out, a: s.gl.a };
+  });
+  moves.out.forEach((o) => expect(o.d).toBeLessThan(0.01));
+  expect(moves.out[2].x - moves.out[0].x).toBeGreaterThan(60);
+  expect(moves.out[0].mid.y).toBeLessThan(moves.out[0].end.y); // living wrist above the floor seam
+  expect(moves.a).toBeLessThan(0.5); // it settles to a faint thread
+  expect(errors).toEqual([]);
+});
+
+test('opening v2: walking to the door first meets a shut door, the monitor and the body call him back', async ({ page }) => {
+  const errors = await boot(page);
+  await op(page, (s) => { s.begin(); });
+  await opUntil(page, 0, 'explore', 25);
+  const r = await op(page, (s) => {
+    s.debugInput = { x: 1 };
+    let maxX = 0, glance = false, loud = false;
+    for (let i = 0; i < 60 * 9; i++) { s.step(1 / 60); maxX = Math.max(maxX, s.m.x); if (s.glance > 0) glance = true; if (s.loud > 0) loud = true; }
+    s.debugInput = { x: 0 };
+    return { maxX, glance, loud, phase: s.phase, shut: s.doorOpen < 0.05, hint: s.hintShown };
+  });
+  expect(r.maxX).toBeGreaterThan(880); // he gets all the way to the door
+  expect(r.maxX).toBeLessThan(900); // and it is shut
+  expect(r.shut).toBe(true);
+  expect(r.glance && r.loud).toBe(true);
+  expect(r.phase).toBe('explore');
+  expect(r.hint).toBe(false); // he moved: no hint
+  // standing still a while shows the small movement hint
+  const h = await op(page, (s) => { s.scene.restart(); return true; });
+  await page.waitForTimeout(400);
+  const idle = await op(page, (s) => { s.begin(); while (s.phase !== 'explore') s.step(1 / 60); for (let i = 0; i < 60 * 6; i++) s.step(1 / 60); return s.hintShown; });
+  expect(h && idle).toBe(true);
+  expect(errors).toEqual([]);
+});
+
 test('?opening=1 replays the opening for a returning player and leaves the save alone', async ({ page }) => {
   const errors = await boot(page, { key: 'ghostline-save', value: { version: 8, storySeen: true, candles: 77, runs: 4 } });
   expect(await scenes(page)).toContain('menu');
