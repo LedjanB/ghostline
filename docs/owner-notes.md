@@ -50,3 +50,10 @@ Already in (commit "Arenas teach"): first time an attack comes it's slower with 
 - Prototype `src/station.js`: two lit nurse stations in Ward 4 (55 m and 170 m). Run in, the run slows to a stop, walk left/right, jump on desk/shelf/cabinet, find the chart ("BED 7: MILO, 16."), THE STRETCH can't enter the light. EXIT on the right: run ramps back up, "IT WAS WAITING.", it comes back closer.
 - How: Milo stays at x 150 like the runner; walking moves the world under him. No new scene, no camera change. Touch: left half = move thumb (like the arenas), right half jumps; keyboard arrows/A-D. Slide on a desk drops through (like the Matron's beds).
 - Greybox only. Next: his playtest, then decide room size, what to find, and whether stations get their own camera.
+
+## Nov 7: THE WRONG SIDE OF THE BED (new playable opening, waiting for his playtest)
+- He judged the CHASE -> EXPLORE -> CHASE greybox a creative failure (empty, disconnected). Not expanded; the station code stays as is.
+- Approved premise: Milo (16) at St. Mercy, 3:33 AM, his spirit leaves his living body. The Ghostline (silver thread) runs from his wrist into the floor, toward the well. THE STRETCH wants his spirit. Boo (dead janitor) helps.
+- Built `src/scenes/opening.js` (+ `opening-art.js`, `opening-audio.js`): self-contained scene, own camera following Milo's world x. First launch plays it instead of the old story cards; `?opening=1` replays it. Ends at Boo's "LATER. RUN." with REPLAY OPENING / CONTINUE TO THE RUN (temporary handoff).
+- Beats fire on where the player walks (bed -> Ghostline once; past the window -> the shadow; shadow close or Milo at the door -> Boo), never on a timer. THE STRETCH is only shadow + sound. Nothing can hurt Milo here. Uses `storySeen` (no save change).
+- Next: his playtest (PC + iPhone). Then the corridor chase and the nurse station, only after he approves.

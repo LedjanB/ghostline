@@ -32,12 +32,70 @@ async function simulate(page, meters, { invuln = true } = {}) {
   }, { m: meters, invuln });
 }
 
-test('first launch plays the story, then starts a run', async ({ page }) => {
+// THE WRONG SIDE OF THE BED: drive the opening with its own step() and a fake stick
+const op = (page, fn, arg) => page.evaluate(([src, a]) => (0, eval)(src)(window.__opening, a), [fn.toString(), arg]);
+const opUntil = (page, x, phase, max = 60) => op(page, (s, { x, phase, max }) => {
+  s.debugInput = { x };
+  let n = 0;
+  while (s.phase !== phase && n < max * 60) { s.step(1 / 60); n++; }
+  s.debugInput = { x: 0 };
+  return { phase: s.phase, x: Math.round(s.m.x), t: n / 60 };
+}, { x, phase, max });
+
+test('first launch plays the opening: body + ghost, Ghostline once, shadow, Boo, then the run', async ({ page }) => {
   const errors = await boot(page);
-  expect(await scenes(page)).toContain('story');
-  await page.evaluate(() => window.__game.scene.getScene('story').finish());
+  expect(await scenes(page)).toContain('opening');
+  expect(await scenes(page)).not.toContain('story');
+  await op(page, (s) => { s.begin(); });
+  expect((await opUntil(page, 0, 'explore', 20)).phase).toBe('explore');
+  const seen = await op(page, (s) => ({ shown: s.m.shown, body: s.blanket.visible, lamps: s.lamps, clock: s.clockState }));
+  expect(seen.lamps).toBe(0); // the power is out
+  expect(seen.clock).toBe('off');
+  expect(seen.shown).toBe(true);
+  expect(seen.body).toBe(true);
+  // nothing happens on a timer: stand still for 30 s
+  const idle = await op(page, (s) => { for (let i = 0; i < 1800; i++) s.step(1 / 60); return { phase: s.phase, flags: { ...s.flags } }; });
+  expect(idle.phase).toBe('explore');
+  expect(idle.flags.discover).toBe(0);
+  // walk to the bed: the discovery fires once
+  expect((await opUntil(page, -1, 'discover', 10)).phase).toBe('discover');
+  expect((await opUntil(page, 0, 'explore2', 15)).phase).toBe('explore2');
+  expect(await op(page, (s) => s.line)).toBeGreaterThan(0.9);
+  await opUntil(page, -1, 'none', 3); // back past the bed again: no second discovery
+  expect(await op(page, (s) => s.flags.discover)).toBe(1);
+  // the camera follows Milo's world position (not a fixed screen spot)
+  const camA = await op(page, (s) => s.cam.x);
+  expect((await opUntil(page, 1, 'shadow', 20)).phase).toBe('shadow');
+  const camB = await op(page, (s) => s.cam.x);
+  expect(camB - camA).toBeGreaterThan(150);
+  // THE STRETCH: shadow only
+  expect((await opUntil(page, 0, 'boo', 20)).phase).toBe('boo');
+  expect(await op(page, (s) => s.sh.on)).toBe(true);
+  expect(await op(page, (s) => s.children.list.concat(s.worldL.list).some((o) => o.texture && /^stretch_/.test(o.texture.key)))).toBe(false);
+  expect((await opUntil(page, 0, 'end', 15)).phase).toBe('end');
+  expect(await op(page, (s) => s.flags)).toEqual({ discover: 1, shadow: 1, boo: 1, ended: 1 });
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ghostline-save')).storySeen)).toBe(true);
+  await op(page, (s) => { s.toRun(); });
   await page.waitForTimeout(1200);
   expect(await scenes(page)).toEqual(expect.arrayContaining(['play', 'hud']));
+  expect(errors).toEqual([]);
+});
+
+test('?opening=1 replays the opening for a returning player and leaves the save alone', async ({ page }) => {
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 8, storySeen: true, candles: 77, runs: 4 } });
+  expect(await scenes(page)).toContain('menu');
+  await page.goto('/?opening=1');
+  await page.waitForFunction(() => window.__opening);
+  await page.waitForTimeout(300);
+  expect(await scenes(page)).toContain('opening');
+  await op(page, (s) => { s.begin(); });
+  await opUntil(page, 0, 'explore', 20);
+  await op(page, (s) => { s.scene.restart(); });
+  await page.waitForTimeout(400);
+  expect(await scenes(page)).toContain('opening');
+  const s = await page.evaluate(() => JSON.parse(localStorage.getItem('ghostline-save')));
+  expect(s.candles).toBe(77);
+  expect(s.runs).toBe(4);
   expect(errors).toEqual([]);
 });
 

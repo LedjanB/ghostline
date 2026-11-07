@@ -12,6 +12,7 @@ import { SpinScene } from './scenes/spin.js';
 import { MissionsScene } from './scenes/missions.js';
 import { CharmsScene } from './scenes/charms.js';
 import { StoryScene } from './scenes/story.js';
+import { OpeningScene } from './scenes/opening.js';
 import { StatsScene } from './scenes/stats.js';
 import { UnlocksScene } from './scenes/unlocks.js';
 import { Save } from './save.js';
@@ -29,8 +30,9 @@ class BootScene extends Phaser.Scene {
     makeRunnerAnims(this);
     const loading = document.getElementById('loading');
     if (loading) loading.remove();
-    // first launch: the story, then straight into the first run
-    this.scene.start(Save.get().storySeen ? 'menu' : 'story');
+    // first launch: the playable opening (THE WRONG SIDE OF THE BED); ?opening=1 replays it
+    const replay = new URLSearchParams(location.search).get('opening') === '1';
+    this.scene.start(replay || !Save.get().storySeen ? 'opening' : 'menu');
   }
 }
 
@@ -71,14 +73,14 @@ async function start() {
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     input: { activePointers: 3, gamepad: true },
     // draw order = list order: run, then HUD, then overlays on top
-    scene: [BootScene, StoryScene, MenuScene, PlayScene, HudScene, BossScene, SpinScene, OverScene, PauseScene, MissionsScene, CharmsScene, SettingsScene, StatsScene, UnlocksScene],
+    scene: [BootScene, StoryScene, OpeningScene, MenuScene, PlayScene, HudScene, BossScene, SpinScene, OverScene, PauseScene, MissionsScene, CharmsScene, SettingsScene, StatsScene, UnlocksScene],
   });
   window.__game = game;
   // playtest link: ?boss=matron (&act=2 or 3) opens that fight right away, then goes back to the menu
   const q = new URLSearchParams(location.search), boss = q.get('boss');
   if (boss === 'matron' || boss === 'coroner') {
     const go = () => {
-      if (!game.scene.isActive('menu') && !game.scene.isActive('story')) { setTimeout(go, 100); return; }
+      if (!game.scene.isActive('menu') && !game.scene.isActive('story') && !game.scene.isActive('opening')) { setTimeout(go, 100); return; }
       game.scene.getScenes(true).forEach((s) => s.scene.stop());
       setTimeout(() => game.scene.start('boss', {
         boss, phase: Number(q.get('act')) || 1, char: 'survivor',

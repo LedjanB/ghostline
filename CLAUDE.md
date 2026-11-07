@@ -19,6 +19,7 @@ Game dev skills in `.claude/skills/` (start with `router`); engine skills `phase
 - `zones.js` 8 zones (painted parallax, gates; `ZONE_LENGTH_M` 400). `art.js`, `runner-art.js` pixel art in code (`docs/art-direction.md`). `looks.js` color grade.
 - `tricks.js` THE STRETCH's trick per world. `patterns.js` hand-made trap patterns (`patternFair()`). `setpieces.js` flight set pieces. `scares.js` one scare per world. `ending.js` the door at 3,200 m, ending, endless.
 - `story.js` (v8) `ALLIES` (met once, gives a power; `save.story.met`), `STORY_BOSS` (arena at a world's end until beaten; `save.story.beaten`), ally art. `scenes/boss.js` arenas (`BOSSES`, `POWERS`): world 2 THE CORONER. `scenes/matron.js` world 1 THE NIGHT MATRON (`MATRON_FIGHT` mixed into BossScene at init): 3 acts in a tall building (Ward 4, the ward below, the stairwell), world px y down, own camera; `phase` survives TRY AGAIN.
+- `scenes/opening.js` THE WRONG SIDE OF THE BED, the playable opening (first launch, `?opening=1`, `window.__opening`); own art `opening-art.js` (5 px grid) and sound `opening-audio.js`.
 - `scripts/bot.mjs` bots: `node scripts/bot.mjs 6 all` full runs, `--pieces` flights, `8 all --arena` boss fights. `scripts/v8-shots.mjs` (and phase3/4), `scripts/matron-shots.mjs` screenshots.
 
 ## Rules

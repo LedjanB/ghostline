@@ -344,6 +344,9 @@ export const Audio = {
     duckBus.gain.setTargetAtTime(on ? 0.3 : 1, ctx.currentTime, on ? 0.08 : 0.35);
   },
   applySettings,
+  // the opening scene builds its own soundscape on the SFX bus (src/opening-audio.js)
+  raw() { unlock(); return ctx ? { ctx, out: sfxBus, noiseBuf } : null; },
+  running: () => !!ctx && ctx.state === 'running',
   ambience(name) { init(); setAmbience(name); },
   // silence right before a scare so it hits harder
   hush(sec) {
