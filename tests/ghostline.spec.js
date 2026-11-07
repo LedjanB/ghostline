@@ -626,32 +626,161 @@ test('v8 Coroner: his light goes through a plain dodge, not through the Sheet; t
   expect(errors).toEqual([]);
 });
 
-test('v8 arenas: the first attack teaches (slower, one line), a "!" before each attack, lose = how close + try again', async ({ page }) => {
+// v8 the Night Matron, rebuilt: three acts in a tall building
+const startMatron = (page, extra = {}) => page.evaluate((extra) => new Promise((res) => {
+  const g = window.__game; g.scene.getScenes(true).forEach((sc) => sc.scene.stop()); window.__boss = null;
+  setTimeout(() => g.scene.start('boss', { boss: 'matron', powers: ['penlight'], char: 'survivor', onEnd: () => {}, ...extra }), 60);
+  const wait = () => (window.__boss && window.__game.scene.isActive('boss') ? res() : setTimeout(wait, 50)); wait();
+}), extra);
+
+test('v8 Matron: the first attack teaches (slower, one line), "!" before each, gold = the lantern swings by itself', async ({ page }) => {
   const errors = await boot(page, { key: 'ghostline-save', value: { version: 8, storySeen: true } });
-  await page.evaluate(() => new Promise((res) => {
-    const g = window.__game; g.scene.getScenes(true).forEach((sc) => sc.scene.stop()); window.__boss = null;
-    g.scene.start('boss', { boss: 'matron', powers: ['penlight'], char: 'survivor', onEnd: () => {} });
-    const wait = () => (window.__boss ? res() : setTimeout(wait, 50)); wait();
-  }));
+  await startMatron(page);
   const r = await page.evaluate(() => {
     const B = window.__boss; window.__game.loop.sleep();
     const N = (n) => { for (let i = 0; i < n; i++) B.step(1 / 120); };
     N(220);
     B.queue = ['curtain']; B.bstate = 'idle'; B.bt = 0; N(1);
     const first = { bt: +B.bt.toFixed(2), prompt: B.prompt.text, bang: B.bangT > 0 };
-    B.curtain = null; B.bstate = 'idle'; B.bt = 0; B.queue = ['curtain']; N(1);
-    const again = { bt: +B.bt.toFixed(2), prompt: B.prompt.t > 1.5 ? B.prompt.text : '' };
-    B.hp = 7; B.inv = 0; B.hearts = 1; B.booUsed = true; B.hurt(B.x + 10);
-    N(200);
-    return { first, again, choice: B.choice, sub: B.subText.text, taught: [...B.taught] };
+    B.bstate = 'idle'; B.bt = 0; B.queue = ['curtain']; N(1);
+    const again = { bt: +B.bt.toFixed(2) };
+    // she slams the wall after a charge: GOLD, and the lantern swings when Milo is close
+    B.curtainSpec = null; B.curtain = null; B.queue = ['roll']; B.bstate = 'idle'; B.bt = 0; B.x = 400; B.bx = 700; N(1);
+    const tell = B.bstate;
+    B.inv = 99; let n = 0; while (B.bstate !== 'wallStun' && n++ < 1200) N(1);
+    const open = B.isOpen(), hp0 = B.hp;
+    B.x = B.bx + 30; B.y = 1000; B.inv = 99; N(60);
+    return { first, again, tell, open, hit: hp0 - B.hp, cracks: B.cracks.length, area: B.area, grounded: B.grounded };
   });
-  expect(r.first.prompt).toBe('A CURTAIN ON THE FLOOR. JUMP IT');
+  expect(r.first.prompt).toBe('A CURTAIN. JUMP IT, OR STAND ON A BED');
   expect(r.first.bang).toBe(true);
   expect(r.first.bt).toBeGreaterThan(r.again.bt);
+  expect(r.tell).toBe('tellRoll');
+  expect(r.open).toBe(true);
+  expect(r.hit).toBeGreaterThan(0);
+  expect(r.cracks).toBeGreaterThan(0);
+  expect(r.area).toBe('ward4');
+  expect(errors).toEqual([]);
+});
+
+test('v8 Matron: each act ends cracked and only the Penlight ends it; the floor falls, the stairs, the moths', async ({ page }) => {
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 8, storySeen: true } });
+  await startMatron(page);
+  const r = await page.evaluate(() => {
+    const B = window.__boss; window.__game.loop.sleep();
+    const N = (n) => { for (let i = 0; i < n; i++) B.step(1 / 120); };
+    const out = {};
+    N(220);
+    // act 1 ends: she cracks, the lantern does nothing now, the light does
+    B.bstate = 'check'; B.bt = 3; B.hp = 21; B.damageBoss();
+    out.cracked = B.bstate; out.charge = B.charge; out.prompt = B.prompt.text;
+    B.x = B.bx + 60; B.y = 1000; N(60); out.hpCracked = B.hp;
+    B.usePower(); out.trans = B.state;
+    N(120 * 3.4);
+    out.act2 = { phase: B.phase, state: B.state, area: B.area, below: B.y > 1200, grounded: B.grounded, beds: B.surfs.filter((s) => s.bed).length };
+    // act 2: she drops where Milo stands
+    B.queue = ['dive']; B.bstate = 'idle'; B.bt = 0; B.inv = 99; N(1); out.rise = B.bstate;
+    let n = 0; while (B.bstate !== 'stuck' && n++ < 1200) N(1); out.stuck = B.bstate;
+    // act 2 ends, the wall breaks, Milo walks into the stairwell
+    B.bstate = 'check'; B.bt = 3; B.hp = 11; B.damageBoss(); N(240);
+    B.x = B.bx + 60; B.charge = 1; B.usePower(); N(120 * 3.2);
+    out.walk = { state: B.state, walkIn: B.walkIn, wall: B.wallBroken };
+    B.act.right = true; n = 0; while (B.phase !== 3 && n++ < 1200) N(1); B.act.right = false;
+    out.act3 = { phase: B.phase, area: B.area, room: B.room.l, kb: B.kb };
+    // act 3: a gurney comes down the stairs, one landing at a time
+    B.queue = ['gurney']; B.bstate = 'idle'; B.bt = 0; B.inv = 99; N(1); n = 0; while (!B.gurneys.length && n++ < 600) N(1);
+    const k0 = B.gurneys[0].k; n = 0; while (B.gurneys.length && B.gurneys[0].k === k0 && n++ < 1200) N(1);
+    out.gurney = { from: k0, down: B.gurneys.length ? B.gurneys[0].k : -1 };
+    // hitting her makes her run higher and kill the lamps
+    B.ashHazards(); B.bstate = 'check'; B.bt = 3; B.hp = 8; const kb = B.kb; B.damageBoss(); N(240);
+    out.flee = { up: B.kb - kb, dark: B.darkWant > 0.5 };
+    B.charge = 1; B.x = B.bx + 40; B.y = B.by; B.usePower(); out.relit = B.darkWant;
+    // the last act ends with the light: she sits, the moths fly
+    B.ashHazards(); B.bstate = 'check'; B.bt = 3; B.hp = 1; B.damageBoss(); n = 0; while (B.bstate !== 'cracked' && n++ < 2000) N(1);
+    out.top = B.kb;
+    B.x = B.bx + 60; B.y = B.by; B.charge = 1; B.usePower(); N(240);
+    out.won = { state: B.state, moths: B.parts.filter((p) => p.kind === 'moth').length };
+    return out;
+  });
+  expect(r.cracked).toBe('cracked');
+  expect(r.charge).toBe(1);
+  expect(r.prompt).toContain('LIGHT HER');
+  expect(r.hpCracked).toBe(20);
+  expect(r.trans).toBe('trans');
+  expect(r.act2).toEqual({ phase: 2, state: 'fight', area: 'below', below: true, grounded: true, beds: 5 });
+  expect(r.rise).toBe('rise');
+  expect(r.stuck).toBe('stuck');
+  expect(r.walk).toEqual({ state: 'fight', walkIn: true, wall: true });
+  expect(r.act3).toEqual({ phase: 3, area: 'stair', room: 932, kb: 3 });
+  expect(r.gurney.down).toBe(r.gurney.from - 1);
+  expect(r.flee.up).toBeGreaterThan(0);
+  expect(r.flee.dark).toBe(true);
+  expect(r.relit).toBe(0);
+  expect(r.top).toBe(12);
+  expect(r.won.state).toBe('won');
+  expect(r.won.moths).toBeGreaterThan(10);
+  expect(errors).toEqual([]);
+});
+
+test('v8 Matron: lose = how close + TRY AGAIN starts at the act you reached; Boo saves once', async ({ page }) => {
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 8, storySeen: true } });
+  await startMatron(page, { phase: 2 });
+  const r = await page.evaluate(() => {
+    const B = window.__boss; window.__game.loop.sleep();
+    const N = (n) => { for (let i = 0; i < n; i++) B.step(1 / 120); };
+    N(220);
+    const start = { phase: B.phase, hp: B.hp, area: B.area };
+    B.inv = 0; B.hearts = 1; B.hurt(B.x + 10); const boo = { used: B.booUsed, hearts: B.hearts };
+    N(240); B.hp = 15; B.inv = 0; B.hurt(B.x + 10);
+    N(200);
+    return { start, boo, choice: B.choice, sub: B.subText.text };
+  });
+  expect(r.start).toEqual({ phase: 2, hp: 20, area: 'below' });
+  expect(r.boo).toEqual({ used: true, hearts: 1 });
   expect(r.choice).toBe(true);
-  expect(r.sub).toBe('67% OF THE WAY THERE');
+  expect(r.sub).toBe('50% OF THE WAY THERE');
   await page.evaluate(() => { window.__game.loop.wake(); window.__boss.retry(); });
   await page.waitForFunction(() => window.__boss && window.__boss.state === 'intro' && window.__boss.tries === 1);
-  expect(await page.evaluate(() => ({ hearts: window.__boss.hearts, hp: window.__boss.hp, taught: window.__boss.taught.has('curtain') }))).toEqual({ hearts: 5, hp: 21, taught: true });
+  expect(await page.evaluate(() => ({ hearts: window.__boss.hearts, hp: window.__boss.hp, phase: window.__boss.phase, area: window.__boss.area }))).toEqual({ hearts: 5, hp: 20, phase: 2, area: 'below' });
+  expect(errors).toEqual([]);
+});
+
+test('v8 Matron: keyboard and touch play the same fight (move, jump, dodge, drop through a bed, light)', async ({ page }) => {
+  const errors = await boot(page, { key: 'ghostline-save', value: { version: 8, storySeen: true } });
+  await startMatron(page);
+  await page.waitForFunction(() => window.__boss.state === 'fight', null, { timeout: 5000 });
+  const B = () => page.evaluate(() => { const b = window.__boss; return { x: b.x, y: b.y, grounded: b.grounded, dodgeT: b.dodgeT, beam: !!b.beam, ground: b.ground && b.ground.bed ? 'bed' : 'floor' }; });
+  await page.evaluate(() => { const b = window.__boss; b.bt = 99; b.queue = []; b.inv = 99; });
+  // keyboard
+  const x0 = (await B()).x;
+  await page.keyboard.down('d'); await page.waitForTimeout(300); await page.keyboard.up('d');
+  expect((await B()).x).toBeGreaterThan(x0 + 20);
+  await page.keyboard.press('w'); await page.waitForTimeout(80);
+  expect((await B()).grounded).toBe(false);
+  await page.waitForTimeout(700);
+  await page.evaluate(() => { const b = window.__boss; b.x = 360; b.y = 980; b.ground = b.surfAt(360, 980); b.grounded = true; b.dodgeCd = 0; });
+  expect((await B()).ground).toBe('bed');
+  await page.keyboard.press('s'); await page.waitForTimeout(400);
+  expect((await B()).y).toBe(1000); // dodge in place on a bed = drop through it
+  await page.evaluate(() => { window.__boss.charge = 1; });
+  await page.keyboard.press('e'); await page.waitForTimeout(50);
+  expect((await B()).beam).toBe(true);
+  // touch (mouse = the same pointers): left half drag moves, right tap jumps, right swipe dodges
+  await page.waitForTimeout(600);
+  const box = await page.locator('canvas').boundingBox();
+  const at = (fx, fy) => [box.x + box.width * fx, box.y + box.height * fy];
+  const x1 = (await B()).x;
+  await page.mouse.move(...at(0.2, 0.7)); await page.mouse.down(); await page.mouse.move(...at(0.27, 0.7), { steps: 3 });
+  await page.waitForTimeout(300); await page.mouse.up();
+  expect((await B()).x).toBeGreaterThan(x1 + 15);
+  await page.waitForTimeout(200);
+  await page.mouse.move(...at(0.8, 0.6)); await page.mouse.down(); await page.waitForTimeout(60);
+  expect((await B()).grounded).toBe(false);
+  await page.mouse.up(); await page.waitForTimeout(800);
+  await page.evaluate(() => { window.__boss.dodgeCd = 0; });
+  await page.mouse.move(...at(0.7, 0.6)); await page.mouse.down(); await page.mouse.move(...at(0.85, 0.6), { steps: 2 });
+  await page.waitForTimeout(40);
+  expect((await B()).dodgeT).toBeGreaterThan(0);
+  await page.mouse.up();
   expect(errors).toEqual([]);
 });

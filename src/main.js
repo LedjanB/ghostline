@@ -74,6 +74,20 @@ async function start() {
     scene: [BootScene, StoryScene, MenuScene, PlayScene, HudScene, BossScene, SpinScene, OverScene, PauseScene, MissionsScene, CharmsScene, SettingsScene, StatsScene, UnlocksScene],
   });
   window.__game = game;
+  // playtest link: ?boss=matron (&act=2 or 3) opens that fight right away, then goes back to the menu
+  const q = new URLSearchParams(location.search), boss = q.get('boss');
+  if (boss === 'matron' || boss === 'coroner') {
+    const go = () => {
+      if (!game.scene.isActive('menu') && !game.scene.isActive('story')) { setTimeout(go, 100); return; }
+      game.scene.getScenes(true).forEach((s) => s.scene.stop());
+      setTimeout(() => game.scene.start('boss', {
+        boss, phase: Number(q.get('act')) || 1, char: 'survivor',
+        powers: boss === 'coroner' ? ['penlight', 'sheet'] : ['penlight'],
+        onEnd: () => game.scene.start('menu'),
+      }), 60);
+    };
+    go();
+  }
 }
 
 start();

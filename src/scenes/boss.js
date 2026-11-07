@@ -9,7 +9,8 @@
 //   keyboard: A D / arrows move, W / UP / SPACE jump, S / DOWN dodge, E / J light, P / ESC pause
 //   gamepad:  stick / d-pad move, A jump, B dodge, X / Y light, START pause
 //
-// World 1, THE NIGHT MATRON (Ivy's PENLIGHT): rolls bed to bed, curtain sweeps, clipboards, lights out.
+// World 1, THE NIGHT MATRON (Ivy's PENLIGHT): her own three-act fight in a building taller than the screen,
+// see matron.js (its methods are mixed into this scene at init).
 // World 2, THE CORONER (Ansel's SHEET): toe tags (a hit files you: slower for 2 s), drawers out of the
 // walls (pushers, then platforms), and his lamp: a sweep of light you can't jump or roll through. Only the
 // Sheet gets you through it (a dodge under the Sheet = unseen for a moment). He writes on his clipboard: hit him then.
@@ -22,17 +23,18 @@ import { W, H, FLOOR, CEIL } from '../data.js';
 import { Audio } from '../audio.js';
 import { text } from '../ui.js';
 import { createInput, Device } from '../input.js';
+import { MATRON_FIGHT } from './matron.js';
 
 const STEP = 1 / 120;
-const MILO_SCALE = 2.5, MILO_W = 18, MILO_H = 44;
+export const MILO_SCALE = 2.5, MILO_W = 18, MILO_H = 44;
 const WALL_L = 24, WALL_R = 616;
-const MOVE = 190, ACCEL = 1700, AIR_ACCEL = 1100;
-const GRAV = 1800, JUMP_V = 575, JUMP_CUT = 0.45, COYOTE = 0.09, BUFFER = 0.13;
-const DODGE_T = 0.32, DODGE_V = 470, DODGE_CD = 0.55;
+export const MOVE = 190, ACCEL = 1700, AIR_ACCEL = 1100;
+export const GRAV = 1800, JUMP_V = 575, JUMP_CUT = 0.45, COYOTE = 0.09, BUFFER = 0.13;
+export const DODGE_T = 0.32, DODGE_V = 470, DODGE_CD = 0.55;
 const HIT_T = 0.12, HIT_CD = 0.32, HIT_RANGE = 44, HIT_H = 30;
-const HEARTS = 5, HURT_INV = 1.0, KNOCK = 250;
+export const HEARTS = 5, HURT_INV = 1.0, KNOCK = 250;
 const SWIPE = 24, STICK_DEAD = 9;
-const POWER_BTN = { x: 598, y: 318, r: 26 };
+export const POWER_BTN = { x: 598, y: 318, r: 26 };
 const SHEET_T = 0.6, SHEET_CD = 1.5; // The Sheet: unseen for 0.6 s, ready again 1.5 s after
 const FILED_T = 2.0, FILED_MOVE = 0.55;
 const DRAWER_TOP = 22; // a low drawer, pulled out: Milo can stand on it
@@ -42,11 +44,12 @@ const LIGHT_TOP = CEIL + 44;
 // one entry per boss
 export const BOSSES = {
   matron: {
-    kind: 'matron', zone: 'ward', name: 'THE NIGHT MATRON', power: 'penlight', hp: 21, w: 40, h: 75,
+    kind: 'matron', zone: 'ward', name: 'THE NIGHT MATRON', power: 'penlight', hp: 30, w: 40, h: 75,
     beds: [130, 320, 510], lamps: [63, 223, 383, 543], // the lamps line up with the ward's painted ceiling lamps
     lines: {
       start: 'LIGHTS OUT. EVERYONE IN BED.', half: 'NO RUNNING ON MY WARD.', shove: 'BACK TO BED.',
-      dark: 'LIGHTS OUT.', stun: 'WHO HAS A LIGHT ON?', win: ['SHE SITS ON THE LAST BED.', 'SHE FOLDS HER HANDS.'], lose: 'LIGHTS OUT.',
+      dark: 'LIGHTS OUT.', stun: 'WHO HAS A LIGHT ON?', win: ['SHE SITS ON THE LAST STEP.', 'SHE FOLDS HER HANDS.'], lose: 'LIGHTS OUT.',
+      p2: 'NO RUNNING ON MY WARD.', p3: 'BACK TO BED. ALL OF YOU.', crack: 'NO. NO LIGHTS.',
     },
   },
   coroner: {
@@ -215,9 +218,13 @@ export class BossScene extends Phaser.Scene {
     this.say = { text: '', t: 0 };
     this.thumbs = { move: null, act: null };
     this.act = { left: false, right: false, jumpHeld: false, jump: false, dodge: false, dodgeDir: 0, power: false, cancelJump: false };
+    // the Matron has her own fight: her methods shadow the prototype's on this instance (cleared again for the Coroner)
+    for (const k of Object.keys(MATRON_FIGHT)) delete this[k];
+    if (this.kind === 'matron') { Object.assign(this, MATRON_FIGHT); this.mInit(data); }
   }
 
-  create() {
+  // the textures and the action map (every arena)
+  setupCommon() {
     px(this, 'matron', MATRON, MATRON_PAL);
     px(this, 'matron_eyes', MATRON_EYES, { E: '#ff3355' });
     px(this, 'bed', BED, BED_PAL);
@@ -226,6 +233,10 @@ export class BossScene extends Phaser.Scene {
     px(this, 'toe_tag', TAG, TAG_PAL);
     this.inputMap = createInput(this, { pointers: false });
     this.input.addPointer(2);
+  }
+
+  create() {
+    this.setupCommon();
     const z = this.def.zone;
     // the world's own painted layers, still
     for (const [k, depth] of [['sky', 0], ['far', 1], ['mid', 2], ['near', 3]]) {
@@ -262,7 +273,16 @@ export class BossScene extends Phaser.Scene {
     if (this.kind === 'coroner') this.nine = text(this, WALL_R + 12, FLOOR - 90, '9', 8, '#2a2436').setDepth(4.7);
     this.touch = Device.get() === 'touch';
 
-    // two-thumb touch
+    this.bindTouch();
+
+    this.cameras.main.fadeIn(350, 7, 6, 13);
+    Audio.sfx('sting');
+    this.talk(this.def.lines.start, 2.0);
+    window.__boss = this; // debug + bots
+  }
+
+  // two-thumb touch (every arena)
+  bindTouch() {
     this.input.on('pointerdown', (p) => {
       this.touch = true;
       if (this.paused) { this.togglePause(); return; }
@@ -290,11 +310,6 @@ export class BossScene extends Phaser.Scene {
     this.input.on('pointerup', up);
     this.input.on('pointerupoutside', up);
     this.input.keyboard.on('keydown', () => { this.touch = false; });
-
-    this.cameras.main.fadeIn(350, 7, 6, 13);
-    Audio.sfx('sting');
-    this.talk(this.def.lines.start, 2.0);
-    window.__boss = this; // debug + bots
   }
 
   talk(str, t = 1.6) { this.say = { text: str, t }; }
@@ -782,7 +797,7 @@ export class BossScene extends Phaser.Scene {
     this.choice = null; this.done = true;
     Audio.sfx('click');
     this.cameras.main.fadeOut(250, 7, 6, 13);
-    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.restart({ ...this.data0, tries: this.tries + 1, taught: [...this.taught] }));
+    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.restart({ ...this.data0, tries: this.tries + 1, taught: [...this.taught], phase: this.phase }));
   }
   giveUp() {
     if (!this.choice || this.done) return;

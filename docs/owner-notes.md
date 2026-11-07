@@ -29,7 +29,7 @@ Update this file when Ledjan decides something new.
 His feedback on the arenas: "so bad", confusing ("I don't even know how to fight it").
 He wants: fun, exciting, intuitive; the arena bigger the way other games do it (not just a wider camera); cooler, horror-magical fight effects.
 
-Plan he was shown (not started yet), Matron first, preview, then the Coroner:
+Plan he was shown, Matron first, preview, then the Coroner:
 1. The arena changes between phases (Cuphead). Matron: phase 2 the floor gives way into the ward below, beds become platforms; phase 3 a climb up the stairwell, camera follows. Coroner: phase 2 the drawer wall becomes a climbing wall; phase 3 the well door opens, the floor ices over.
 2. More than one floor (Hollow Knight): rooms taller than the screen, ledges, platforms, a camera that follows Milo.
 3. One new threat per phase, every attack telegraphed; later phases combine threats instead of just going faster (Cuphead).
@@ -37,3 +37,9 @@ Plan he was shown (not started yet), Matron first, preview, then the Coroner:
 5. Horror-magic effects: ember trails on lantern swings, hits crack the boss like porcelain and ink leaks out, the Penlight burns a hole in the dark with floating dust, a silent grey moment between phases, a beaten boss turns into moths flying into the light.
 
 Already in (commit "Arenas teach"): first time an attack comes it's slower with one line telling what to do; "!" before every attack; losing shows how close you were plus TRY AGAIN / GIVE UP.
+
+## Nov 7: THE NIGHT MATRON rebuilt (done, waiting for his playtest)
+- Own file `src/scenes/matron.js`. Three acts: Ward 4 (teaches: charge into the wall = gold, curtain), the floor gives way into the ward below (beds fall and become platforms on 3 heights; new: she drops from the rail where you stand), she bursts into the stairwell (12 landings, camera climbs; new: gurneys down the stairs; she flees up and kills the lamps when hit).
+- Every act ends with her cracked and kneeling: only the Penlight finishes it (Zelda light-arrow idea). Penlight charges faster by dodging through attacks (Cuphead parry).
+- TRY AGAIN starts at the act you reached (his choice can change this; Cuphead restarts the whole fight).
+- Next: his playtest on phone, then the Coroner the same way.

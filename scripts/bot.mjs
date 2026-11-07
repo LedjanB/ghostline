@@ -37,9 +37,68 @@ function arenaFight(B, opts) {
     while (y < FLOOR - 18 && t < 2) { vy += 800 / 60; x += g.vx / 60; y += vy / 60; t += 1 / 60; }
     return { x, t };
   };
+  // the Night Matron: three acts in a tall building (world px, y down)
+  const SL = 932, SR = 1540;
+  const matron = (b, a) => {
+    const mx = b.x, my = b.y;
+    let goal = null, threat = false, climb = false;
+    const go = (x) => { goal = x; };
+    const dodge = (dir) => { if (b.dodgeCd <= 0 && b.dodgeT <= 0) { a.dodge = true; a.dodgeDir = dir || 1; } };
+    const jump = () => { if (b.grounded) a.jump = true; a.jumpHeld = true; };
+    if (b.walkIn) { a.right = true; return; }
+    if (!b.grounded && b.vy < 0) a.jumpHeld = true; // full jumps
+    const her = b.bossCenter(), sameY = (y) => Math.abs(y - my) < 8;
+    // the light: finish a cracked act, or stop an attack coming
+    if (b.power && b.charge >= 1) {
+      if (b.bstate === 'cracked') { if (Math.hypot(her.x - mx, her.y - my) < 360) a.power = true; }
+      else if (/^tell|rail|lock/.test(b.bstate) && b.dropObj && notice(b.dropObj) && rnd() < 0.02) a.power = true;
+    }
+    // her charge: jump it or dodge through
+    if ((b.bstate === 'tellRoll' || b.bstate === 'roll') && sameY(b.by) && b.rollObj && notice(b.rollObj)) {
+      const dist = (mx - b.bx) * b.bDir;
+      if (b.bstate === 'roll' && dist > -10 && dist < 75) { threat = true; if ((opts.seed & 1) || b.dodgeCd > 0) { if (dist < 62) jump(); } else if (dist < 48) dodge(-b.bDir); }
+      else if (dist > 0) threat = true;
+    }
+    // curtains: jump the hem (a bed is safe too)
+    const c = b.curtain;
+    if (c && sameY(c.y) && notice(c)) { const dist = (mx - c.x) * c.dir; if (dist > -4 && dist < 52) { threat = true; jump(); } }
+    // gurneys: jump them
+    for (const g of b.gurneys) {
+      if (!notice(g)) continue;
+      if (!g.air && sameY(g.y)) { const dist = (mx - g.x) * g.dir; if (dist > -4 && dist < 58) { threat = true; jump(); } }
+      else if (g.air && g.y < my && my - g.y < 120 && Math.abs(g.x - mx) < 40) { threat = true; go(mx + (mx < (SL + SR) / 2 ? 90 : -90)); }
+    }
+    // a drop or a leap aimed where Milo stands: get off the mark
+    let mark = null;
+    if (['rail', 'lock', 'drop'].includes(b.bstate) && b.dropTarget) mark = { x: b.bx, y: b.dropTarget.y, s: b.dropTarget };
+    if ((b.bstate === 'tellLeap' || b.bstate === 'leap') && b.leapTarget) mark = { x: b.leap ? b.leap.x1 : b.leapTarget.x, y: b.leapTarget.s.y, s: b.leapTarget.s };
+    if (mark && b.dropObj && notice(b.dropObj) && sameY(mark.y) && Math.abs(mark.x - mx) < 80) {
+      threat = true;
+      const s = b.ground || mark.s, room = s.solid ? b.room : s;
+      const away = mx < mark.x ? -1 : 1, roomAway = away < 0 ? mx - room.l : room.r - mx;
+      go(mx + (roomAway > 70 ? away : -away) * 140);
+      if ((b.bstate === 'drop' || b.bstate === 'leap') && Math.abs(mark.x - mx) < 60) dodge(roomAway > 70 ? away : -away);
+    }
+    // where to be
+    if (goal === null && !threat) {
+      if (b.area === 'stair') {
+        const km = b.miloLanding(), hk = b.landingOf(b.by);
+        const want = b.isOpen() || b.bstate === 'cracked' ? hk : Math.max(0, b.kb - 2);
+        if (km < want) { climb = true; const cx = Math.max(SL + 120, Math.min(SR - 120, mx)); go(cx); if (Math.abs(cx - mx) < 12 && b.grounded) jump(); }
+        else if (km === hk && (b.isOpen() || b.bstate === 'cracked')) go(b.bx - Math.sign(b.bx - mx || 1) * 26);
+        else go(b.kb % 2 ? SL + 200 : SR - 200);
+      } else if (b.isOpen() || b.bstate === 'cracked') {
+        go(b.bx - Math.sign(b.bx - mx || 1) * 26);
+        if (b.by < my - 10 && Math.abs(b.bx - mx) < 50) jump();
+      } else go(b.bx + (mx < b.bx ? -170 : 170));
+    }
+    if (goal !== null) { const g = Math.max(b.room.l + 14, Math.min(b.room.r - 14, goal)); if (g > mx + 8) a.right = true; else if (g < mx - 8) a.left = true; }
+    if (climb && !b.grounded && b.vy < 0) a.jumpHeld = true;
+  };
   B.bot = (b, a) => {
     a.left = a.right = false; a.jumpHeld = false;
     if (b.state !== 'fight') return;
+    if (b.kind === 'matron') { matron(b, a); return; }
     const mx = b.x;
     let goal = null, threat = false;
     const go = (x) => { goal = x; };
@@ -65,20 +124,6 @@ function arenaFight(B, opts) {
         threat = true;
         if (d.state === 'out' && dist < 46) { if (d.row === 'low') jump(); else dodge(d.side < 0 ? -1 : 1); }
       }
-    } else {
-      if ((b.bstate === 'tellRoll' || b.bstate === 'roll') && notice(b.queue)) {
-        const toward = Math.sign(mx - b.bx) === b.bDir;
-        if (toward && Math.abs(b.bx - mx) < (b.bstate === 'roll' ? 80 : 30)) { threat = true; dodge(-b.bDir); }
-      }
-      if (b.curtain && notice(b.curtain)) {
-        const c = b.curtain, dist = (mx - c.x) * c.dir;
-        if (dist > 0 && dist < 70) { threat = true; jump(); }
-      }
-      for (const g of b.boards) {
-        if (!notice(g)) continue;
-        const l = landX(g);
-        if (Math.abs(l.x - mx) < 26 && l.t < 0.5) { threat = true; go(l.x > mx ? mx - 80 : mx + 80); if (l.t < 0.16) dodge(l.x > mx ? -1 : 1); }
-      }
     }
     if (goal === null) {
       if (b.isOpen()) go(b.bx - Math.sign(b.bx - mx || 1) * 30);
@@ -95,7 +140,7 @@ function arenaFight(B, opts) {
     B.bot(B, B.act); B.step(1 / 120);
     const x = B.act; x.jump = false; x.dodge = false; x.dodgeDir = 0; x.power = false; x.cancelJump = false;
   }
-  return { won: B.state === 'won', secs: Math.round(B.stats.time), hearts: B.hearts, taken: B.stats.taken, sheets: B.stats.sheets, lights: B.stats.lights, boo: B.booUsed, hp: B.hp, hitBy };
+  return { won: B.state === 'won', secs: Math.round(B.stats.time), hearts: B.hearts, taken: B.stats.taken, sheets: B.stats.sheets, lights: B.stats.lights, boo: B.booUsed, hp: B.hp, phase: B.phase || 1, hitBy };
 }
 
 // ---------------- the brain (runs inside the page) ----------------
@@ -359,7 +404,7 @@ async function main() {
         }
         const wins = rs.filter((r) => r.won);
         const avg = (k, l) => (l.length ? (l.reduce((a, r) => a + r[k], 0) / l.length).toFixed(1) : '-');
-        console.log(name.padEnd(8), boss.padEnd(8), `won ${wins.length}/${rs.length}  time ${avg('secs', wins)}s  hearts left ${avg('hearts', wins)}  hits taken ${avg('taken', rs)}  Boo used ${rs.filter((r) => r.boo).length}  sheets ${avg('sheets', rs)}  lost at hp ${rs.filter((r) => !r.won).map((r) => r.hp).join(',') || '-'}  hit by ${JSON.stringify(rs.reduce((o, r) => { for (const [k, v] of Object.entries(r.hitBy)) o[k] = (o[k] || 0) + v; return o; }, {}))}`);
+        console.log(name.padEnd(8), boss.padEnd(8), `won ${wins.length}/${rs.length}  time ${avg('secs', wins)}s  hearts left ${avg('hearts', wins)}  hits taken ${avg('taken', rs)}  Boo used ${rs.filter((r) => r.boo).length}  sheets ${avg('sheets', rs)}  lost at hp ${rs.filter((r) => !r.won).map((r) => r.hp + (r.phase > 1 ? '(act' + r.phase + ')' : '')).join(',') || '-'}  hit by ${JSON.stringify(rs.reduce((o, r) => { for (const [k, v] of Object.entries(r.hitBy)) o[k] = (o[k] || 0) + v; return o; }, {}))}`);
       }
     }
     if (errors.length) console.log('PAGE ERRORS:', [...new Set(errors)].slice(0, 5));

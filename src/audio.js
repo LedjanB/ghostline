@@ -417,6 +417,19 @@ export const Audio = {
         noise(t, 0.2, 0.12 * vv, sfxBus, 600, 'lowpass');
         break;
       case 'swoosh': noise(t, 0.25, 0.05 * vv, sfxBus, rand(700, 1100), 'bandpass'); break;
+      // v8 the Night Matron: porcelain cracking, the floor giving way, moths
+      case 'crack':
+        tone(t, rand(2300, 2700), 0.05, 'triangle', 0.06 * vv, sfxBus, null, dt);
+        tone(t + 0.02, rand(3300, 3700), 0.07, 'triangle', 0.04 * vv, sfxBus, null, dt);
+        noise(t, 0.06, 0.06, sfxBus, 4500);
+        tone(t, 140, 0.18, 'square', 0.05, sfxBus, 60);
+        break;
+      case 'shatter':
+        for (let i = 0; i < 6; i++) tone(t + i * 0.03, rand(1800, 4200), 0.09, 'triangle', 0.035, sfxBus);
+        noise(t, 0.4, 0.08, sfxBus, 3000);
+        break;
+      case 'rumble': noise(t, 1.4, 0.12, sfxBus, 160, 'lowpass'); tone(t, 48, 1.3, 'sawtooth', 0.05, sfxBus, 32); break;
+      case 'moth': noise(t, 0.5, 0.025, sfxBus, 1800, 'bandpass'); noise(t + 0.15, 0.4, 0.02, sfxBus, 2600, 'bandpass'); break;
       case 'close':
         tone(t, 1500, 0.08, 'triangle', 0.06, sfxBus, 2400);
         noise(t, 0.12, 0.05, sfxBus, 5000);

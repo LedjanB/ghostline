@@ -124,6 +124,7 @@ export const StoryFeatures = {
     const play = this;
     this.scene.sleep('hud');
     this.scene.pause();
+    this.scene.setVisible(false); // the arena covers the screen: don't draw the run under it
     this.scene.launch('boss', {
       boss: id, powers: this.storyPowers(), char: this.char.id,
       shake: save.settings.shake, reduceFlicker: !save.settings.flicker,
@@ -133,6 +134,7 @@ export const StoryFeatures = {
 
   endBoss(id, res) {
     this.scene.resume();
+    this.scene.setVisible(true);
     this.scene.wake('hud');
     this.cameras.main.fadeIn(300, 7, 6, 13);
     this.bossOn = false;
