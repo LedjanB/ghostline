@@ -990,3 +990,97 @@ test('v9 prototype: run into the nurse station, walk and jump, it cannot get you
   expect(r[1].after.phase === null || r[1].after.phase === 'out').toBe(true);
   expect(errors).toEqual([]);
 });
+
+// ART LAB (Visual Art Benchmark V1): isolated preview at ?artlab=1, not part of the game
+test('art lab: ?artlab=1 opens alone; 5 views; six different poses; same boy; Boo; Ghostline anchored; the shadow reads', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem('ghostline-save', JSON.stringify({ version: 8, storySeen: true, best: 123 })); });
+  await page.goto('/?artlab=1');
+  await page.waitForFunction(() => window.__artlab && window.__artlab.scr);
+  expect(await scenes(page)).toEqual(['artlab']);
+  const saveBefore = await page.evaluate(() => localStorage.getItem('ghostline-save'));
+  expect(JSON.parse(saveBefore).best).toBe(123);
+  const r = await page.evaluate(async () => {
+    const L = window.__artlab, A = await import('/src/artlab-assets.js');
+    const out = { views: [] };
+    for (let i = 0; i < 5; i++) { L.setView(i); L.draw(); out.views.push(L.view); }
+    // poses: every pair differs a lot, and the faces (head rows) differ too
+    const frames = A.POSE_ORDER.map((k) => L.F[k].buf);
+    let minAll = 1e9, minHead = 1e9;
+    for (let a = 0; a < 6; a++) for (let b = a + 1; b < 6; b++) {
+      let all = 0;
+      for (let i = 0; i < frames[a].d.length; i++) if (frames[a].d[i] !== frames[b].d[i]) all++;
+      minAll = Math.min(minAll, all);
+      // faces compared on their own (each head is a different drawing, not a recolor)
+      const fa = A.FACES[A.POSES[A.POSE_ORDER[a]].face], fb = A.FACES[A.POSES[A.POSE_ORDER[b]].face];
+      let head = 0; fa.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== fb[y][x]) head++; }));
+      minHead = Math.min(minHead, head);
+    }
+    out.minAll = minAll; out.minHead = minHead;
+    // same boy: the spirit has a pixel wherever the living boy does, and the value order is kept
+    let miss = 0, agree = 0, pairs = 0;
+    for (const k of A.POSE_ORDER) {
+      const lv = L.F[k].buf, gh = L.F[k].gbuf;
+      const lum = (c) => { const v = A.rgb(c); return v[0] * 0.3 + v[1] * 0.59 + v[2] * 0.11; };
+      const px = [];
+      for (let i = 0; i < lv.d.length; i++) { if (!lv.d[i]) continue; if (!gh.d[i]) miss++; else px.push(i); }
+      for (let n = 0; n < 400; n++) { const i = px[(n * 7919) % px.length], j = px[(n * 104729 + 13) % px.length]; const dl = lum(lv.d[i]) - lum(lv.d[j]); if (Math.abs(dl) < 25) continue; pairs++; if (Math.sign(dl) === Math.sign(lum(gh.d[i]) - lum(gh.d[j]))) agree++; }
+    }
+    out.miss = miss; out.agree = agree / pairs;
+    // Boo: cap, brass badge/keys, lantern glass, mustache
+    const cnt = (b, cols) => b.d.filter((c) => cols.includes(c)).length;
+    out.boo = { cap: cnt(L.booBuf, ['#33455f', '#4d6380', '#222f44']), brass: cnt(L.booBuf, ['#d6a84a', '#c9a24c']), glass: cnt(L.booBuf, ['#ffe4a0', '#fff3cf']), stache: cnt(L.booBuf, ['#fbfcfa']) };
+    // Ghostline: starts on the spirit's wristband in every pose, passes the living wristband, ends in the floor seam
+    L.setView(2);
+    const band = (b, x, y) => { for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ([A.PAL.band, A.PAL.bandSh].includes(b.get(Math.floor(x) + dx, Math.floor(y) + dy))) return true; return false; };
+    out.anchor = [];
+    for (let i = 0; i < 6; i++) {
+      L.poseIx = i;
+      for (const br of [false, true]) {
+        L.breath = br;
+        const pose = L.poseNow(), f = L.F[pose + (br ? '_b' : '')], p = L.pos[3];
+        const gw = L.ghostWrist(), { pts, wristIx } = L.ghostPath();
+        const fx = p.flip ? A.FW - (gw[0] - (p.x - A.FW / 2)) : gw[0] - (p.x - A.FW / 2), fy = gw[1] - (p.y - A.FH);
+        const lw = L.livingWrist(), last = pts[pts.length - 1];
+        out.anchor.push({ pose, start: Math.hypot(pts[0][0] - gw[0], pts[0][1] - gw[1]) < 0.01, onBand: band(f.buf, fx, fy),
+          mid: Math.hypot(pts[wristIx][0] - lw[0], pts[wristIx][1] - lw[1]) < 0.01, seam: last[1] === A.SEAM_Y });
+      }
+    }
+    out.livingBand = band(L.sl.buf, L.sl.wrist[0], L.sl.wrist[1]);
+    // the shadow: darker than the lit wall around it
+    L.setView(3); L.draw();
+    const img = L.ctx.getImageData(0, 0, A.AW, A.AH).data;
+    let sIn = 0, nIn = 0, sOut = 0, nOut = 0;
+    for (let y = 27; y < 116; y++) for (let x = 190; x < 320; x++) {
+      const i = y * A.AW + x, v = img[i * 4] * 0.3 + img[i * 4 + 1] * 0.59 + img[i * 4 + 2] * 0.11;
+      if (L.shadowMask.m[i]) { sIn += v; nIn++; } else { sOut += v; nOut++; }
+    }
+    out.shadow = { inside: sIn / nIn, outside: sOut / nOut, px: L.shadowPx };
+    return out;
+  });
+  expect(r.views).toEqual([0, 1, 2, 3, 4]);
+  expect(r.minAll).toBeGreaterThan(150);
+  expect(r.minHead).toBeGreaterThan(6);
+  expect(r.miss).toBe(0);
+  expect(r.agree).toBeGreaterThan(0.9);
+  expect(r.boo.cap).toBeGreaterThan(20);
+  expect(r.boo.brass).toBeGreaterThan(6);
+  expect(r.boo.glass).toBeGreaterThan(20);
+  expect(r.boo.stache).toBeGreaterThan(15);
+  for (const a of r.anchor) expect(a, a.pose).toEqual({ pose: a.pose, start: true, onBand: true, mid: true, seam: true });
+  expect(r.livingBand).toBe(true);
+  expect(r.shadow.px).toBeGreaterThan(3000);
+  expect(r.shadow.outside / Math.max(1, r.shadow.inside)).toBeGreaterThan(2);
+  // touch: a tap on a tab and a swipe change the view
+  const box = await page.locator('canvas').boundingBox();
+  const at = (x, y) => [box.x + x * box.width / 640, box.y + y * box.height / 360];
+  await page.mouse.click(...at(130 + 20, 14));
+  expect(await page.evaluate(() => window.__artlab.view)).toBe(1);
+  await page.mouse.move(...at(400, 200)); await page.mouse.down(); await page.mouse.move(...at(250, 200), { steps: 4 }); await page.mouse.up();
+  expect(await page.evaluate(() => window.__artlab.view)).toBe(2);
+  // the lab never touches the save
+  expect(await page.evaluate(() => localStorage.getItem('ghostline-save'))).toBe(saveBefore);
+  expect(errors).toEqual([]);
+});

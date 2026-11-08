@@ -13,6 +13,7 @@ import { MissionsScene } from './scenes/missions.js';
 import { CharmsScene } from './scenes/charms.js';
 import { StoryScene } from './scenes/story.js';
 import { OpeningScene } from './scenes/opening.js';
+import { ArtLabScene } from './scenes/artlab.js';
 import { StatsScene } from './scenes/stats.js';
 import { UnlocksScene } from './scenes/unlocks.js';
 import { Save } from './save.js';
@@ -31,6 +32,8 @@ class BootScene extends Phaser.Scene {
     const loading = document.getElementById('loading');
     if (loading) loading.remove();
     // first launch: the playable opening (THE WRONG SIDE OF THE BED); ?opening=1 replays it
+    // ?artlab=1: the Visual Art Benchmark (isolated preview, docs/visual-target-v1.md)
+    if (new URLSearchParams(location.search).get('artlab') === '1') { this.scene.start('artlab'); return; }
     const replay = new URLSearchParams(location.search).get('opening') === '1';
     this.scene.start(replay || !Save.get().storySeen ? 'opening' : 'menu');
   }
@@ -73,7 +76,7 @@ async function start() {
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     input: { activePointers: 3, gamepad: true },
     // draw order = list order: run, then HUD, then overlays on top
-    scene: [BootScene, StoryScene, OpeningScene, MenuScene, PlayScene, HudScene, BossScene, SpinScene, OverScene, PauseScene, MissionsScene, CharmsScene, SettingsScene, StatsScene, UnlocksScene],
+    scene: [BootScene, StoryScene, OpeningScene, ArtLabScene, MenuScene, PlayScene, HudScene, BossScene, SpinScene, OverScene, PauseScene, MissionsScene, CharmsScene, SettingsScene, StatsScene, UnlocksScene],
   });
   window.__game = game;
   // playtest link: ?boss=matron (&act=2 or 3) opens that fight right away, then goes back to the menu

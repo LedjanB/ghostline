@@ -67,3 +67,10 @@ Already in (commit "Arenas teach"): first time an attack comes it's slower with 
 - No invisible walls before the discovery: the door is shut (he can walk into it); it drifts open after the Ghostline. The monitor beeps louder and the body's fingers move to call him back.
 - Shadow and Boo sequences unchanged (only moved onto the new grid). They are the next redesign, after his review.
 - Screenshots: `node scripts/opening-shots.mjs` -> shots/opening/.
+
+## Nov 8: Visual Art Benchmark V1 (art lab), waiting for his review
+- Question: can finer pixel art fix readability and acting? Built an isolated lab at `?artlab=1` (not in the game; the opening is unchanged).
+- Proposal (docs/visual-target-v1.md): one 2 px art grid at 640x360, Milo 46 art px (92 on screen), everything at 27 px per meter, baked dithered midnight light, no zoom.
+- Views: awakening, six poses (living and spirit), the Ghostline (anchored on the wristband in every pose), THE STRETCH's shadow vs Boo's lantern, V2 vs new at the same height.
+- Finding: clearly better than V2, but faces still only 2 to 3 px per feature and limbs are code-drawn. Pro pixel art would be the next step if he likes the direction.
+- Next: he and ChatGPT review the screenshots (`node scripts/artlab-shots.mjs` -> shots/artlab/) before adopting anything.
