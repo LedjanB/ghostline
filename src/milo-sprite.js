@@ -3,7 +3,7 @@
 // assets/milo/milo-living.png and milo-ghost.png (same drawing, two palettes), 96x100 per frame,
 // feet on row 97, hips on column 40. frames.json lists the frame names in sheet order.
 // Reusable later: loadMilo(scene) in preload, then new MiloActor(scene, x, footY).play('touch').
-// Not used by the game yet (only ?milolab=1).
+// Not used by the game yet (only ?milolab=1). Movement: MILO_MOVES, setFacing(), want().
 
 export const MILO_KEYS = { living: 'milo2_living', ghost: 'milo2_ghost', meta: 'milo2_meta' };
 export const MILO_FRAME = { w: 96, h: 100, foot: 97, anchorX: 40 };
@@ -31,6 +31,22 @@ export const MILO_ANIMS = {
     ['fear0', 260, -11], ['fear1', 200, -13], ['fear2', 110, -13], ['fear4', 110, -13], ['fear2', 110, -13], ['fear4', 110, -13],
     ['fear3', 700, -14], ['fear2', 120, -14], ['fear4', 120, -14], ['fear3', 1600, -14]] },
 };
+// MOVEMENT (prototype V2): side-view frames posed from the concept's turnaround side view (scripts/milo-frames-move.py).
+// `next` = what plays when a one-shot ends. Walk and run loops are two steps each.
+const seq = (pre, n, ms) => Array.from({ length: n }, (_, i) => [pre + i, ms]);
+Object.assign(MILO_ANIMS, {
+  walk_start: { frames: [['turn', 90], ['start0', 100]], next: 'walk' }, // 3/4 -> profile, weight shift, first step
+  walk: { loop: true, frames: seq('walk', 8, 100) },
+  run: { loop: true, frames: seq('run', 6, 80) },
+  stop: { frames: [['side', 120], ['turn', 130]], next: 'idle' },        // profile -> 3/4 -> idle
+  pivot: { frames: [['side', 70]] },                                       // turning around mid-walk
+  jump_start: { frames: [['jump_crouch', 60], ['jump_push', 60]], next: 'rise' },
+  rise: { loop: true, frames: [['jump_rise', 1000]] },
+  apex: { loop: true, frames: [['jump_apex', 1000]] },
+  fall: { loop: true, frames: [['jump_fall0', 110], ['jump_fall1', 110]] },
+  land: { frames: [['land0', 80], ['land1', 90]], next: 'idle' },
+});
+export const MILO_MOVES = ['walk_start', 'walk', 'run', 'stop', 'pivot', 'jump_start', 'rise', 'apex', 'fall', 'land'];
 export const MILO_SEQUENCES = ['awakening', 'realization', 'touch', 'fear'];
 
 export function loadMilo(scene, base = 'assets/milo/') {
@@ -52,6 +68,14 @@ export class MiloActor {
     this.speed = 1;
     this.play('idle');
   }
+  // +1 faces right (as drawn), -1 mirrors around the hip column
+  setFacing(f) {
+    this.facing = f < 0 ? -1 : 1;
+    this.sprite.setFlipX(this.facing < 0).setOrigin((this.facing < 0 ? MILO_FRAME.w - MILO_FRAME.anchorX : MILO_FRAME.anchorX) / MILO_FRAME.w, this.sprite.originY);
+    return this;
+  }
+  // play unless it is already playing (movement states call this every tick)
+  want(name, onDone) { if (this.anim !== name || this.done) this.play(name, onDone); return this; }
   setGhost(on) { this.ghost = on; this.sprite.setTexture(on ? MILO_KEYS.ghost : MILO_KEYS.living, this.index[this.frame]); return this; }
   play(name, onDone) {
     this.anim = name; this.step = 0; this.t = 0; this.done = false; this.onDone = onDone || null;
@@ -82,7 +106,9 @@ export class MiloActor {
       if (this.step + 1 < a.frames.length) { this.step++; changed = true; continue; }
       if (a.loop) { this.step = 0; changed = true; continue; }
       this.done = true; this.t = 0;
-      if (this.onDone) this.onDone(this.anim);
+      const fin = this.anim, cb = this.onDone;
+      if (a.next) { this.play(a.next); changed = false; }
+      if (cb) cb(fin);
       break;
     }
     if (changed) this.show();

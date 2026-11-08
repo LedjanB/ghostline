@@ -1085,6 +1085,73 @@ test('art lab: ?artlab=1 opens alone; 5 views; six different poses; same boy; Bo
   expect(errors).toEqual([]);
 });
 
+// MILO LAB MOVE (new Milo movement prototype V2): walk, run, jump in a test corridor, keyboard / touch / gamepad
+test('milo lab move: frames exist; keyboard walk, run, turn, jump, land; touch thumb; gamepad stick; acting intact', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem('ghostline-save', JSON.stringify({ version: 8, storySeen: true, best: 123 })); });
+  await page.goto('/?milolab=1&move=1');
+  await page.waitForFunction(() => window.__milolab && window.__milolab.move && window.__milolab.mover);
+  const before = await page.evaluate(() => localStorage.getItem('ghostline-save'));
+  const r = await page.evaluate(async () => {
+    const L = window.__milolab, M = await import('/src/milo-sprite.js');
+    const names = M.MILO_MOVES.flatMap((n) => M.MILO_ANIMS[n].frames.map((f) => f[0]));
+    return { missing: names.filter((n) => !(n in L.mover.index)), walk: M.MILO_ANIMS.walk.frames.length, run: M.MILO_ANIMS.run.frames.length,
+      acting: M.MILO_SEQUENCES.every((s) => M.MILO_ANIMS[s].frames.length >= 10), room: L.roomObjs.every((o) => !o.visible) };
+  });
+  expect(r.missing).toEqual([]);
+  expect(r.walk).toBe(8); expect(r.run).toBe(6); expect(r.acting).toBe(true); expect(r.room).toBe(true);
+  const st = () => page.evaluate(() => { const L = window.__milolab; return { anim: L.mover.anim, x: L.mv.x, y: L.mv.y, vx: L.mv.vx, ground: L.mv.ground, facing: L.mover.facing, flip: L.mover.sprite.flipX }; });
+  const x0 = (await st()).x;
+  await page.keyboard.down('ArrowRight');
+  await page.waitForFunction(() => window.__milolab.mover.anim === 'walk');
+  await page.waitForTimeout(400);
+  let s = await st();
+  expect(s.x).toBeGreaterThan(x0); expect(Math.abs(s.vx)).toBeLessThan(80);
+  await page.keyboard.down('Shift');
+  await page.waitForFunction(() => window.__milolab.mover.anim === 'run');
+  await page.waitForFunction(() => window.__milolab.mv.vx > 170);
+  await page.keyboard.up('Shift'); await page.keyboard.up('ArrowRight');
+  await page.waitForFunction(() => window.__milolab.mover.anim === 'idle');
+  await page.keyboard.down('ArrowLeft');
+  await page.waitForFunction(() => window.__milolab.mv.vx < -20);
+  s = await st(); expect(s.facing).toBe(-1); expect(s.flip).toBe(true);
+  await page.keyboard.up('ArrowLeft');
+  await page.waitForFunction(() => window.__milolab.mover.anim === 'idle');
+  // jump: every phase shows, he lands back on the floor
+  const seen = page.evaluate(() => new Promise((res) => {
+    const L = window.__milolab, got = new Set(), t0 = performance.now();
+    const tick = () => { got.add(L.mover.anim); if ((got.has('land') && L.mv.ground) || performance.now() - t0 > 4000) res([...got]); else requestAnimationFrame(tick); };
+    tick();
+  }));
+  await page.keyboard.down('Space'); await page.waitForTimeout(300); await page.keyboard.up('Space');
+  const phases = await seen;
+  for (const a of ['jump_start', 'rise', 'fall', 'land']) expect(phases).toContain(a);
+  expect((await st()).y).toBe(300);
+  // touch: left-half thumb dragged far = run right; right half = jump
+  await page.evaluate(() => { const L = window.__milolab; L.thumb = { id: 9, x0: 100, y0: 250, x: 170 }; });
+  await page.waitForFunction(() => window.__milolab.mover.anim === 'run');
+  await page.evaluate(() => { const L = window.__milolab; L.thumb = null; L.jumpTap = true; L.jumpPtr = 8; });
+  await page.waitForFunction(() => !window.__milolab.mv.ground);
+  await page.evaluate(() => { window.__milolab.jumpPtr = null; });
+  await page.waitForFunction(() => window.__milolab.mv.ground && window.__milolab.mover.anim !== 'run');
+  // gamepad: left stick half tilt walks left, full tilt runs
+  const padV = (x) => page.evaluate((sx) => { const L = window.__milolab; L.__pad = L.__pad || L.input.gamepad; Object.defineProperty(L.input, 'gamepad', { configurable: true, value: { total: 1, getAll: () => [{ leftStick: { x: sx, y: 0 }, buttons: [] }] } }); }, x);
+  await padV(-0.5);
+  await page.waitForFunction(() => window.__milolab.mover.anim === 'walk' && window.__milolab.mover.facing === -1);
+  await padV(-1);
+  await page.waitForFunction(() => window.__milolab.mover.anim === 'run');
+  await page.evaluate(() => { const L = window.__milolab; Object.defineProperty(L.input, 'gamepad', { configurable: true, value: L.__pad }); });
+  // back to the acting lab: room and acting Milo return
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => { const L = window.__milolab; return !L.move && L.milo.sprite.visible && L.roomObjs.every((o) => o.visible); });
+  await page.keyboard.press('3');
+  expect(await page.evaluate(() => window.__milolab.milo.anim)).toBe('touch');
+  expect(await page.evaluate(() => localStorage.getItem('ghostline-save'))).toBe(before);
+  expect(errors).toEqual([]);
+});
+
 // MILO LAB (new Milo, animation prototype V1): isolated preview at ?milolab=1, not part of the game
 test('milo lab: ?milolab=1 opens alone; raster frames; four sequences play to the end; ghost toggle; save untouched', async ({ page }) => {
   const errors = [];

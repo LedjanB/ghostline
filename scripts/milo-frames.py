@@ -161,6 +161,7 @@ def head_swap(dst, src_, sbox, dpos, clear):
     return dst
 
 exec(open(os.path.join(ROOT, 'scripts/milo-frames-acting.py')).read())
+exec(open(os.path.join(ROOT, 'scripts/milo-frames-move.py')).read())
 
 # ---------------- 5. pack ----------------
 CW, CH, FOOTY, cols_n = 96, 100, 97, 8

@@ -144,6 +144,106 @@
   "fear4": [
    53,
    33
+  ],
+  "side": [
+   47,
+   55
+  ],
+  "turn": [
+   49,
+   41
+  ],
+  "walk0": [
+   56,
+   59
+  ],
+  "walk4": [
+   56,
+   59
+  ],
+  "walk1": [
+   52,
+   59
+  ],
+  "walk5": [
+   52,
+   59
+  ],
+  "walk2": [
+   47,
+   55
+  ],
+  "walk6": [
+   47,
+   55
+  ],
+  "walk3": [
+   53,
+   57
+  ],
+  "walk7": [
+   53,
+   57
+  ],
+  "start0": [
+   48,
+   58
+  ],
+  "run0": [
+   71,
+   35
+  ],
+  "run3": [
+   71,
+   35
+  ],
+  "run1": [
+   66,
+   47
+  ],
+  "run4": [
+   66,
+   47
+  ],
+  "run2": [
+   71,
+   30
+  ],
+  "run5": [
+   71,
+   30
+  ],
+  "jump_crouch": [
+   58,
+   30
+  ],
+  "jump_push": [
+   73,
+   34
+  ],
+  "jump_rise": [
+   74,
+   30
+  ],
+  "jump_apex": [
+   70,
+   33
+  ],
+  "jump_fall0": [
+   48,
+   30
+  ],
+  "jump_fall1": [
+   46,
+   30
+  ],
+  "land0": [
+   70,
+   59
+  ],
+  "land1": [
+   53,
+   59
   ]
  },
  "frameHeight": 100,
@@ -185,7 +285,32 @@
   "fear1",
   "fear2",
   "fear3",
-  "fear4"
+  "fear4",
+  "side",
+  "turn",
+  "walk0",
+  "walk4",
+  "walk1",
+  "walk5",
+  "walk2",
+  "walk6",
+  "walk3",
+  "walk7",
+  "start0",
+  "run0",
+  "run3",
+  "run1",
+  "run4",
+  "run2",
+  "run5",
+  "jump_crouch",
+  "jump_push",
+  "jump_rise",
+  "jump_apex",
+  "jump_fall0",
+  "jump_fall1",
+  "land0",
+  "land1"
  ],
  "key": [
   "idle0",
@@ -193,6 +318,14 @@
   "reach3",
   "touch1",
   "recoil0",
-  "fear0"
+  "fear0",
+  "side",
+  "turn",
+  "walk0",
+  "run0",
+  "jump_crouch",
+  "jump_rise",
+  "jump_fall0",
+  "land0"
  ]
 }

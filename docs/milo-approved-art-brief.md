@@ -36,3 +36,23 @@ The user chose the detailed, expressive teen design in `assets/reference/milo-ap
 `assets/reference/milo-acting-reference.png`: acting/key-pose targets.
 `assets/reference/milo-game-size-reference.png`: intended game-scale readability.
 Each crop is a **reference only**, not a frame/texture ready to use in gameplay.
+
+## Movement prototype V2 (Nov 8): what the source art allows
+The concept has no walk, run or jump drawings. It does have a clean SIDE view (turnaround, top right) and a 3/4 view.
+`scripts/milo-frames-move.py` cuts the side view out at concept resolution, splits it along its own seams
+(head+torso, sleeve+upper arm, forearm+hand, thigh, shin, slipper), rotates the parts at their joints at about 3x
+game size, then shrinks each pose like the key poses (area average, shared 40-colour palette). Every pixel comes
+from the approved drawing. 25 new frames; the 36 acting frames are byte-identical.
+
+Known limits (need an artist pass before shipping):
+- Parts are rotated, not redrawn: no cloth folds change, the trousers don't bunch at a bent knee, the sleeve
+  doesn't lift with a raised arm. Reads fine at 1:1, visible in the x2 inspect window.
+- The shirt behind a swung or raised arm is reconstructed (blended from the shirt next to it): a flat patch
+  without the drawn pattern on the jump frames (arms up).
+- The far arm and far leg are the near ones in shadow (the side view hides them), so both legs share one drawing.
+- The face stays the side view's neutral profile in every movement frame (no effort or fear while running).
+- Facing left is a mirror, so the wristband changes wrist when he turns (the concept also forgot it in the
+  side view; it is painted on the near wrist).
+- The turn uses the 3/4 turnaround drawing, which is crisper than the idle pose (different source scale): a
+  small jump in detail during idle -> walk.
+- Deep crouches (jump takeoff, landing) have no thigh foreshortening, so they read a little like sitting.

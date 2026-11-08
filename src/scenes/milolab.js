@@ -1,13 +1,15 @@
-// MILO LAB (?milolab=1): THE NEW MILO, animation prototype V1. Isolated preview, not part of the game.
+// MILO LAB (?milolab=1): THE NEW MILO, animation prototype V1 (acting) + V2 (MOVE: walk, run, jump; milolab-move.js).
+// Isolated preview, not part of the game.
 // Milo is shown at game size (1:1 on the 640x360 screen, 92 px body). Four acting sequences,
 // living/ghost toggle, slow motion, a x2 inspect window and a comparison with the previous Milos.
 // Keys: left/right/up/down + Space/Enter (or gamepad d-pad + A) move through the buttons,
-// 0 idle, 1-4 sequences, 5 play all, G ghost, S slow, Z zoom, C compare, H hide UI. Touch: tap a button.
+// 0 idle, 1-4 sequences, 5 play all, G ghost, S slow, Z zoom, C compare, H hide UI, M move. Touch: tap a button.
 import { W, H, FONT } from '../data.js';
 import { createInput } from '../input.js';
 import { loadMilo, MiloActor, MILO_ANIMS, MILO_SEQUENCES, MILO_KEYS } from '../milo-sprite.js';
 import * as A from '../artlab-assets.js';
 import { makeOpeningArt } from '../opening-art.js';
+import { MOVE_LAB } from './milolab-move.js';
 
 const FLOOR = 300;
 const MILO_X = 236;
@@ -22,8 +24,10 @@ export class MiloLabScene extends Phaser.Scene {
   create() {
     window.__milolab = this;
     this.ghost = false; this.slow = false; this.zoom = false; this.compare = false; this.uiOn = true;
-    this.chain = null; this.holdT = 0; this.freeze = false; this.fx = 0;
+    this.chain = null; this.holdT = 0; this.freeze = false; this.fx = 0; this.move = false;
+    const n0 = this.children.list.length;
     this.drawRoom();
+    this.roomObjs = this.children.list.slice(n0);
 
     // the hand target: where his living body lies under the blanket (indicated by a soft ring)
     this.milo = new MiloActor(this, MILO_X, FLOOR);
@@ -37,9 +41,9 @@ export class MiloLabScene extends Phaser.Scene {
       .setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.22).setTint(0x6fb8ff).setDepth(4.9).setVisible(false).setData('d', [dx, dy]));
 
     // x2 inspect window (same frame, magnified for review; the game size is the Milo on the floor)
-    this.zoomBg = this.add.graphics().setDepth(20).setVisible(false);
+    this.zoomBg = this.add.graphics().setDepth(20).setVisible(false).setScrollFactor(0);
     this.zoomBg.fillStyle(0x0b0e18, 0.92).fillRect(W - 208, 24, 200, 214).lineStyle(1, 0x3a4668, 1).strokeRect(W - 207.5, 24.5, 199, 213);
-    this.zoomSpr = this.add.sprite(W - 108 - 24, 228, MILO_KEYS.living, 0).setOrigin(this.milo.sprite.originX, this.milo.sprite.originY).setScale(2).setDepth(21).setVisible(false);
+    this.zoomSpr = this.add.sprite(W - 108 - 24, 228, MILO_KEYS.living, 0).setOrigin(this.milo.sprite.originX, this.milo.sprite.originY).setScale(2).setDepth(21).setVisible(false).setScrollFactor(0);
     // comparison: the previous Milos at their own game size, next to the new one (living + ghost)
     makeOpeningArt(this);
     if (!this.textures.exists('milolab_old')) this.textures.addCanvas('milolab_old', A.miloFrame('neutral').buf.toCanvas());
@@ -52,8 +56,8 @@ export class MiloLabScene extends Phaser.Scene {
     [...this.cmp, ...this.cmpNew.map((m) => m.sprite)].forEach((s) => s.setDepth(6).setVisible(false));
 
     // ---- UI ----
-    const txt = (x, y, s, size = 8, col = '#e6f0ff', ox = 0) => this.add.text(x, y, s, { fontFamily: FONT, fontSize: size + 'px', color: col, resolution: 2 }).setOrigin(ox, 0).setDepth(30);
-    this.title = txt(8, 8, 'MILO LAB V1', 8, '#ffe0a0');
+    const txt = (x, y, s, size = 8, col = '#e6f0ff', ox = 0) => this.add.text(x, y, s, { fontFamily: FONT, fontSize: size + 'px', color: col, resolution: 2 }).setOrigin(ox, 0).setDepth(30).setScrollFactor(0);
+    this.title = txt(8, 8, 'MILO LAB V2', 8, '#ffe0a0');
     this.info = txt(8, 22, '', 8, '#9fb0d0');
     this.zoomLbl = txt(W - 108, 30, 'x2 INSPECT', 8, '#7a88a8', 0.5).setVisible(false);
     this.cmpLbls = [
@@ -64,7 +68,7 @@ export class MiloLabScene extends Phaser.Scene {
       [['IDLE', () => this.playSeq('idle')], ['1 AWAKENING', () => this.playSeq('awakening')], ['2 REALIZATION', () => this.playSeq('realization')],
         ['3 TOUCH', () => this.playSeq('touch')], ['4 FEAR', () => this.playSeq('fear')], ['PLAY ALL', () => this.playAll()]],
       [['LIVING', () => this.setGhost(!this.ghost)], ['SLOW: OFF', () => this.setSlow(!this.slow)], ['ZOOM: OFF', () => this.setZoom(!this.zoom)],
-        ['COMPARE', () => this.setCompare(!this.compare)], ['H: HIDE', () => this.toggleUI()]],
+        ['COMPARE', () => this.setCompare(!this.compare)], ['H: HIDE', () => this.toggleUI()], ['M: MOVE', () => this.setMove(true)]],
     ];
     this.btns = [];
     rows.forEach((row, r) => {
@@ -81,7 +85,10 @@ export class MiloLabScene extends Phaser.Scene {
     this.ctl = createInput(this, { pointers: false });
     this.input.keyboard?.on('keydown', (e) => {
       const k = e.key.toLowerCase();
-      if (k >= '0' && k <= '4') this.playSeq(['idle', ...MILO_SEQUENCES][Number(k)]);
+      if (k === 'm') this.setMove(!this.move);
+      else if (this.move && (k === 'g' || k === 's' || k === 'z' || k === 'h')) { if (k === 'g') this.setGhost(!this.ghost); if (k === 's') this.setSlow(!this.slow); if (k === 'z') this.setZoom(!this.zoom); if (k === 'h') this.toggleUI(); this.paintMoveBtns(); return; }
+      else if (this.move) return;
+      else if (k >= '0' && k <= '4') this.playSeq(['idle', ...MILO_SEQUENCES][Number(k)]);
       else if (k === '5') this.playAll();
       else if (k === 'g') this.setGhost(!this.ghost);
       else if (k === 's') this.setSlow(!this.slow);
@@ -93,6 +100,8 @@ export class MiloLabScene extends Phaser.Scene {
     const q = new URLSearchParams(location.search);
     if (q.get('ghost') === '1') this.setGhost(true);
     if (q.get('clean') === '1') this.toggleUI();
+    this.buildMove();
+    if (q.get('move') === '1') this.setMove(true);
     this.paintBtns();
   }
 
@@ -146,19 +155,26 @@ export class MiloLabScene extends Phaser.Scene {
   setGhost(on) {
     this.ghost = on;
     this.milo.setGhost(on); this.milo.sprite.setAlpha(on ? 0.9 : 1);
-    this.zoomSpr.setTexture(on ? MILO_KEYS.ghost : MILO_KEYS.living, this.milo.index[this.milo.frame]);
+    if (this.mover) { this.mover.setGhost(on); this.mover.sprite.setAlpha(on ? 0.9 : 1); this.paintMoveBtns(); }
+    const act = this.move ? this.mover : this.milo;
+    this.zoomSpr.setTexture(on ? MILO_KEYS.ghost : MILO_KEYS.living, act.index[act.frame]);
     this.btns[6].t.setText(on ? 'GHOST' : 'LIVING');
   }
-  setSlow(on) { this.slow = on; [this.milo, ...this.cmpNew].forEach((m) => { m.speed = on ? 0.25 : 1; }); this.btns[7].t.setText(on ? 'SLOW: 1/4' : 'SLOW: OFF'); }
-  setZoom(on) { this.zoom = on; this.btns[8].t.setText(on ? 'ZOOM: x2' : 'ZOOM: OFF'); this.syncViews(); }
+  setSlow(on) { this.slow = on; [this.milo, ...this.cmpNew].forEach((m) => { m.speed = on ? 0.25 : 1; }); this.btns[7].t.setText(on ? 'SLOW: 1/4' : 'SLOW: OFF'); if (this.mover) this.paintMoveBtns(); }
+  setZoom(on) { this.zoom = on; this.btns[8].t.setText(on ? 'ZOOM: x2' : 'ZOOM: OFF'); this.syncViews(); if (this.mover) this.paintMoveBtns(); }
   setCompare(on) { this.compare = on; this.syncViews(); }
   syncViews() {
     const c = this.compare;
-    this.milo.setVisible(!c); this.ring.setVisible(!c);
+    this.milo.setVisible(!c && !this.move); this.ring.setVisible(!c && !this.move);
     this.cmp.forEach((s) => s.setVisible(c)); this.cmpNew.forEach((m) => m.setVisible(c)); this.cmpLbls.forEach((l) => l.setVisible(c));
     [this.zoomBg, this.zoomSpr, this.zoomLbl].forEach((o) => o.setVisible(this.zoom && !c));
   }
-  toggleUI() { this.uiOn = !this.uiOn; [this.title, this.info, ...this.btns.map((b) => b.t)].forEach((t) => t.setVisible(this.uiOn)); }
+  toggleUI() {
+    this.uiOn = !this.uiOn;
+    [this.title, this.info].forEach((t) => t.setVisible(this.uiOn));
+    this.btns.forEach((b) => b.t.setVisible(this.uiOn && !this.move));
+    if (this.moveBtns) { this.moveBtns.forEach((t) => t.setVisible(this.uiOn && this.move)); this.moveHelp.setVisible(this.uiOn && this.move); }
+  }
   paintBtns() {
     const playing = this.chain ? 'all' : this.milo.anim;
     const on = (b) => (b.r === 0 && (['idle', ...MILO_SEQUENCES][b.i] === playing || (b.i === 5 && this.chain))) ||
@@ -177,11 +193,24 @@ export class MiloLabScene extends Phaser.Scene {
     this.paintBtns();
   }
   playAll() { this.chain = MILO_SEQUENCES.slice(1); this.playSeq(MILO_SEQUENCES[0], true); }
+  // ghost rim light (same frame, 1 px around, additive) and the x2 window follow whichever Milo is shown
+  followFx(s) {
+    this.aura.forEach((a) => {
+      const [dx, dy] = a.getData('d');
+      a.setVisible(this.ghost && !this.compare).setTexture(MILO_KEYS.ghost, s.frame.name).setFlipX(s.flipX).setOrigin(s.originX, s.originY).setPosition(s.x + dx, s.y + dy);
+    });
+    this.zoomSpr.setTexture(s.texture.key, s.frame.name).setFlipX(s.flipX).setOrigin(s.originX, s.originY);
+  }
   // for screenshots and tests: show one frame of a sequence and hold it
   pose(name, step) { this.chain = null; this.milo.play(name); this.milo.step = step; this.milo.show(); this.freeze = true; }
 
   update(time, delta) {
     const c = this.ctl; c.update();
+    if (this.move) {
+      this.stepMove(Math.min(delta, 50) * (this.slow ? 0.25 : 1));
+      this.followFx(this.mover.sprite);
+      return;
+    }
     const n = this.btns.length, row = this.btns[this.focus].r;
     if (c.pressed('right')) this.focus = (this.focus + 1) % n;
     if (c.pressed('left')) this.focus = (this.focus + n - 1) % n;
@@ -201,13 +230,8 @@ export class MiloLabScene extends Phaser.Scene {
       if (this.holdT > 0 && (this.holdT -= dt * (this.slow ? 0.25 : 1)) <= 0) { this.milo.play('idle'); this.paintBtns(); }
     }
     this.fx += dt / 1000;
-    // ghost rim light (same frame, 1 px around, additive)
     const s = this.milo.sprite;
-    this.aura.forEach((a) => {
-      const [dx, dy] = a.getData('d');
-      a.setVisible(this.ghost && !this.compare).setFrame(s.frame.name).setPosition(s.x + dx, s.y + dy);
-    });
-    this.zoomSpr.setFrame(s.frame.name);
+    this.followFx(s);
     // the target ring on the blanket; flashes when the hand goes through
     const through = this.milo.tag === 'through' || (this.milo.anim === 'touch' && this.milo.step === MILO_ANIMS.touch.frames.length - 1);
     const showRing = this.milo.anim === 'touch' || this.milo.anim === 'fear';
@@ -227,3 +251,5 @@ export class MiloLabScene extends Phaser.Scene {
     this.info.setText(`${SEQ_NAMES[this.milo.anim]}   ${this.milo.frame}  ${this.milo.step + 1}/${total}${this.ghost ? '   GHOST' : ''}${this.slow ? '   1/4 SPEED' : ''}`);
   }
 }
+
+Object.assign(MiloLabScene.prototype, MOVE_LAB);

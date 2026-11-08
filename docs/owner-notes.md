@@ -82,3 +82,10 @@ Already in (commit "Arenas teach"): first time an attack comes it's slower with 
 - Limits: the body never changes between two concept poses through a drawn in-between (no artist frames), so pose changes still pop a bit; the wristband was missing on 5 concept poses and is painted in; the head turn reuses the idle head (the concept has no turning frames). Real fix if he likes it: a pixel artist draws the in-betweens on top of these.
 - Shots: `node scripts/milolab-shots.mjs` -> shots/milolab/ (PNGs + play-all.webm at game size).
 - Next: his review. Do NOT put the new Milo in the opening until he approves the animation.
+
+## Nov 8: THE NEW MILO, movement prototype V2 (milo lab MOVE), waiting for his review
+- Milo lab has a MOVE mode (`?milolab=1&move=1`, M, or the M: MOVE button): a 1600 px ward corridor at 640x360 with a bed, cabinet, gurney and step to jump on. Keyboard (arrows/A-D, Shift run, Space/W jump, Esc back), touch (left half drag thumb, far = run; right half jump, hold = higher), gamepad (stick/d-pad, full tilt or X = run, A jump, Start back). Coyote time, jump buffer, cut jump (Celeste).
+- 25 movement frames (`scripts/milo-frames-move.py`): idle -> walk (turn, start0), walk 8, run 6, stop (side, turn), jump crouch/push/rise/apex/fall x2, land x2. Built from the concept's side view, parts rotated at concept resolution then shrunk like the key poses. Acting frames unchanged. `src/scenes/milolab-move.js`; anims in `MILO_ANIMS` (`MILO_MOVES`), `MiloActor.setFacing()`/`want()`.
+- Limits in docs/milo-approved-art-brief.md (rotated parts, reconstructed shirt behind raised arms, far limbs = shaded copies, mirrored wristband). An artist pass would fix them.
+- Shots: `node scripts/milolab-move-shots.mjs` -> shots/milolab-move/ (PNGs, frames.png, move.webm).
+- Next: his review. Opening, runner, bosses, saves unchanged. Do NOT integrate until he approves.
