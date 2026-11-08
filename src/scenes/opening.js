@@ -9,7 +9,9 @@
 // 2 DISCOVERY: walk to the bed; Milo stops, looks, hesitates, reaches for his own hand: his fingers pass through,
 //   the living fingers twitch. "NO. THAT'S ME." Then the Ghostline: a pulse wrist to wrist, a flash at the living wrist,
 //   and the filament bends down into the seam under the bed. The door drifts open.
-// 3 THE SHADOW and 4 BOO: unchanged for now (their own redesign comes next).
+// 3+4 THE FIRST ENCOUNTER (cinematic revision V1, src/opening-encounter.js): warning, THE STRETCH's shadow (figure on
+//   the backlit curtain, up the wall, its arm along the room to Milo's feet), Boo's rescue (new raster Boo,
+//   src/boo-sprite.js), the escape through the door. Story states with visibility gates, not timers.
 // Self-contained: own art (opening-art.js), own sound (opening-audio.js), own camera that follows Milo's world x.
 // Story beats fire on where the player goes, never on a clock. Nothing here can hurt Milo.
 import { W, H } from '../data.js';
@@ -20,6 +22,8 @@ import { createInput, Device } from '../input.js';
 import { makeOpeningArt, OP_G, ROOM_W, LAMPS, SEAM_Y, DIGITS, BED7 } from '../opening-art.js';
 import { loadMilo, MiloActor, MILO_ANIMS, MILO_FRAME, MILO_SLEEP, MILO_KEYS } from '../milo-sprite.js';
 import { makeOpeningAudio } from '../opening-audio.js';
+import { loadBoo } from '../boo-sprite.js';
+import { ENCOUNTER } from '../opening-encounter.js';
 
 const G = OP_G;
 const Z = 1; // the only zoom: 1 world px = 1 screen px, so the Milo sprites draw at their own size
@@ -36,7 +40,7 @@ const P = {
   bed: BED7.sleep, // top-left of the sleeping Milo's frame
   land: 384, discoverX: 345, nudgeX: 760, doorStop: 893,
   stand: { x: 302, y: 290 }, // where his spirit stands up out of the bed, in the air
-  shadowAt: 640, curtainEdge: 566, maxX: 815, minX: 40, door: 948,
+  maxX: 815, minX: 40, door: 948,
   window: { x: 624, y: 102, w: 96, h: 108 },
   monitor: { x: 135, y: 213, w: 33, h: 36 },
   chair: { x0: 783, x1: 825, y: 296 },
@@ -74,7 +78,7 @@ export class OpeningScene extends Phaser.Scene {
     this.control = false; this.ctlT = 0;
     this.t = 0;
     this.tl = []; this.tlT = 0;
-    this.flags = { discover: 0, shadow: 0, boo: 0, ended: 0 };
+    this.flags = { discover: 0, warning: 0, shadow: 0, boo: 0, ended: 0 };
     this.m = { x: P.land, y: FEET, vx: 0, vy: 0, ground: true, face: -1, shown: false, walkT: 0, takeoff: 0 };
     this.auto = null; this.pose = null; this.act = false; this.through = false; this.gx = P.land; this.gy = FEET;
     this.cam = { x: P.shot, y: CAM_Y, z: Z };
@@ -90,17 +94,16 @@ export class OpeningScene extends Phaser.Scene {
     // the Ghostline: stage 0 hidden, 1 pulse wrist -> wrist, 2 flash, 3 down into the floor, 4 settled
     this.gl = { stage: 0, t: 0, k: 0, a: 0 }; this.line = -1; this.glPts = null;
     this.doorOpen = 0; this.doorT = 0;
-    this.sil = { x: 400, a: 0, aT: 0, sway: 0, flash: 0, move: false };
-    this.sh = { on: false, t: 0, tip: P.curtainEdge, wall: 0, recoil: 0, lurch: 0 };
-    this.boo = { a: 0, aT: 0, x: P.door, y: 226, face: -1 };
-    this.lantern = 0; this.lanternT = 0; this.lanternShown = false;
+    this.lantern = 0; this.lanternT = 0;
+    this.encInit();
+    this.leaving = false; this.endGroup = null;
     this.thumb = null; this.jumpTap = false;
     this.moved = 0; this.hintShown = false; this.nudged = false; this.bumped = 0; this.glance = 0;
     this.bubble = null; this.motes = []; this.moteT = 0; this.ghostFlick = 0;
     this.debugInput = null;
   }
 
-  preload() { loadMilo(this); }
+  preload() { loadMilo(this); loadBoo(this); }
 
   create() {
     makeOpeningArt(this);
@@ -139,7 +142,6 @@ export class OpeningScene extends Phaser.Scene {
     this.doorOpenSpr = img(331 * G, 52 * G, 'op_door_open', 1).setAlpha(0);
     img(114 * G, 23 * G, 'op_curtain_bunch', 1);
     this.panels = [0, 1, 2, 3].map((i) => w(this.add.image(395 + i * 50, 23 * G, 'op_curtain').setOrigin(0.5, 0).setScale(G), 1));
-    this.silCurtain = w(this.add.image(400, 296, 'op_sil0').setOrigin(0.5, 1).setAlpha(0), 1.2);
     // the boy in the bed: the new Milo asleep under the blanket (breathes, a finger moves now and then)
     this.blanket = w(this.add.sprite(P.bed.x, P.bed.y, MILO_SLEEP.key, SLEEP_F.bed).setOrigin(0), 2);
     this.ivG = w(this.add.graphics(), 2.1);
@@ -158,10 +160,7 @@ export class OpeningScene extends Phaser.Scene {
     this.monL = { g: add('op_glow_green', 160, 232, 7, 0.9), p: add('op_pool_green', 162, 312, 7, 0.9) };
     this.exitL = add('op_glow_red', 948, 132, 7, 1).setAlpha(0.3);
     this.clockL = add('op_glow_red', 118, 170, 7, 0.7);
-    this.lanL = { g: add('op_glow_amber', P.door, 260, 7, 3), c: add('op_glow_warm', P.door, 260, 7.1, 1), p: add('op_pool_amber', P.door, 312, 7, 3.4), s: add('op_streak_amber', P.door, 300, 7, 2, 0.9).setOrigin(0.5, 0) };
-    // ---- THE STRETCH: only ever its shadow ----
-    this.silWall = w(this.add.image(0, 252, 'op_sil0').setOrigin(0.5, 1).setAlpha(0), 7.5);
-    this.shG = w(this.add.graphics(), 7.6);
+    this.lanL = { g: add('op_glow_amber', P.door, 260, 7, 3), c: add('op_glow_warm', P.door, 260, 7.1, 1), p: add('op_pool_amber', P.door, 312, 7, 3.4), s: add('op_streak_amber', P.door, 300, 7, 2, 0.9).setOrigin(0.5, 0), f: add('op_glow_amber', P.door, 260, 7.05, 6) };
     // ---- Milo's spirit, the Ghostline, Boo ----
     this.ghostL = { g: add('op_glow_blue', 0, 0, 9.5, 1.2), p: add('op_pool_blue', 0, 0, 9.4, 1) };
     // his spirit: lying in his body, sitting up out of it (same drawing, ghost row), then the actor
@@ -172,8 +171,9 @@ export class OpeningScene extends Phaser.Scene {
     this.ghost = w(this.milo.sprite.setAlpha(0), 10);
     this.lineG = w(this.add.graphics(), 10.5);
     this.fxG = w(this.add.graphics(), 10.6);
-    this.boo.spr = w(this.add.image(P.door, 226, 'op_boo0').setScale(G).setAlpha(0).setFlipX(true), 11);
-    this.lanSpr = w(this.add.image(P.door, 220, 'op_lantern_off').setScale(G).setOrigin(0.5, 0).setAlpha(0), 11.1);
+    // ---- THE STRETCH (only ever its shadow) and Boo: src/opening-encounter.js ----
+    this.worldW = WORLD_W;
+    this.encCreate(w, add);
 
     // ---- screen layer (not zoomed) ----
     this.vig = u(this.add.image(W / 2, H / 2, 'op_vignette').setScale(4).setAlpha(0.85), 0);
@@ -287,43 +287,6 @@ export class OpeningScene extends Phaser.Scene {
     this.milo.setFacing(this.m.face).play(anim, done);
   }
 
-  startShadow() {
-    this.flags.shadow++;
-    this.phase = 'shadow';
-    const s = this.snd;
-    this.run([
-      [0, () => { s.vent(false, { abrupt: true }); s.rain(0.1, true, 0.12); s.pad(0, 0.15); this.hrT = 78; }],
-      [1.3, () => s.keys(0.35)],
-      [2.1, () => { s.keys(0.6); s.curtain(0.7); this.sil.sway = 1; }],
-      [2.8, () => { this.lightning(1); this.sil.x = 430; this.sil.flash = 0.35; this.coldT = 0.45; s.cold(1, 2); }],
-      [3.4, () => s.thunder(0.6)],
-      [3.7, () => { s.creak(); this.sil.aT = 0.14; this.sil.move = true; }],
-      [5.3, () => { this.sh.on = true; s.breath(1); s.curtain(1); this.hrT = 92; this.darkT = 0.7; }],
-      [6.6, () => s.keys(0.85)],
-    ]);
-  }
-
-  startBoo() {
-    this.flags.boo++;
-    this.phase = 'boo';
-    this.lockControl();
-    this.m.vx = 0; this.m.face = 1;
-    const s = this.snd;
-    const midX = (this.m.x + P.door) / 2;
-    this.run([
-      [0, () => { s.strike(); this.lanternShown = true; this.lanternT = 0.15; }],
-      [0.35, () => { s.ignite(); s.hum(1, 0.2); this.lanternT = 1; this.camTo(midX, CAM_Y, Z, 2.2); this.hrT = 104; }],
-      [0.6, () => { s.recoil(); this.sh.recoil = 1; this.coldT = 0.2; this.darkT = 0.6; this.shake(260, 0.004); }],
-      [1.0, () => { this.boo.aT = 1; s.rain(0.35, false, 1.5); }],
-      [1.9, () => this.say('boo', 'THERE YOU ARE.', 1.9)],
-      [4.0, () => this.say('milo', 'DO I KNOW YOU?', 1.9)],
-      [6.1, () => { this.say('boo', 'LATER. RUN.', 1.6); }],
-      [6.9, () => { this.boo.face = 1; s.lunge(); this.sh.lurch = 1; this.walkTo(P.maxX + 40, RUN_SPEED, null, true); this.boo.go = true; }],
-      [7.8, () => { this.fadeT = 1; this.fadeK = 1.3; s.fade(0.3, 0.8); }],
-      [9.4, () => this.showEnd()],
-    ]);
-  }
-
   showEnd() {
     this.phase = 'end';
     this.flags.ended++;
@@ -366,8 +329,10 @@ export class OpeningScene extends Phaser.Scene {
     else if (!m.ground) { if (a.anim !== 'jump_start' || a.done) a.want(m.vy < -110 ? 'rise' : m.vy < 110 ? 'apex' : 'fall'); }
     else if (a.anim === 'land' && !a.done && (!moving || a.step === 0)) { /* let the landing read */ }
     else if (!moving) {
+      const idle = this.enc.scared && this.phase === 'shadow' ? 'op_tremble' : 'idle';
       if (['walk', 'run', 'walk_start', 'pivot'].includes(a.anim)) a.want('stop');
-      else if (a.done || !['stop', 'idle', 'land'].includes(a.anim)) a.want('idle');
+      else if (idle === 'op_tremble' && ['stop', 'idle'].includes(a.anim)) a.want(idle);
+      else if (a.done || !['stop', 'idle', 'land', 'op_tremble'].includes(a.anim)) a.want(idle);
     } else if (a.anim === 'pivot' && !a.done) { /* turning round */ }
     else if (sp > SPEED + 18) a.want('run');
     else if (['idle', 'stop', 'land'].includes(a.anim) || a.anim.startsWith('op_')) a.want('walk_start');
@@ -424,7 +389,7 @@ export class OpeningScene extends Phaser.Scene {
     this.dark = lerp(this.dark, this.darkT, 1 - Math.exp(-dt * 3));
     this.elamp = lerp(this.elamp, this.elampT, 1 - Math.exp(-dt * 6));
     if (this.eFlick > 0) { this.eFlick -= dt; if (Math.random() < 0.4) this.elamp = 0.1; }
-    if (this.phase === 'shadow' && this.sh.on && Math.random() < dt * 2.5) this.elamp *= 0.35; // it flickers when it comes
+    if (this.phase === 'shadow' && this.sh.a > 0.5 && Math.random() < dt * 2.5) this.elamp *= 0.35; // it flickers when it comes
     this.cold = lerp(this.cold, this.coldT, 1 - Math.exp(-dt * 0.9));
     this.flash = Math.max(0, this.flash - dt * 2.2);
     if (this.phase === 'explore' || this.phase === 'explore2') {
@@ -432,7 +397,6 @@ export class OpeningScene extends Phaser.Scene {
       if (this.nextFlash <= 0) { this.lightning(0.6); this.nextFlash = 16 + Math.random() * 10; if (s) this.time.delayedCall(900, () => this.snd && this.snd.thunder(0.35)); }
     }
     this.lantern = lerp(this.lantern, this.lanternT, 1 - Math.exp(-dt * (this.lanternT > 0.5 ? 7 : 3)));
-    this.boo.a = lerp(this.boo.a, this.boo.aT, 1 - Math.exp(-dt * 3));
     this.doorOpen = lerp(this.doorOpen, this.doorT, 1 - Math.exp(-dt * 1.5));
 
     // the separation: he fades in inside his body, sits up out of it, stands, drifts down beside the bed
@@ -467,9 +431,11 @@ export class OpeningScene extends Phaser.Scene {
       if (!m.ground) m.vy += (m.vy < 0 && held ? GRAV * 0.6 : GRAV) * dt;
       m.x += m.vx * dt;
       m.y += m.vy * dt;
-      // the door is shut until he knows: he walks into it (a real door, not a wall in the air)
-      const maxX = this.auto && this.auto.run ? P.maxX + 45 : this.phase === 'explore' ? P.doorStop : P.maxX;
-      if (this.phase === 'explore' && m.x >= P.doorStop && this.bumped <= 0) { this.bumped = 2.5; s && s.bump(); this.loud = 2; this.glance = 1.6; m.vx = -40; }
+      // the door is shut until he knows (and shuts again when it comes): he walks into it (a real door, not a wall
+      // in the air). On the way out he walks through it into the corridor.
+      const shut = this.doorT < 0.5;
+      const maxX = this.phase === 'exit' || this.phase === 'end' ? P.door + 20 : this.phase === 'explore2' && !shut ? P.maxX : P.doorStop;
+      if (shut && m.x >= P.doorStop && this.bumped <= 0) { this.bumped = 2.5; s && s.bump(); this.loud = 2; this.glance = this.phase === 'explore' ? 1.6 : 0; m.vx = -40; }
       m.x = clamp(m.x, P.minX, maxX);
       const onChair = m.x > P.chair.x0 && m.x < P.chair.x1;
       if (m.vy >= 0 && !m.ground) {
@@ -486,7 +452,8 @@ export class OpeningScene extends Phaser.Scene {
     if (this.rise < 0 && m.shown) {
       const a = this.milo;
       if (!this.act) this.animMove();
-      a.setFacing(this.act ? m.face : this.faceLeft() ? -1 : 1);
+      const fearFace = !this.act && a.anim === 'op_tremble' && this.sh.hand ? (Math.sign(this.sh.hand.x - m.x) || m.face) : 0;
+      a.setFacing(this.act ? m.face : fearFace || (this.faceLeft() ? -1 : 1));
       a.update(dt * 1000);
       if (this.pose === 'touch' && a.tag === 'through' && !this.through) { // his fingers go into his own hand
         this.through = true;
@@ -503,7 +470,7 @@ export class OpeningScene extends Phaser.Scene {
       if (!this.hintShown && this.ctlT > 4.5 && this.moved < 30) { this.hintShown = true; this.showHint(); }
     }
     if ((this.phase === 'explore' || this.phase === 'explore2') && this.hintShown && this.moved > 90) this.tw(this.hint, 0, 400);
-    if (this.phase === 'explore2' && m.x > P.shadowAt) this.startShadow();
+    this.encTrigger(m);
     this.glance = Math.max(0, this.glance - dt);
 
     // the body: a finger moves now and then (it's alive), more often while he hasn't looked yet
@@ -522,31 +489,12 @@ export class OpeningScene extends Phaser.Scene {
       else if (gl.stage === 3) { gl.k = Math.min(1, gl.t / 1.1); if (gl.k >= 1) { gl.stage = 4; gl.t = 0; } }
       this.line = gl.stage === 4 ? 1 : gl.stage === 3 ? 0.6 + gl.k * 0.39 : gl.stage === 2 ? 0.5 : gl.k * 0.5;
       // bright while it's found, then it settles to a faint thread (still there, never dominant)
-      const aT = gl.stage < 4 ? 1 : gl.t < 1.5 ? 1 : (this.phase === 'shadow' || this.phase === 'boo' ? 0.5 : 0.32);
+      const aT = gl.stage < 4 ? 1 : gl.t < 1.5 ? 1 : (this.phase === 'rescue' ? 0.75 : this.phase === 'shadow' || this.phase === 'exit' ? 0.5 : 0.32);
       gl.a = lerp(gl.a, aT, 1 - Math.exp(-dt * 1.5));
     }
 
-    // the curtain and the thing behind it
-    const sil = this.sil;
-    if (sil.move) sil.x = Math.min(545, sil.x + dt * 70);
-    if (sil.flash > 0) sil.flash -= dt;
-    sil.a = lerp(sil.a, this.sh.on ? 0 : sil.aT, 1 - Math.exp(-dt * 2));
-
-    // its shadow: out from under the curtain, along the floor and up the wall, toward Milo
-    const sh = this.sh;
-    if (sh.on) {
-      sh.t += dt;
-      sh.wall = Math.min(1, sh.wall + dt / 1.6);
-      if (sh.recoil > 0) {
-        const away = Math.max(P.curtainEdge + 30, m.x - 250);
-        sh.tip = lerp(sh.tip, away, 1 - Math.exp(-dt * 6));
-        if (sh.lurch) sh.tip = lerp(sh.tip, m.x - 150, 1 - Math.exp(-dt * 2));
-      } else sh.tip = Math.min(m.x - 45, sh.tip + dt * 50);
-      if (this.phase === 'shadow' && (sh.tip > m.x - 170 || m.x >= P.maxX - 4 || sh.t > 7)) this.startBoo();
-    }
-    if (this.phase === 'shadow' && !sh.on && this.tlT > 9) { sh.on = true; } // safety: never stall
-
-    if (this.boo.go) this.boo.x = Math.min(P.door + 40, this.boo.x + dt * 60);
+    // THE STRETCH's shadow and Boo
+    this.encStep(dt);
 
     // bubble
     const b = this.bubble;
@@ -564,7 +512,8 @@ export class OpeningScene extends Phaser.Scene {
     this.motes = this.motes.filter((p) => p.life > 0);
 
     // camera: follows Milo's world x with a little look-ahead; beats frame things on their own. Zoom never changes.
-    if (this.camMode === 'follow') {
+    if (this.camMode === 'frame') this.encFrame(dt);
+    else if (this.camMode === 'follow') {
       this.look = lerp(this.look, m.face * 40, 1 - Math.exp(-dt * 1.5));
       this.camT = { x: m.x + this.look, y: CAM_Y, z: Z };
     }
@@ -626,24 +575,12 @@ export class OpeningScene extends Phaser.Scene {
     const inhale = Math.sin(t * Math.PI * 2 / 4.6) > 0.35;
     const twitching = this.twitch > 0 && Math.floor(this.twitch * 10) % 2 === 0;
     this.blanket.setFrame(twitching ? SLEEP_F.bed_twitch : inhale ? SLEEP_F.bed_breath : SLEEP_F.bed);
-    // lantern + Boo
-    const la = this.lantern;
-    const boo = this.boo, bob = Math.round(Math.sin(t * 2) * 1.5) * G / 2;
-    boo.spr.setTexture(Math.floor(t * 5) % 2 ? 'op_boo1' : 'op_boo0').setPosition(Math.round(boo.x), Math.round(boo.y + bob)).setAlpha(boo.a * 0.95).setFlipX(boo.face < 0);
-    const lx = boo.x + (boo.face < 0 ? -26 : 26), ly = boo.y - 2 + bob;
-    this.lanSpr.setVisible(this.lanternShown).setAlpha(this.lanternShown ? 1 : 0).setTexture(la > 0.3 ? 'op_lantern_on' : 'op_lantern_off')
-      .setPosition(Math.round(lx), Math.round(ly)).setAngle(Math.sin(t * 1.7) * 7 + (boo.go ? 12 : 0));
-    const lfl = la * (0.92 + Math.sin(t * 17) * 0.04 + Math.sin(t * 7.3) * 0.04);
-    const lc = { x: lx, y: ly + 16 };
-    this.lanL.g.setPosition(lc.x, lc.y).setAlpha(lfl * 0.62);
-    this.lanL.c.setPosition(lc.x, lc.y).setAlpha(lfl * 0.9);
-    this.lanL.p.setPosition(lc.x - 10, 312).setAlpha(lfl * 0.5);
-    this.lanL.s.setPosition(lc.x, 300).setAlpha(lfl * 0.32);
+    this.renderLantern();
 
     this.drawWindow();
     this.drawMonitor();
     this.drawCurtain();
-    this.drawShadow();
+    this.renderShadow();
     this.drawGhost();
     this.drawLine();
     this.drawUi();
@@ -690,7 +627,7 @@ export class OpeningScene extends Phaser.Scene {
         if (gx === 15 || gx === 16 || gy === 17 || gy === 18) continue;
         const lx = gx < 15 ? gx : gx - 17, ly = gy < 17 ? gy : gy - 19;
         const d = Math.min(lx, 14 - lx) + Math.min(ly, 16 - ly) + ((gx * 7 + gy * 13) % 5) * 0.6;
-        if (d < this.cold * 12) gg.fillRect(w.x + gx * G, w.y + gy * G, G, G);
+        if (d < Math.min(this.cold, 0.25) * 12) gg.fillRect(w.x + gx * G, w.y + gy * G, G, G);
       }
     }
   }
@@ -721,51 +658,17 @@ export class OpeningScene extends Phaser.Scene {
     }
   }
 
+  // bed 8's curtain: sways when something moves behind it, pulled in where it grips the fabric (the warning)
   drawCurtain() {
-    const t = this.t, sil = this.sil;
+    const t = this.t, sh = this.sh;
+    const stir = Math.max(this.dent, sh.a * (1 - sh.climb * 0.6), sh.burn);
     this.panels.forEach((p, i) => {
       const cx = 395 + i * 50;
-      const near = sil.move || sil.flash > 0 ? Math.max(0, 1 - Math.abs(sil.x - cx) / 60) : 0;
-      const sway = sil.sway * Math.sin(t * 2.3 + i * 1.3) * 2;
-      p.setPosition(Math.round(cx + sway + near * 3), 23 * G + Math.round(near * 2));
-      p.setScale(G * (1 + near * 0.09), G);
+      const near = Math.max(0, 1 - Math.abs(this.dentX - cx) / 55) * this.dent;
+      const sway = stir * Math.sin(t * 2.3 + i * 1.3) * 2 + (sh.burn > 0 ? Math.sin(t * 31 + i) * sh.burn * 2 : 0);
+      p.setPosition(Math.round(cx + sway + (this.dentX - cx) * near * 0.18), 23 * G - Math.round(near * 4));
+      p.setScale(G * (1 - near * 0.16), G);
     });
-    const tex = this.textures.get('op_sil0').getSourceImage();
-    const a = sil.flash > 0 ? 0.62 : sil.a;
-    this.silCurtain.setTexture(`op_sil${Math.floor(t * 3) % 4}`).setPosition(Math.round(sil.x), 296).setScale(3.75, 225 / tex.height).setAlpha(a);
-  }
-
-  drawShadow() {
-    const g = this.shG, sh = this.sh, t = this.t;
-    g.clear();
-    const tex = this.textures.get('op_sil0').getSourceImage();
-    if (!sh.on) { this.silWall.setAlpha(0); return; }
-    const base = P.curtainEdge - 10, tip = sh.tip, len = tip - base;
-    if (len < 4) return;
-    const N = 26, top = [], bot = [];
-    for (let i = 0; i <= N; i++) {
-      const k = i / N, x = base + len * k;
-      const cy = 296 + k * 22;
-      const wv = (15 * (1 - k * k) + 7 * Math.exp(-(((k - 0.84) / 0.06) ** 2))) * (0.9 + Math.sin(t * 3 + k * 9) * 0.1);
-      top.push({ x, y: cy - wv * 0.6 });
-      bot.push({ x, y: cy + wv * 0.45 });
-    }
-    const pts = [...top, ...bot.reverse()];
-    g.fillStyle(0x020206, 0.35); g.fillPoints(pts.map((p) => ({ x: p.x, y: p.y + (p.y > 306 ? 3 : -3) })), true);
-    g.fillStyle(0x000000, 0.82); g.fillPoints(pts, true);
-    const ty = 296 + 22;
-    g.lineStyle(3, 0x000000, 0.8);
-    for (let f = 0; f < 4; f++) {
-      const curl = sh.recoil ? 0.4 : 1;
-      const ex = tip + (12 + f * 5 + Math.sin(t * 4 + f) * 6) * curl, ey = ty + (f - 1.5) * 6 + Math.sin(t * 3 + f * 2) * 2;
-      g.beginPath(); g.moveTo(tip - 8, ty + (f - 1.5) * 3); g.lineTo((tip + ex) / 2, ey - 3); g.lineTo(ex, ey); g.strokePath();
-    }
-    const fl = sh.recoil ? 0.75 + Math.sin(t * 20) * 0.04 : 1;
-    this.silWall.setTexture(`op_sil${Math.floor(t * 2.5) % 4}`)
-      .setPosition(Math.round(tip - 60), 252)
-      .setScale(4 * fl, (sh.wall * 240 * fl) / tex.height)
-      .setAngle(sh.recoil ? 8 : 22 + Math.sin(t * 1.4) * 2)
-      .setAlpha(sh.wall * 0.62);
   }
 
   drawGhost() {
@@ -810,6 +713,7 @@ export class OpeningScene extends Phaser.Scene {
     }
     if (!m.shown) { gs.setAlpha(0); this.ghostL.g.setAlpha(0); this.ghostL.p.setAlpha(0); this.gx = m.x; this.gy = m.y; return; }
     if (this.ghostFlick > 0) alpha *= Math.random() < 0.5 ? 0.35 : 1;
+    if (this.phase === 'exit' || this.phase === 'end') alpha *= clamp((P.door + 14 - m.x) / 40, 0, 1); // into the dark corridor
     gs.setAlpha(alpha * shimmer * (1 - this.cold * 0.15));
     this.glowAt(this.gx, this.gy - 46, 0.3 + Math.sin(t * 2) * 0.04, this.rise >= 0 ? 0.08 : 0.2, this.gy);
   }
@@ -926,7 +830,7 @@ export class OpeningScene extends Phaser.Scene {
     const bg = this.bubG, b = this.bubble;
     bg.clear();
     if (!b) { this.bubT.setText(''); return; }
-    const head = b.who === 'boo' ? { x: this.boo.x, y: this.boo.y - 34 } : { x: this.m.x, y: this.m.y - 100 };
+    const head = b.who === 'boo' ? { x: this.booA.x, y: FEET - 100 } : { x: this.m.x, y: this.m.y - 100 };
     const sp = this.toScreen(head.x, head.y);
     const bw = b.str.length * 8 + 16, bh = 22;
     const bx = clamp(Math.round(sp.x - bw / 2), 8, W - bw - 8), by = clamp(Math.round(sp.y - bh - 10), 34, H - 60);
@@ -940,3 +844,5 @@ export class OpeningScene extends Phaser.Scene {
     this.bubT.setText(b.str.slice(0, b.n)).setColor(b.who === 'boo' ? '#ffe6b0' : '#dff4ff').setPosition(bx + 9, by + bh / 2 + 1).setAlpha(fadeOut);
   }
 }
+
+Object.assign(OpeningScene.prototype, ENCOUNTER);

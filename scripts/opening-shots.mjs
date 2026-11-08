@@ -50,8 +50,7 @@ await at((S) => { while (!(S.gl.stage === 3 && S.gl.k > 0.85)) S.step(1 / 60); }
 await at((S) => { while (S.phase !== 'explore2') S.step(1 / 60); S.debugInput = { x: 1 }; for (let i = 0; i < 150; i++) S.step(1 / 60); S.debugInput = { x: 0 }; for (let i = 0; i < 20; i++) S.step(1 / 60); }, '4-thread-follows');
 await at((S) => { S.debugInput = { x: 1, jump: true }; S.step(1 / 60); S.debugInput = { x: 1 }; for (let i = 0; i < 22; i++) S.step(1 / 60); S.debugInput = { x: 0 }; }, '4b-thread-jump');
 await at((S) => { for (let i = 0; i < 60; i++) S.step(1 / 60); S.m.x = 600; S.m.vx = 0; for (let i = 0; i < 300; i++) S.step(1 / 60); }, '5-room-window');
-await at((S) => { S.debugInput = { x: 1 }; while (S.phase !== 'boo') S.step(1 / 60); S.debugInput = { x: 0 }; for (let i = 0; i < 60 * 2.5; i++) S.step(1 / 60); }, '7-boo-unchanged');
-await at((S) => { for (let i = 0; i < 60 * 4.6; i++) S.step(1 / 60); }, '7b-run');
+// the first encounter has its own shots: node scripts/encounter-shots.mjs
 // the Milo sheets used here (living, ghost, bed 7) at 2x on grey
 await page.evaluate(() => {
   const S = window.__opening;

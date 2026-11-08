@@ -19,17 +19,20 @@ const server = http.createServer(async (req, res) => {
   } catch { res.writeHead(404); res.end(); }
 }).listen(8125);
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || undefined, args: ['--use-gl=swiftshader', '--mute-audio'] });
-// real time, a scripted player: wake, walk right, jump, back to the bed, the touch, the Ghostline, out to the shadow, Boo
+// real time, a scripted player: wake, walk right, jump, back to the bed, the touch, the Ghostline, then the first
+// encounter (curtain, the shadow, he backs off to the door, it takes his ankle, Boo, the escape through the door)
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 }, recordVideo: { dir: OUT, size: { width: 1280, height: 720 } } });
 const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
+page.on('console', (m) => { if (m.text().startsWith('[op]')) console.log(m.text()); });
 await page.goto('http://localhost:8125/?opening=1');
 await page.waitForFunction(() => window.__opening);
 await page.waitForTimeout(600);
 await page.evaluate(() => {
   const S = window.__opening; S.begin();
   let t0 = null, plan = 0;
+  setInterval(() => console.log('[op]', Math.round(performance.now() / 1000), S.phase, S.enc.st, Math.round(S.m.x), S.control, S.act, S.milo.anim, Math.round(S.sh.len), S.sh.pts && Math.round(S.sh.pts.total), JSON.stringify(S.sh.hand), S.enc.seenReach.toFixed(1), S.m.ground, S.m.y), 5000);
   window.__drive = setInterval(() => {
     const now = performance.now() / 1000;
     if (S.phase === 'explore') {
@@ -40,11 +43,13 @@ await page.evaluate(() => {
       if (plan === 0) { plan = 1; t0 = now; }
       const t = now - t0;
       S.debugInput = t < 1 ? { x: 0 } : { x: 1, jump: t > 2.6 && t < 2.66 };
-    } else if (S.phase === 'shadow') S.debugInput = { x: 0.6 };
+    } else if (S.phase === 'warning') S.debugInput = { x: S.m.x < 560 ? 1 : 0 };
+    else if (S.phase === 'shadow') S.debugInput = { x: S.enc.st === 'reach' && S.sh.len > 200 ? (S.m.x < 760 ? 1 : 0) : 0 }; // backs off toward the door
+    else if (S.phase === 'escape') { if (!S.__esc) S.__esc = now; S.debugInput = { x: now - S.__esc > 1.2 ? 1 : 0 }; }
     else S.debugInput = null;
   }, 30);
 });
-await page.waitForFunction(() => window.__opening && window.__opening.phase === 'end', null, { timeout: 120000, polling: 250 });
+await page.waitForFunction(() => window.__opening && window.__opening.phase === 'end', null, { timeout: 240000, polling: 250 });
 await page.waitForTimeout(2500);
 const video = page.video();
 await ctx.close();

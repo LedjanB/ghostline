@@ -63,17 +63,15 @@ test('first launch plays the opening: body + ghost, Ghostline once, shadow, Boo,
   expect(await op(page, (s) => s.line)).toBeGreaterThan(0.9);
   await opUntil(page, -1, 'none', 3); // back past the bed again: no second discovery
   expect(await op(page, (s) => s.flags.discover)).toBe(1);
-  // the camera follows Milo's world position (not a fixed screen spot)
-  const camA = await op(page, (s) => s.cam.x);
-  expect((await opUntil(page, 1, 'shadow', 20)).phase).toBe('shadow');
-  const camB = await op(page, (s) => s.cam.x);
-  expect(camB - camA).toBeGreaterThan(150);
-  // THE STRETCH: shadow only
-  expect((await opUntil(page, 0, 'boo', 20)).phase).toBe('boo');
-  expect(await op(page, (s) => s.sh.on)).toBe(true);
-  expect(await op(page, (s) => s.children.list.concat(s.worldL.list).some((o) => o.texture && /^stretch_/.test(o.texture.key)))).toBe(false);
-  expect((await opUntil(page, 0, 'end', 15)).phase).toBe('end');
-  expect(await op(page, (s) => s.flags)).toEqual({ discover: 1, shadow: 1, boo: 1, ended: 1 });
+  // the first encounter: warning, THE STRETCH (shadow only), Boo's rescue, the escape, then the end card
+  expect((await opUntil(page, 1, 'warning', 20)).phase).toBe('warning');
+  expect((await opUntil(page, 0, 'rescue', 40)).phase).toBe('rescue');
+  expect(await op(page, (s) => s.sh.a)).toBeGreaterThan(0.5);
+  const keys = await op(page, (s) => s.children.list.concat(s.worldL.list).map((o) => o.texture && o.texture.key).filter(Boolean));
+  expect(keys.some((k) => /^stretch_|^op_sil|^op_boo|^op_lantern/.test(k))).toBe(false); // no old Boo, no stretch sprite
+  expect(keys).toEqual(expect.arrayContaining(['boo2_cold', 'boo2_lit']));
+  expect((await opUntil(page, 1, 'end', 60)).phase).toBe('end');
+  expect(await op(page, (s) => s.flags)).toEqual({ discover: 1, warning: 1, shadow: 1, boo: 1, ended: 1 });
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ghostline-save')).storySeen)).toBe(true);
   await op(page, (s) => { s.toRun(); });
   await page.waitForTimeout(1200);
@@ -213,6 +211,50 @@ test('opening v2: walking to the door first meets a shut door, the monitor and t
   await page.waitForTimeout(400);
   const idle = await op(page, (s) => { s.begin(); while (s.phase !== 'explore') s.step(1 / 60); for (let i = 0; i < 60 * 6; i++) s.step(1 / 60); return s.hintShown; });
   expect(h && idle).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('first encounter: from every position the shadow is seen, it reaches Milo, Boo saves him on screen, they escape', async ({ page }) => {
+  const errors = await boot(page);
+  const plans = { bed: 'S.m.x > 260 ? -1 : 0', mid: 'S.m.x < 600 ? 1 : 0', exit: '1', retreat: "S.enc.st === 'reach' ? -1 : (S.m.x < 520 ? 1 : 0)", idle: '0' };
+  for (const [name, plan] of Object.entries(plans)) {
+    await op(page, (s) => { s.scene.restart(); });
+    await page.waitForTimeout(300);
+    const r = await op(page, (S, plan) => {
+      S.begin();
+      while (S.phase !== 'explore') S.step(1 / 60);
+      S.debugInput = { x: -1 }; while (S.phase !== 'discover') S.step(1 / 60);
+      S.debugInput = { x: 0 }; while (S.phase !== 'explore2') S.step(1 / 60);
+      const f = new Function('S', 'return ' + plan);
+      let n = 0, hand = null, boo = null, booEarly = false, figureOn = false, maxOff = 0;
+      const order = [];
+      while (S.phase !== 'end' && n++ < 60 * 120) {
+        S.debugInput = { x: S.control ? f(S) : 0 };
+        S.step(1 / 60);
+        if (order[order.length - 1] !== S.phase) order.push(S.phase);
+        if (S.booS.on && S.enc.seenReach < 2.5) booEarly = true; // Boo never comes before the danger was seen
+        if (S.phase === 'shadow' && S.enc.st === 'figure' && S.sh.a > 0.6) figureOn = figureOn || S.inView(S.sh.fx, 190, 40);
+        if (S.phase === 'rescue' && hand === null) hand = !!S.sh.hand && S.inView(S.sh.hand.x, S.sh.hand.y, 0);
+        if (S.flare > 0.95 && boo === null) boo = S.inView(S.booA.x, 270, 0) && S.inView(S.m.x, 270, 0);
+        maxOff = Math.max(maxOff, Math.abs(S.m.x - S.cam.x)); // Milo never leaves the frame
+      }
+      return { order, hand, boo, booEarly, figureOn, maxOff, flags: S.flags, seen: S.enc.seen, reach: S.enc.seenReach };
+    }, plan);
+    expect(r.order, name).toEqual(['explore2', 'warning', 'shadow', 'rescue', 'escape', 'exit', 'end']);
+    expect(r.figureOn, name).toBe(true);
+    expect(r.seen, name).toBeGreaterThanOrEqual(2.2);
+    expect(r.reach, name).toBeGreaterThanOrEqual(2.5);
+    expect(r.hand, name).toBe(true);
+    expect(r.boo, name).toBe(true);
+    expect(r.booEarly, name).toBe(false);
+    expect(r.maxOff, name).toBeLessThan(300);
+    expect(r.flags, name).toEqual({ discover: 1, warning: 1, shadow: 1, boo: 1, ended: 1 });
+  }
+  // replay: one Boo, one shadow texture, no duplicates
+  await op(page, (s) => { s.scene.restart(); });
+  await page.waitForTimeout(300);
+  const dup = await op(page, (s) => ({ boo: s.worldL.list.filter((o) => o.texture && /^boo2_/.test(o.texture.key)).length, rt: s.worldL.list.filter((o) => o.type === 'RenderTexture').length }));
+  expect(dup).toEqual({ boo: 2, rt: 1 });
   expect(errors).toEqual([]);
 });
 

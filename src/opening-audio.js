@@ -88,6 +88,12 @@ export function makeOpeningAudio() {
   lfo(0.21, 300, whistle.f.frequency);
   const humBus = ctx.createGain(); humBus.gain.value = 0; humBus.connect(bus); nodes.push(humBus);
   osc(98, 'triangle', 0.03, humBus); osc(147, 'triangle', 0.018, humBus); osc(196.5, 'sine', 0.01, humBus);
+  // the first encounter: a presence you feel more than hear (two low sines beating against each other + a sub)
+  const presBus = ctx.createGain(); presBus.gain.value = 0; presBus.connect(bus); nodes.push(presBus);
+  const presLp = ctx.createBiquadFilter(); presLp.type = 'lowpass'; presLp.frequency.value = 120; presLp.connect(presBus); nodes.push(presLp);
+  osc(36, 'sine', 0.09, presLp); osc(37.6, 'sine', 0.08, presLp); osc(27, 'sine', 0.07, presLp);
+  const presAir = noiseLoop(90, 'lowpass', 0.7, 0.05, presLp);
+  lfo(0.19, 0.02, presAir.g.gain);
 
   let ventOn = false;
   const api = {
@@ -104,8 +110,10 @@ export function makeOpeningAudio() {
     cold(v, tc = 1) { set(coldBus.gain, v, tc); },
     hum(v, tc = 0.3) { set(humBus.gain, v, tc); },
 
-    beep({ battery = false, loud = false } = {}) {
+    presence(v, tc = 1.5) { set(presBus.gain, v, tc); },
+    beep({ battery = false, loud = false, urgent = false } = {}) {
       const t = now();
+      if (urgent) { tone(t, 1180, 0.07, 'sine', 0.06); tone(t, 59, 0.14, 'sine', 0.07, 40); return; }
       tone(t, battery ? 940 : 980, 0.09, 'sine', loud ? 0.07 : 0.045);
       if (loud) tone(t, 60, 0.18, 'sine', 0.06, 40); // a low thump under it: his heart
     },
@@ -169,6 +177,27 @@ export function makeOpeningAudio() {
     ignite() { const t = now(); hiss(t, 0.6, 0.09, 300, 'bandpass', 1.2, 1500, bus, 0.04); tone(t, 196, 0.8, 'triangle', 0.04, 220, bus, 0.1); tone(t + 0.12, 2637, 0.4, 'sine', 0.012); },
     recoil() { const t = now(); hiss(t, 0.7, 0.07, 2400, 'bandpass', 3, 900); tone(t, 70, 0.6, 'sawtooth', 0.04, 40); },
     lunge() { const t = now(); hiss(t, 0.35, 0.06, 400, 'lowpass', 1, 200); tone(t, 55, 0.4, 'sawtooth', 0.04, 45); },
+    // ---- the first encounter (THE STRETCH's shadow, Boo's lantern) ----
+    // keys behind the curtain: a few clicks, never in rhythm
+    keysOdd(v = 0.5) { const t = now(); const n = 2 + Math.floor(Math.random() * 3); let dt = 0; for (let i = 0; i < n; i++) { dt += 0.04 + Math.random() * 0.14; tone(t + dt, 2200 + Math.random() * 1600, 0.03, 'square', 0.028 * v, null, far); } },
+    // fingertips on plaster: dry little ticks, far away
+    crawl(v = 0.5) { const t = now(); for (let i = 0; i < 3; i++) hiss(t + i * 0.07 + Math.random() * 0.03, 0.03, 0.03 * v, 2600 + Math.random() * 1500, 'bandpass', 6, 0, far); },
+    // the door swings shut by itself
+    slam() { const t = now(); tone(t, 90, 0.9, 'sawtooth', 0.012, 60, far, 0.25); hiss(t + 0.75, 0.25, 0.09, 220, 'lowpass'); tone(t + 0.75, 70, 0.35, 'sine', 0.09, 38); },
+    // it has him: a cold grip and a crack of frost
+    grip() { const t = now(); tone(t, 48, 0.9, 'sawtooth', 0.05, 30); hiss(t, 0.5, 0.06, 3200, 'highpass', 0.7, 0, bus, 0.01); for (let i = 0; i < 5; i++) hiss(t + 0.05 + i * 0.05, 0.02, 0.05, 4500, 'bandpass', 4); },
+    // a match from the corridor (far, small)
+    farStrike() { const t = now(); hiss(t, 0.09, 0.07, 4200, 'highpass', 0.7, 0, far); hiss(t + 0.03, 0.06, 0.05, 6000, 'highpass', 0.7, 0, far); tone(t + 0.1, 196, 0.5, 'triangle', 0.015, 210, far, 0.08); },
+    // the lantern flares: air rushes into the flame, a warm swell
+    flare() { const t = now(); hiss(t, 0.9, 0.12, 250, 'bandpass', 0.9, 1800, bus, 0.05); tone(t, 146.8, 1.6, 'triangle', 0.05, 196, bus, 0.08); tone(t + 0.05, 293.7, 1.4, 'sine', 0.025, 392, bus, 0.1); tone(t + 0.1, 2349, 0.6, 'sine', 0.012); },
+    // the shadow burns back from the light: a hiss that tears downward, a low groan under it, crackle
+    burn() {
+      const t = now();
+      hiss(t, 1.1, 0.13, 5200, 'bandpass', 2.5, 600, bus, 0.01);
+      tone(t, 92, 1.2, 'sawtooth', 0.05, 33);
+      tone(t + 0.04, 61, 1.0, 'sawtooth', 0.035, 29);
+      for (let i = 0; i < 9; i++) hiss(t + 0.05 + Math.random() * 0.8, 0.02, 0.06, 3000 + Math.random() * 3000, 'bandpass', 5);
+    },
     blip(pitch) { const t = now(); tone(t, pitch, 0.035, 'square', 0.014); },
     jump() { const t = now(); hiss(t, 0.18, 0.025, 1200, 'bandpass', 2, 2400); },
     land() { const t = now(); hiss(t, 0.1, 0.02, 500, 'lowpass'); },

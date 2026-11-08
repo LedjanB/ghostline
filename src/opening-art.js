@@ -433,7 +433,7 @@ function radial(scene, key, size, color, squash = 1) {
   });
 }
 
-export const GLOWS = { amber: '#ffb24a', warm: '#ffd890', blue: '#8fd0ff', cold: '#5a7ab0', green: '#4cff96', red: '#ff3a2a', silver: '#dfe8ff' };
+export const GLOWS = { amber: '#ffb24a', warm: '#ffd890', blue: '#8fd0ff', cold: '#5a7ab0', green: '#4cff96', red: '#ff3a2a', silver: '#dfe8ff', sick: '#d8cc8e' };
 
 export function makeOpeningArt(scene) {
   if (scene.textures.exists('op2_room')) return;
