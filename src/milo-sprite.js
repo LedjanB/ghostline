@@ -3,10 +3,14 @@
 // assets/milo/milo-living.png and milo-ghost.png (same drawing, two palettes), 96x100 per frame,
 // feet on row 97, hips on column 40. frames.json lists the frame names in sheet order.
 // Reusable later: loadMilo(scene) in preload, then new MiloActor(scene, x, footY).play('touch').
-// Not used by the game yet (only ?milolab=1). Movement: MILO_MOVES, setFacing(), want().
+// Used by ?milolab=1 and the opening (?opening=1). Movement: MILO_MOVES, setFacing(), want().
+// wrist(): the wristband centre of the current frame (frames.json `wrist`, measured on the band's own pixels),
+// the Ghostline hangs from it. Bed 7: milo-sleep.png (MILO_SLEEP), the boy asleep + his spirit lying / sitting up.
 
 export const MILO_KEYS = { living: 'milo2_living', ghost: 'milo2_ghost', meta: 'milo2_meta' };
 export const MILO_FRAME = { w: 96, h: 100, foot: 97, anchorX: 40 };
+// living row then ghost row, frames: bed, bed_breath, bed_twitch (asleep under the blanket), lie, sit (no blanket)
+export const MILO_SLEEP = { key: 'milo2_sleep', w: 128, h: 84 };
 
 // [frame, ms, dx]: dx = offset in px from the actor's spot (+ = toward what he faces). Absolute, not cumulative.
 export const MILO_ANIMS = {
@@ -53,6 +57,7 @@ export function loadMilo(scene, base = 'assets/milo/') {
   const fw = { frameWidth: MILO_FRAME.w, frameHeight: MILO_FRAME.h };
   if (!scene.textures.exists(MILO_KEYS.living)) scene.load.spritesheet(MILO_KEYS.living, base + 'milo-living.png', fw);
   if (!scene.textures.exists(MILO_KEYS.ghost)) scene.load.spritesheet(MILO_KEYS.ghost, base + 'milo-ghost.png', fw);
+  if (!scene.textures.exists(MILO_SLEEP.key)) scene.load.spritesheet(MILO_SLEEP.key, base + 'milo-sleep.png', { frameWidth: MILO_SLEEP.w, frameHeight: MILO_SLEEP.h });
   if (!scene.cache.json.exists(MILO_KEYS.meta)) scene.load.json(MILO_KEYS.meta, base + 'frames.json');
 }
 
@@ -95,6 +100,11 @@ export class MiloActor {
   hand() {
     const [hx, hy] = this.meta.hand[this.frame], dx = this.cur[2] || 0;
     return { x: this.x + (hx - MILO_FRAME.anchorX + dx) * this.scale * this.facing, y: this.footY + (hy - MILO_FRAME.foot) * this.scale };
+  }
+  // wristband centre of the current frame, in scene px (mirrors with facing like the sprite)
+  wrist() {
+    const [wx, wy] = this.meta.wrist[this.frame];
+    return { x: this.sprite.x + (wx + 0.5 - MILO_FRAME.anchorX) * this.scale * this.facing, y: this.sprite.y + (wy - MILO_FRAME.foot - 0.5) * this.scale };
   }
   update(dtMs) {
     if (this.done) return;

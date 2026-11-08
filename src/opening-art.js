@@ -134,18 +134,7 @@ function drawRoom(c) {
   // leads from the monitor down to the bed (under the blanket)
   c.fillStyle = 'rgba(120,130,150,0.8)';
   for (let i = 0; i <= 20; i++) { const t = i / 20; c.fillRect(Math.round(62 + (78 - 62) * t), Math.round(85 + (94 - 85) * t + Math.sin(t * Math.PI) * 3), 1, 1); }
-  // ---- bed 7 ----
-  const B0 = 64, B1 = 106;
-  R(c, B0, 80, 3, 26, '#465064'); R(c, B0 + 1, 80, 1, 26, '#6a748a'); R(c, B0, 80, 3, 1, '#8a94aa'); // headboard post
-  R(c, B0 + 3, 84, 2, 10, '#323a4a'); R(c, B0 + 3, 84, 2, 1, '#566078'); // headboard panel
-  R(c, 67, 91, 10, 4, '#a4aabc'); R(c, 68, 90, 8, 1, '#c4cad8'); R(c, 67, 94, 10, 1, '#7e8498'); // pillow
-  R(c, 66, 95, 38, 3, '#8a90a4'); R(c, 66, 95, 38, 1, '#aab0c2'); // mattress
-  R(c, 66, 98, 39, 2, '#465066'); R(c, 66, 98, 39, 1, '#68728a'); // frame
-  c.fillStyle = 'rgba(0,0,0,0.5)'; c.fillRect(66, 100, 39, 5); // under the bed
-  R(c, 69, 100, 1, 4, '#2f3442'); R(c, 100, 100, 1, 4, '#2f3442');
-  R(c, 67, 104, 4, 2, '#14161e'); R(c, 98, 104, 4, 2, '#14161e'); R(c, 68, 104, 2, 1, '#3a3f4c'); R(c, 99, 104, 2, 1, '#3a3f4c');
-  R(c, 102, 87, 3, 19, '#465064'); R(c, 103, 87, 1, 19, '#6a748a'); R(c, 101, 87, 5, 1, '#8a94aa'); // footboard
-  R(c, 104, 89, 4, 6, '#c8c4b0'); R(c, 104, 89, 4, 1, '#8a7040'); R(c, 105, 91, 2, 1, '#6a6a60'); R(c, 105, 93, 2, 1, '#6a6a60'); // chart
+  // ---- bed 7: drawn at full resolution in drawBed7() (Milo integration pass) ----
   // the wall behind the bed: oxygen panel, call cord, bed number, the battery lamp's bracket
   R(c, 76, 62, 20, 4, '#26343c'); R(c, 76, 62, 20, 1, '#3c4c56');
   for (let i = 0; i < 4; i++) R(c, 78 + i * 5, 63, 2, 2, '#a08040');
@@ -189,7 +178,92 @@ function drawRoom(c) {
   R(c, 343, 97, 1, 7, '#3a3f4c'); R(c, 360, 97, 1, 7, '#3a3f4c'); R(c, 342, 104, 3, 2, '#14161e'); R(c, 359, 104, 3, 2, '#14161e');
   // furniture shadows on the floor
   c.fillStyle = 'rgba(0,0,0,0.35)';
-  c.fillRect(26, 105, 18, 2); c.fillRect(48, 105, 14, 2); c.fillRect(64, 106, 44, 2); c.fillRect(341, 105, 22, 2);
+  c.fillRect(26, 105, 18, 2); c.fillRect(48, 105, 14, 2); c.fillRect(341, 105, 22, 2);
+}
+
+// ---- the fine pass (world px = screen px): what stands next to the new Milo is drawn at his resolution ----
+// Bed 7 in world px. The sleeping Milo (assets/milo/milo-sleep.png) lies on it: his frame's top-left is BED7.sleep,
+// the frame's mattress row lands on BED7.mattress.
+export const BED7 = { x0: 192, x1: 318, mattress: 285, sleep: { x: 198, y: 216 } };
+const FINE = { tileY0: 216, tileY1: 264 };
+function drawFine(c) {
+  const Wd = c.canvas.width, Hd = c.canvas.height;
+  drawBed7(c);
+  const img = c.getImageData(0, 0, Wd, Hd), d = img.data;
+  // wainscot: 12 px tiles with 1 px grout and a 1 px bevel (was 4 art px tiles with 3 px grout). Only pixels that are
+  // still bare tile get redrawn, so the furniture in front of the tiles stays.
+  const rgbOf = (s) => (s[0] === '#' ? hex(s) : s.slice(4, -1).split(',').map(Number));
+  const tileCols = new Set(['#121a25', '#31465a', '#0e141c'].map((s) => rgbOf(s).join(',')));
+  for (let y = 72; y < 88; y++) tileCols.add(rgbOf(mix('#25364a', '#1a2534', (y - 72) / 16)).join(','));
+  const key = (i) => `${d[i]},${d[i + 1]},${d[i + 2]}`;
+  const tile = (x, y) => {
+    const row = Math.floor((y - FINE.tileY0) / 12), ty = (y - FINE.tileY0) % 12, tx = (x + (row % 2) * 6) % 12;
+    const base = mix('#25364a', '#1a2534', (y - FINE.tileY0) / 48);
+    if (ty === 0 || tx === 0) return '#111824';
+    if (ty === 1 || tx === 1) return mix(base, '#3a5068', 0.55);
+    if (ty === 11 || tx === 11) return mix(base, '#0e141c', 0.45);
+    let h = (x * 2654435761 + y * 40503) >>> 0; h = (h ^ (h >>> 15)) >>> 0;
+    return h % 97 === 0 ? '#0e141c' : base; // chipped glaze
+  };
+  const memo = new Map(), tileRgb = (s) => { if (!memo.has(s)) memo.set(s, rgbOf(s)); return memo.get(s); };
+  for (let y = 30; y < Hd; y++) for (let x = 0; x < Wd; x++) {
+    const i = (y * Wd + x) * 4;
+    if (d[i + 3] === 0) continue; // the window hole
+    if (y >= FINE.tileY0 && y < FINE.tileY1 && tileCols.has(key(i))) {
+      const t = tileRgb(tile(x, y)); d[i] = t[0]; d[i + 1] = t[1]; d[i + 2] = t[2];
+      continue;
+    }
+    // grain: a 1 px dither over plaster and linoleum so no surface reads as flat 3 px blocks
+    let h = (x * 374761393 + y * 668265263) >>> 0; h = ((h ^ (h >>> 13)) * 1274126177) >>> 0;
+    const n = ((h & 255) / 255 - 0.5) * (y > 270 ? 0.16 : 0.12);
+    d[i] = Math.max(0, Math.min(255, d[i] * (1 + n))); d[i + 1] = Math.max(0, Math.min(255, d[i + 1] * (1 + n))); d[i + 2] = Math.max(0, Math.min(255, d[i + 2] * (1 + n)));
+  }
+  c.putImageData(img, 0, 0);
+}
+
+// hospital bed 7, side view: steel tube head and foot boards, mattress and sheet, pillow, frame, casters, chart
+function drawBed7(c) {
+  const { x0, x1, mattress: M } = BED7;
+  const F = 320; // floor line
+  const tube = (x, y, w, h, vert = true) => { // steel tube with a lit edge and a dark edge
+    R(c, x, y, w, h, '#46506a');
+    if (vert) { R(c, x + 1, y, 1, h, '#8a94aa'); R(c, x + w - 1, y, 1, h, '#262c3a'); } else { R(c, x, y, w, 1, '#8a94aa'); R(c, x, y + h - 1, w, 1, '#262c3a'); }
+  };
+  // shadow under the bed
+  c.fillStyle = 'rgba(0,0,0,0.5)'; c.fillRect(x0 + 4, M + 13, x1 - x0 - 8, F - M - 13);
+  c.fillStyle = 'rgba(0,0,0,0.35)'; c.fillRect(x0 - 2, F - 2, x1 - x0 + 6, 4);
+  // headboard: two posts (the far one darker), a panel with two rails
+  tube(x0 + 4, 232, 4, F - 6 - 232); c.fillStyle = 'rgba(0,0,0,0.35)'; c.fillRect(x0 + 4, 232, 4, F - 6 - 232);
+  tube(x0, 228, 5, F - 4 - 228); R(c, x0 - 1, 227, 7, 2, '#9aa4ba'); R(c, x0 - 1, 229, 7, 1, '#3a4050');
+  R(c, x0 + 5, 246, 6, 38, '#2c3444'); R(c, x0 + 5, 246, 6, 1, '#56607a'); R(c, x0 + 5, 262, 6, 1, '#3c4658');
+  // frame rail under the mattress, legs and casters
+  tube(x0 + 2, M + 7, x1 - x0 - 4, 6, false);
+  R(c, x0 + 14, M + 13, 2, F - M - 19, '#2f3442'); R(c, x1 - 18, M + 13, 2, F - M - 19, '#2f3442');
+  R(c, x0 + 12, M + 18, x1 - x0 - 28, 2, '#262b38'); R(c, x0 + 12, M + 18, x1 - x0 - 28, 1, '#3c4456'); // lower bar
+  for (const wx of [x0 + 15, x1 - 17]) {
+    R(c, wx - 4, F - 7, 8, 6, '#14161e'); R(c, wx - 3, F - 8, 6, 1, '#3a3f4c'); R(c, wx - 1, F - 5, 2, 2, '#4a505e');
+  }
+  // mattress under a fitted sheet (pale, cool), a soft lit top edge, the sheet tucked under its side
+  R(c, x0 + 3, M - 1, x1 - x0 - 8, 8, '#8c93a2');
+  R(c, x0 + 3, M - 1, x1 - x0 - 8, 1, '#c4c9d2'); R(c, x0 + 3, M, x1 - x0 - 8, 1, '#a9afbc');
+  for (let x = x0 + 3; x < x1 - 5; x++) if ((x * 7) % 23 < 2) R(c, x, M + 2, 1, 4, '#7b8292'); // sheet creases
+  R(c, x0 + 3, M + 6, x1 - x0 - 8, 1, '#5c6272');
+  // pillow under his head: soft, dented where the head rests
+  const px0 = x0 + 8, pw = 34;
+  for (let i = 0; i < pw; i++) {
+    const k = i / (pw - 1), hump = Math.round(Math.sin(k * Math.PI) * 6 - (k > 0.25 && k < 0.7 ? 3 : 0));
+    const top = M - 4 - Math.max(1, hump);
+    R(c, px0 + i, top, 1, M - top, '#b6bccb');
+    R(c, px0 + i, top, 1, 1, '#dde1ea');
+    R(c, px0 + i, M - 2, 1, 2, '#8d93a4');
+  }
+  R(c, px0, M - 5, 1, 4, '#8d93a4'); R(c, px0 + pw - 1, M - 5, 1, 4, '#8d93a4');
+  // footboard and the chart hanging on it
+  tube(x1 - 8, 250, 5, F - 4 - 250); R(c, x1 - 9, 249, 7, 2, '#9aa4ba'); R(c, x1 - 9, 251, 7, 1, '#3a4050');
+  R(c, x1 - 3, 256, 5, 28, '#2c3444'); R(c, x1 - 3, 256, 5, 1, '#56607a');
+  R(c, x1 + 1, 262, 12, 20, '#c8c4b0'); R(c, x1 + 1, 262, 12, 1, '#e4e0cc'); R(c, x1 + 4, 260, 6, 3, '#8a7040');
+  for (let j = 0; j < 5; j++) R(c, x1 + 3, 266 + j * 3, 8 - (j % 2) * 3, 1, '#7a7a70');
+  R(c, x1 + 12, 263, 1, 19, '#8e8a78');
 }
 
 // ---- outside the window: sky, hills, the dead fair and its wheel ----
@@ -363,7 +437,9 @@ export const GLOWS = { amber: '#ffb24a', warm: '#ffd890', blue: '#8fd0ff', cold:
 
 export function makeOpeningArt(scene) {
   if (scene.textures.exists('op2_room')) return;
-  cv(scene, 'op2_room', ROOM_W, ROOM_H, drawRoom);
+  // the room is rendered at full resolution (1 world px = 1 screen px, the camera no longer zooms) so the
+  // fine pass can add 1 px detail where the new Milo stands: Bed 7, the tiles, grain on the plaster and floor
+  cv(scene, 'op2_room', ROOM_W * OP_G, ROOM_H * OP_G, (c) => { c.save(); c.scale(OP_G, OP_G); drawRoom(c); c.restore(); drawFine(c); });
   cv(scene, 'op_outside', 200, 52, drawOutside);
   for (const [k, col] of Object.entries(GLOWS)) {
     radial(scene, `op_glow_${k}`, 128, col);

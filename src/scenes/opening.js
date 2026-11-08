@@ -1,5 +1,9 @@
 // THE WRONG SIDE OF THE BED: the playable opening (first launch, or ?opening=1).
-// v2 (Nov 7, part 1 of the opening redesign): finer art (3 px grid, camera fixed at 4/3 so one art pixel = 4 screen px).
+// v2 (Nov 7, part 1 of the opening redesign): finer art (3 px grid).
+// Nov 8, THE NEW MILO: both Milos are the approved raster sprites (src/milo-sprite.js, assets/milo/): the spirit is a
+//   MiloActor (walk, run, jump and the approved acting), the boy in bed is milo-sleep.png (same drawing, laid down).
+//   The camera no longer zooms (1 world px = 1 screen px, Milo 92 px like the concept's in-game size); the room is
+//   rendered at full resolution and Bed 7 + the tiles are redrawn at 1 px so the sprites don't sit in giant pixels.
 // 1 AWAKENING: one medium-wide shot of bed 7. Monitor, rain, 3:32 -> 3:33, the power dies, the monitor goes on battery,
 //   the bedside lamp stays. His spirit separates slowly from his body and lands beside the bed; both stay in shot ~2 s.
 // 2 DISCOVERY: walk to the bed; Milo stops, looks, hesitates, reaches for his own hand: his fingers pass through,
@@ -13,37 +17,54 @@ import { Save } from '../save.js';
 import { Audio } from '../audio.js';
 import { text, button, focusGroup } from '../ui.js';
 import { createInput, Device } from '../input.js';
-import { makeOpeningArt, OP_G, ROOM_W, LAMPS, WRISTS, BODY_AT, BODY_HAND, BODY_WRIST, BODY_CHEST, SEAM_Y, DIGITS } from '../opening-art.js';
+import { makeOpeningArt, OP_G, ROOM_W, LAMPS, SEAM_Y, DIGITS, BED7 } from '../opening-art.js';
+import { loadMilo, MiloActor, MILO_ANIMS, MILO_FRAME, MILO_SLEEP, MILO_KEYS } from '../milo-sprite.js';
 import { makeOpeningAudio } from '../opening-audio.js';
 
 const G = OP_G;
-const Z = 4 / 3; // the only zoom: 3 world px * 4/3 = 4 screen px per art pixel
+const Z = 1; // the only zoom: 1 world px = 1 screen px, so the Milo sprites draw at their own size
 const WORLD_W = ROOM_W * G;
 const FEET = 320;
-const SPEED = 105, ACCEL = 1000, GRAV = 1150, JUMP_V = 400;
+// walk speed matches the walk cycle (8 frames, two steps, same as the milo lab); the run is only Boo's "RUN."
+const SPEED = 72, RUN_SPEED = 160, ACCEL = 900, GRAV = 1150, JUMP_V = 400, TAKEOFF = 0.05;
 const CAM_Y = H - H / (2 * Z); // floor at the bottom of the frame
 const art = (x, y) => ({ x: x * G, y: y * G });
 // key places in world px
 const P = {
-  bodyWrist: art(BODY_AT.x + BODY_WRIST.x, BODY_AT.y + BODY_WRIST.y),
-  bodyHand: art(BODY_AT.x + BODY_HAND.x + 2, BODY_AT.y + BODY_HAND.y + 1),
-  seam: art(BODY_AT.x + 18, SEAM_Y + 0.5), // where the Ghostline goes into the floor (down to the well)
-  liePos: art(BODY_AT.x - 1, BODY_AT.y - 1),
-  sitPos: art(BODY_AT.x - 4, BODY_AT.y - 11),
-  land: 372, discoverX: 345, nudgeX: 760, doorStop: 893,
+  // bodyWrist / bodyHand come from the sleep frame's metadata (set in create)
+  seam: art(84, SEAM_Y + 0.5), // where the Ghostline goes into the floor (down to the well)
+  bed: BED7.sleep, // top-left of the sleeping Milo's frame
+  land: 384, discoverX: 345, nudgeX: 760, doorStop: 893,
+  stand: { x: 302, y: 290 }, // where his spirit stands up out of the bed, in the air
   shadowAt: 640, curtainEdge: 566, maxX: 815, minX: 40, door: 948,
   window: { x: 624, y: 102, w: 96, h: 108 },
   monitor: { x: 135, y: 213, w: 33, h: 36 },
   chair: { x0: 783, x1: 825, y: 296 },
   shot: 300, // the opening shot's centre x: bed, monitor, clock and the landing spot in one frame
 };
-// he stands here to reach his own hand (his reach2 hand lands right over it)
-P.reachX = Math.round(P.bodyHand.x + 9.5 * G);
 const lerp = (a, b, k) => a + (b - a) * k;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const ease = (k) => (k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k));
 const RISE = { lie: 2.0, sit: 1.0, stand: 0.9, drift: 1.3 }; // the separation, in seconds
 const RISE_T = RISE.lie + RISE.sit + RISE.stand + RISE.drift;
+const SLEEP_F = { bed: 0, bed_breath: 1, bed_twitch: 2, lie: 3, sit: 4 }; // + 5 = the ghost row
+
+// the opening's acting: the approved frames and order (milo lab sequences), timed for the scene
+const ms = (list, k) => list.map(([f, t, ...r]) => [f, Math.round(t * k), ...r]);
+Object.assign(MILO_ANIMS, {
+  // asleep while his spirit floats out of the bed (eyes shut, slumped)
+  op_float: { loop: true, frames: [['wake0', 1000]] },
+  // lands, surfaces, opens his eyes, looks around the dark ward, doesn't understand
+  op_wake: { next: 'idle', frames: ms([['wake0', 600], ['wake1', 500], ['wake2', 380], ['wake1', 220], ['wake2', 420], ['wake3', 500],
+    ['idle0', 320], ['blink', 110], ['idle0', 380], ['look_l', 520], ['look_l2', 650], ['look_l', 220], ['idle0', 300], ['confused', 900]], 0.8) },
+  // at the bed: looks at his hands, they shake, turns to the body, shock
+  op_realize: { frames: ms(MILO_ANIMS.realization.frames.slice(1), 0.8) },
+  // hesitates, reaches for his own hand: it goes through
+  op_touch: { frames: ms(MILO_ANIMS.touch.frames, 0.8) },
+  // pulls back, stumbles a step, fear (the long holds trimmed)
+  op_fear: { frames: ms(MILO_ANIMS.fear.frames.slice(0, -2).concat([['fear3', 1000, -14]]), 1) },
+});
+const ACT_DX = -14; // where op_fear leaves him (dx of its last frame)
 
 export class OpeningScene extends Phaser.Scene {
   constructor() { super('opening'); }
@@ -54,8 +75,8 @@ export class OpeningScene extends Phaser.Scene {
     this.t = 0;
     this.tl = []; this.tlT = 0;
     this.flags = { discover: 0, shadow: 0, boo: 0, ended: 0 };
-    this.m = { x: P.land, y: FEET, vx: 0, vy: 0, ground: true, face: -1, shown: false, walkT: 0 };
-    this.auto = null; this.pose = null; this.backT = 0; this.gx = P.land; this.gy = FEET;
+    this.m = { x: P.land, y: FEET, vx: 0, vy: 0, ground: true, face: -1, shown: false, walkT: 0, takeoff: 0 };
+    this.auto = null; this.pose = null; this.act = false; this.through = false; this.gx = P.land; this.gy = FEET;
     this.cam = { x: P.shot, y: CAM_Y, z: Z };
     this.camT = { ...this.cam }; this.camK = 3; this.camMode = 'fixed'; this.look = -30; this.maxZ = Z;
     this.lb = 1; this.lbT = 1; // letterbox
@@ -79,8 +100,18 @@ export class OpeningScene extends Phaser.Scene {
     this.debugInput = null;
   }
 
+  preload() { loadMilo(this); }
+
   create() {
     makeOpeningArt(this);
+    // Bed 7 anchors from the sleep frame (assets/milo/frames.json `sleep`): his wristband and hand on the blanket
+    const sm = this.cache.json.get(MILO_KEYS.meta).sleep;
+    P.bodyWrist = { x: P.bed.x + sm.wrist.bed[0] + 0.5, y: P.bed.y + sm.wrist.bed[1] + 0.5 };
+    P.bodyHand = { x: P.bed.x + sm.hand.bed[0] + 0.5, y: P.bed.y + sm.hand.bed[1] + 0.5 };
+    // he stands here to reach his own hand: facing the bed, the hand of his `touch1` frame lands right on it
+    const th = this.cache.json.get(MILO_KEYS.meta).hand.touch1;
+    P.reachX = Math.round(P.bodyHand.x + (th[0] - MILO_FRAME.anchorX + 2));
+    this.bodyHand = P.bodyHand; this.bodyWrist = P.bodyWrist; // tests + shots
     this.snd = null; // made on the first input (browsers need a gesture)
     this.worldL = this.add.layer();
     this.uiL = this.add.layer();
@@ -97,7 +128,7 @@ export class OpeningScene extends Phaser.Scene {
     // ---- the room ----
     this.outside = img(330, 66, 'op_outside', -3).setScrollFactor(0.7, 1);
     this.winG = w(this.add.graphics(), -2);
-    img(0, 0, 'op2_room', 0);
+    w(this.add.image(0, 0, 'op2_room').setOrigin(0), 0); // already full resolution
     this.glassG = w(this.add.graphics(), 0.5);
     this.monG = w(this.add.graphics(), 1);
     this.clock = img(30 * G, 52 * G, 'op_clock_32', 1);
@@ -109,10 +140,8 @@ export class OpeningScene extends Phaser.Scene {
     img(114 * G, 23 * G, 'op_curtain_bunch', 1);
     this.panels = [0, 1, 2, 3].map((i) => w(this.add.image(395 + i * 50, 23 * G, 'op_curtain').setOrigin(0.5, 0).setScale(G), 1));
     this.silCurtain = w(this.add.image(400, 296, 'op_sil0').setOrigin(0.5, 1).setAlpha(0), 1.2);
-    // the boy in the bed
-    this.blanket = img(P.liePos.x, P.liePos.y, 'op_body', 2);
-    this.breath = img((BODY_AT.x + BODY_CHEST.x) * G, (BODY_AT.y + BODY_CHEST.y) * G, 'op_body_breath', 2.05).setAlpha(0);
-    this.hand = img((BODY_AT.x + BODY_HAND.x) * G, (BODY_AT.y + BODY_HAND.y) * G, 'op_hand0', 2.2);
+    // the boy in the bed: the new Milo asleep under the blanket (breathes, a finger moves now and then)
+    this.blanket = w(this.add.sprite(P.bed.x, P.bed.y, MILO_SLEEP.key, SLEEP_F.bed).setOrigin(0), 2);
     this.ivG = w(this.add.graphics(), 2.1);
     this.drawIv();
     this.chair = img(P.chair.x0, FEET, 'op_chair', 3, 0, 1);
@@ -135,9 +164,12 @@ export class OpeningScene extends Phaser.Scene {
     this.shG = w(this.add.graphics(), 7.6);
     // ---- Milo's spirit, the Ghostline, Boo ----
     this.ghostL = { g: add('op_glow_blue', 0, 0, 9.5, 1.2), p: add('op_pool_blue', 0, 0, 9.4, 1) };
-    this.lie = img(P.liePos.x, P.liePos.y, 'op_milo_lie', 9.8).setAlpha(0);
-    this.sit = img(P.sitPos.x, P.sitPos.y, 'op_milo_sit', 9.9).setAlpha(0);
-    this.ghost = w(this.add.image(0, 0, 'op_milo_idle').setScale(G).setAlpha(0), 10);
+    // his spirit: lying in his body, sitting up out of it (same drawing, ghost row), then the actor
+    this.lie = w(this.add.sprite(P.bed.x, P.bed.y, MILO_SLEEP.key, SLEEP_F.lie + 5).setOrigin(0).setAlpha(0), 9.8);
+    this.sit = w(this.add.sprite(P.bed.x, P.bed.y, MILO_SLEEP.key, SLEEP_F.sit + 5).setOrigin(0).setAlpha(0), 9.9);
+    this.milo = new MiloActor(this, P.land, FEET, { ghost: true }).setFacing(-1);
+    this.milo.play('op_float');
+    this.ghost = w(this.milo.sprite.setAlpha(0), 10);
     this.lineG = w(this.add.graphics(), 10.5);
     this.fxG = w(this.add.graphics(), 10.6);
     this.boo.spr = w(this.add.image(P.door, 226, 'op_boo0').setScale(G).setAlpha(0).setFlipX(true), 11);
@@ -205,7 +237,6 @@ export class OpeningScene extends Phaser.Scene {
       [6.15, () => { this.elampT = 1; this.eFlick = 0.45; s.clunk(); }],
       [r0, () => { this.rise = 0; this.m.shown = true; s.rise(); s.pad(0.55, 2); }],
       [r0 + RISE_T + 0.8, () => { this.twitch = 0.5; this.loud = 1; }], // the body: still alive
-      [r0 + RISE_T + 1.9, () => this.giveControl('explore')],
     ]);
   }
 
@@ -232,20 +263,28 @@ export class OpeningScene extends Phaser.Scene {
     this.walkTo(P.reachX, 52, () => {
       this.m.face = -1;
       s && s.pad(0, 1.2); s && s.rain(0.3, true, 0.8); // quiet for the reveal
-      this.run([
-        [0.35, () => { this.pose = 'look'; }],
-        [1.4, () => { this.pose = 'unsure'; this.loud = 1; }],
-        [2.35, () => { this.pose = 'reach1'; }],
-        [2.75, () => { this.pose = 'reach2'; }],
-        [3.45, () => { this.pose = 'reach3'; s && s.through(); this.ripple = 0; this.ghostFlick = 0.4; }],
-        [3.75, () => { this.twitch = 0.7; this.loud = 2; }],
-        [4.35, () => { this.pose = 'recoil'; this.backT = 0.3; }],
-        [5.0, () => this.say('milo', "NO. THAT'S ME.", 2.0)],
-        [7.5, () => { this.gl.stage = 1; this.gl.t = 0; this.line = 0; s && s.pulse(); }],
-        [9.9, () => { this.doorT = 1; s && s.door(); s && s.rain(0.5, false, 2); }],
-        [10.4, () => this.giveControl('explore2')],
-      ]);
+      this.loud = 1;
+      // the approved acting, in order: his hands, the body, the reach (it goes through), the recoil
+      this.acting('realize', 'op_realize', () => this.acting('touch', 'op_touch', () => {
+        this.acting('fear', 'op_fear', () => {
+          this.m.x += -ACT_DX * this.m.face; // he ends the stumble where the last fear frame left him
+          this.pose = null; this.act = false; this.milo.play('idle');
+          this.run([
+            [0.5, () => { this.gl.stage = 1; this.gl.t = 0; this.line = 0; s && s.pulse(); }],
+            [2.9, () => { this.doorT = 1; s && s.door(); s && s.rain(0.5, false, 2); }],
+            [3.4, () => this.giveControl('explore2')],
+          ]);
+        });
+        this.run([[1.0, () => this.say('milo', "NO. THAT'S ME.", 2.0)]]);
+      }));
     });
+  }
+
+  // play one acting sequence on the spirit (no player control); `pose` names the beat for tests and shots
+  acting(pose, anim, done) {
+    this.pose = pose; this.act = true;
+    this.milo.speed = 1; // (the walk cycle's speed scale must not slow the acting)
+    this.milo.setFacing(this.m.face).play(anim, done);
   }
 
   startShadow() {
@@ -279,7 +318,7 @@ export class OpeningScene extends Phaser.Scene {
       [1.9, () => this.say('boo', 'THERE YOU ARE.', 1.9)],
       [4.0, () => this.say('milo', 'DO I KNOW YOU?', 1.9)],
       [6.1, () => { this.say('boo', 'LATER. RUN.', 1.6); }],
-      [6.9, () => { this.boo.face = 1; s.lunge(); this.sh.lurch = 1; this.walkTo(P.maxX + 40, 150, null, true); this.boo.go = true; }],
+      [6.9, () => { this.boo.face = 1; s.lunge(); this.sh.lurch = 1; this.walkTo(P.maxX + 40, RUN_SPEED, null, true); this.boo.go = true; }],
       [7.8, () => { this.fadeT = 1; this.fadeK = 1.3; s.fade(0.3, 0.8); }],
       [9.4, () => this.showEnd()],
     ]);
@@ -315,20 +354,25 @@ export class OpeningScene extends Phaser.Scene {
   say(who, str, dur) { this.bubble = { who, str, n: 0, t: 0, dur, acc: 0 }; }
   lightning(v) { this.flash = Math.max(this.flash, v); }
   shake(ms, k) { if (Save.get().settings.shake) this.cameras.main.shake(ms, k); }
-  frameKey() {
-    const m = this.m;
-    if (this.pose) return `op_milo_${this.pose}`;
-    if (this.rise >= 0) return 'op_milo_fall';
-    if (!m.ground) return m.vy < 0 ? 'op_milo_jump' : 'op_milo_fall';
-    if (Math.abs(m.vx) > 12) return `op_milo_run${Math.floor(m.walkT) % 4}`;
-    return 'op_milo_idle';
-  }
   faceLeft() { return this.glance > 0 && Math.abs(this.m.vx) < 10 ? true : this.m.face < 0; }
-  // the spirit's wristband in world px, whatever frame he is in (the Ghostline hangs from it)
-  wrist() {
-    const o = WRISTS[this.frameKey()] || { x: -0.5, y: -9 };
-    const f = this.faceLeft() ? -1 : 1;
-    return { x: this.gx + o.x * G * f, y: this.gy + o.y * G };
+  // the spirit's wristband in world px, whatever frame he is in (the Ghostline hangs from it): measured per frame
+  wrist() { return this.milo.wrist(); }
+
+  // movement frames from the physics state (the same rules as the milo lab's MOVE mode)
+  animMove() {
+    const a = this.milo, m = this.m;
+    const sp = Math.abs(m.vx), moving = sp > 6;
+    if (m.takeoff > 0) a.want('jump_start');
+    else if (!m.ground) { if (a.anim !== 'jump_start' || a.done) a.want(m.vy < -110 ? 'rise' : m.vy < 110 ? 'apex' : 'fall'); }
+    else if (a.anim === 'land' && !a.done && (!moving || a.step === 0)) { /* let the landing read */ }
+    else if (!moving) {
+      if (['walk', 'run', 'walk_start', 'pivot'].includes(a.anim)) a.want('stop');
+      else if (a.done || !['stop', 'idle', 'land'].includes(a.anim)) a.want('idle');
+    } else if (a.anim === 'pivot' && !a.done) { /* turning round */ }
+    else if (sp > SPEED + 18) a.want('run');
+    else if (['idle', 'stop', 'land'].includes(a.anim) || a.anim.startsWith('op_')) a.want('walk_start');
+    else if (a.anim !== 'walk_start' || a.done) a.want('walk');
+    a.speed = a.anim === 'walk' ? clamp(sp / SPEED, 0.5, 1.4) : a.anim === 'run' ? clamp(sp / 175, 0.6, 1.2) : 1;
   }
 
   readInput() {
@@ -394,7 +438,12 @@ export class OpeningScene extends Phaser.Scene {
     // the separation: he fades in inside his body, sits up out of it, stands, drifts down beside the bed
     if (this.rise >= 0) {
       this.rise += dt;
-      if (this.rise >= RISE_T) { this.rise = -1; m.x = P.land; m.y = FEET; m.ground = true; m.face = -1; m.vx = 0; s && s.land(); this.puff(); }
+      if (this.rise >= RISE_T) {
+        this.rise = -1; m.x = P.land; m.y = FEET; m.ground = true; m.face = -1; m.vx = 0; s && s.land(); this.puff();
+        // he lands asleep, surfaces, looks around: control when the approved awakening acting is done
+        this.act = true; this.milo.speed = 1;
+        this.milo.play('op_wake', () => { this.act = false; this.tl.push({ t: this.tlT + 0.3, fn: () => this.giveControl('explore'), done: false }); });
+      }
     }
 
     // movement (player, or an automatic walk in a beat)
@@ -407,9 +456,13 @@ export class OpeningScene extends Phaser.Scene {
         else ix = Math.sign(d) * Math.min(1, Math.abs(d) / 24 + 0.25) * (this.auto.speed / SPEED); // eases into the stop
       }
       m.vx += clamp(ix * SPEED - m.vx, -ACCEL * dt, ACCEL * dt);
-      if (ix) { m.face = Math.sign(ix); this.glance = 0; }
-      if (jump && m.ground) { m.vy = -JUMP_V; m.ground = false; s && s.jump(); }
-      if (this.backT > 0) { this.backT -= dt; m.x += dt * 16; } // recoils a step, still facing the bed
+      if (ix) {
+        if (Math.sign(ix) !== m.face && m.ground && Math.abs(m.vx) > 20 && !this.act) this.milo.play('pivot');
+        m.face = Math.sign(ix); this.glance = 0;
+      }
+      // jump: a short crouch first (the takeoff frames), then up
+      if (jump && m.ground && m.takeoff <= 0) { m.takeoff = TAKEOFF; this.milo.play('jump_start'); }
+      if (m.takeoff > 0) { m.takeoff -= dt; if (m.takeoff <= 0) { m.vy = -JUMP_V; m.ground = false; s && s.jump(); } }
       const py = m.y;
       if (!m.ground) m.vy += (m.vy < 0 && held ? GRAV * 0.6 : GRAV) * dt;
       m.x += m.vx * dt;
@@ -420,14 +473,28 @@ export class OpeningScene extends Phaser.Scene {
       m.x = clamp(m.x, P.minX, maxX);
       const onChair = m.x > P.chair.x0 && m.x < P.chair.x1;
       if (m.vy >= 0 && !m.ground) {
-        if (onChair && py <= P.chair.y && m.y >= P.chair.y) { m.y = P.chair.y; m.vy = 0; m.ground = true; s && s.land(); }
-        else if (m.y >= FEET) { m.y = FEET; m.vy = 0; m.ground = true; s && s.land(); }
+        if (onChair && py <= P.chair.y && m.y >= P.chair.y) { m.y = P.chair.y; m.vy = 0; m.ground = true; s && s.land(); this.milo.play('land'); }
+        else if (m.y >= FEET) { m.y = FEET; m.vy = 0; m.ground = true; s && s.land(); this.milo.play('land'); }
       }
-      if (m.ground && m.y < FEET && !onChair) m.ground = false;
+      if (m.ground && m.y < FEET && !onChair && m.takeoff <= 0) m.ground = false;
       this.moved += Math.abs(m.vx * dt);
       m.walkT += Math.abs(m.vx) * dt / 15;
     }
     this.bumped = Math.max(0, this.bumped - dt);
+
+    // the spirit's frames: acting beats play on their own, otherwise the movement picks them
+    if (this.rise < 0 && m.shown) {
+      const a = this.milo;
+      if (!this.act) this.animMove();
+      a.setFacing(this.act ? m.face : this.faceLeft() ? -1 : 1);
+      a.update(dt * 1000);
+      if (this.pose === 'touch' && a.tag === 'through' && !this.through) { // his fingers go into his own hand
+        this.through = true;
+        s && s.through(); this.ripple = 0; this.ghostFlick = 0.4; this.twitch = 0.7; this.loud = 2;
+      }
+      a.x = m.x; a.footY = Math.round(m.y); a.show();
+      this.gx = a.sprite.x; this.gy = a.sprite.y;
+    }
 
     // story triggers: where Milo goes, never a timer
     if (this.phase === 'explore') {
@@ -492,7 +559,7 @@ export class OpeningScene extends Phaser.Scene {
 
     // ghost motes
     this.moteT -= dt;
-    if (m.shown && this.rise < 0 && this.moteT <= 0) { this.moteT = 0.2; this.motes.push({ x: m.x + (Math.random() - 0.5) * 24, y: m.y - 6 - Math.random() * 70, life: 1 }); }
+    if (m.shown && this.rise < 0 && this.moteT <= 0) { this.moteT = 0.2; this.motes.push({ x: m.x + (Math.random() - 0.5) * 28, y: m.y - 6 - Math.random() * 80, life: 1 }); }
     this.motes.forEach((p) => { p.y -= dt * 12; p.life -= dt * 0.9; });
     this.motes = this.motes.filter((p) => p.life > 0);
 
@@ -557,8 +624,8 @@ export class OpeningScene extends Phaser.Scene {
     this.doorOpenSpr.setAlpha(ease(this.doorOpen * 1.4));
     // the living body: breathing, a finger now and then
     const inhale = Math.sin(t * Math.PI * 2 / 4.6) > 0.35;
-    this.breath.setAlpha(inhale ? 1 : 0);
-    this.hand.setTexture(this.twitch > 0 && Math.floor(this.twitch * 10) % 2 === 0 ? 'op_hand1' : 'op_hand0');
+    const twitching = this.twitch > 0 && Math.floor(this.twitch * 10) % 2 === 0;
+    this.blanket.setFrame(twitching ? SLEEP_F.bed_twitch : inhale ? SLEEP_F.bed_breath : SLEEP_F.bed);
     // lantern + Boo
     const la = this.lantern;
     const boo = this.boo, bob = Math.round(Math.sin(t * 2) * 1.5) * G / 2;
@@ -585,7 +652,7 @@ export class OpeningScene extends Phaser.Scene {
   drawIv() { // the drip tube from the bag down to the back of his hand
     const g = this.ivG;
     g.clear();
-    const a = { x: 107.5 * G, y: 45 * G }, b = { x: (BODY_AT.x + BODY_HAND.x + 1) * G, y: (BODY_AT.y + BODY_HAND.y) * G };
+    const a = { x: 107.5 * G, y: 45 * G }, b = { x: P.bodyHand.x - 2, y: P.bodyHand.y + 1 }; // into the back of his hand
     g.fillStyle(0x9ab4c4, 0.55);
     for (let i = 0; i <= 40; i++) {
       const k = i / 40;
@@ -702,49 +769,49 @@ export class OpeningScene extends Phaser.Scene {
   }
 
   drawGhost() {
-    const m = this.m, t = this.t, gs = this.ghost;
+    const m = this.m, t = this.t, gs = this.ghost, a = this.milo;
     const shimmer = 0.82 + Math.sin(t * 7) * 0.06;
-    let x = m.x, y = m.y, alpha = 0.86;
+    let alpha = 0.9;
     this.lie.setAlpha(0); this.sit.setAlpha(0);
     if (this.rise >= 0) {
-      // 1 the spirit shows inside the body and lifts off it by a pixel or two, 2 sits up, 3 stands, 4 drifts down beside the bed
+      // 1 his spirit shows inside the body (the same drawing, ghost colours) and lifts off it, 2 sits up out of it,
+      // 3 stands up in the air above the bed, still asleep, 4 drifts down beside the bed
       const r = this.rise, R1 = RISE.lie, R2 = R1 + RISE.sit, R3 = R2 + RISE.stand;
-      m.shown = true; m.face = 1;
-      const standX = P.liePos.x + 42, standY = 280;
+      m.shown = true; m.face = -1;
+      const lift = (k) => Math.round(k * 3);
       if (r < R1) {
         const k = ease(r / R1);
-        this.lie.setAlpha(k * 0.7 * shimmer).setPosition(P.liePos.x, P.liePos.y - Math.round(k * 2) * G);
-        gs.setAlpha(0); this.gx = x; this.gy = y;
-        this.glowAt(P.liePos.x + 30, P.liePos.y + 12, k * 0.35, 0);
+        this.lie.setAlpha(k * 0.75 * shimmer).setPosition(P.bed.x, P.bed.y - lift(k));
+        gs.setAlpha(0);
+        this.glowAt(P.bed.x + 50, P.bed.y + 56, k * 0.35, 0);
         return;
       }
       if (r < R2) {
         const k = ease((r - R1) / RISE.sit);
-        this.lie.setAlpha((1 - k) * 0.7 * shimmer).setPosition(P.liePos.x, P.liePos.y - 2 * G);
-        this.sit.setAlpha(k * 0.85 * shimmer).setPosition(P.sitPos.x, P.sitPos.y - Math.round(k * 2) * G);
-        gs.setAlpha(0); this.gx = x; this.gy = y;
-        this.glowAt(P.sitPos.x + 45, P.sitPos.y + 20, 0.35, 0);
+        this.lie.setAlpha((1 - k) * 0.75 * shimmer).setPosition(P.bed.x, P.bed.y - 3);
+        this.sit.setAlpha(k * 0.85 * shimmer).setPosition(P.bed.x, P.bed.y - 3 - Math.round(k * 2));
+        gs.setAlpha(0);
+        this.glowAt(P.bed.x + 60, P.bed.y + 30, 0.35, 0);
         return;
       }
+      let x, y;
       if (r < R3) { // up out of the bed, upright, hanging in the air
         const k = ease((r - R2) / RISE.stand);
-        this.sit.setAlpha((1 - k) * 0.85 * shimmer).setPosition(P.sitPos.x, P.sitPos.y - 2 * G - Math.round(k * 4) * G);
-        x = standX; y = standY - k * 6; alpha = k * 0.86;
+        this.sit.setAlpha((1 - k) * 0.85 * shimmer).setPosition(P.bed.x, P.bed.y - 5 - Math.round(k * 6));
+        x = P.stand.x; y = P.stand.y - k * 6; alpha = k * 0.9;
       } else {
         const k = ease((r - R3) / RISE.drift);
-        x = lerp(standX, P.land, k); y = lerp(standY - 6, FEET, k * k) - Math.sin(k * Math.PI) * 10;
-        if (k > 0.6) m.face = -1; // turns back toward the bed as he comes down
+        x = lerp(P.stand.x, P.land, k); y = lerp(P.stand.y - 6, FEET, k * k) - Math.sin(k * Math.PI) * 10;
       }
       m.x = x;
+      a.setFacing(-1).want('op_float');
+      a.x = x; a.footY = Math.round(y); a.show();
+      this.gx = a.sprite.x; this.gy = a.sprite.y;
     }
     if (!m.shown) { gs.setAlpha(0); this.ghostL.g.setAlpha(0); this.ghostL.p.setAlpha(0); this.gx = m.x; this.gy = m.y; return; }
     if (this.ghostFlick > 0) alpha *= Math.random() < 0.5 ? 0.35 : 1;
-    const key = this.frameKey();
-    const tex = this.textures.get(key).getSourceImage();
-    this.gx = Math.round(x); this.gy = Math.round(y);
-    gs.setTexture(key).setOrigin(0.5, (tex.height - 1) / tex.height).setPosition(this.gx, this.gy)
-      .setFlipX(this.faceLeft()).setAlpha(alpha * shimmer * (1 - this.cold * 0.15));
-    this.glowAt(x, y - 42, 0.3 + Math.sin(t * 2) * 0.04, this.rise >= 0 ? 0.08 : 0.2, y);
+    gs.setAlpha(alpha * shimmer * (1 - this.cold * 0.15));
+    this.glowAt(this.gx, this.gy - 46, 0.3 + Math.sin(t * 2) * 0.04, this.rise >= 0 ? 0.08 : 0.2, this.gy);
   }
 
   glowAt(x, y, a, pa, feet = FEET) {
@@ -859,7 +926,7 @@ export class OpeningScene extends Phaser.Scene {
     const bg = this.bubG, b = this.bubble;
     bg.clear();
     if (!b) { this.bubT.setText(''); return; }
-    const head = b.who === 'boo' ? { x: this.boo.x, y: this.boo.y - 34 } : { x: this.m.x, y: this.m.y - 92 };
+    const head = b.who === 'boo' ? { x: this.boo.x, y: this.boo.y - 34 } : { x: this.m.x, y: this.m.y - 100 };
     const sp = this.toScreen(head.x, head.y);
     const bw = b.str.length * 8 + 16, bh = 22;
     const bx = clamp(Math.round(sp.x - bw / 2), 8, W - bw - 8), by = clamp(Math.round(sp.y - bh - 10), 34, H - 60);

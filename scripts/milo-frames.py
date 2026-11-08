@@ -196,6 +196,40 @@ for i, n in enumerate(names):  # reach point per frame: right-most opaque pixel 
     al = sheet[cy + 30:cy + 60, cx:cx + CW, 3] > 0
     ys, xs = np.where(al)
     j = int(xs.argmax()); hand[n] = [int(xs[j]), int(ys[j]) + 30]
-json.dump({'frameWidth': CW, 'hand': hand, 'frameHeight': CH, 'foot': FOOTY, 'anchorX': AX, 'frames': names,
-           'key': [n for n in names if n in KEYFRAMES]}, open(os.path.join(OUT, 'frames.json'), 'w'), indent=1)
+# wristband centre per frame (the Ghostline hangs from it): the biggest cluster of wristband-coloured pixels
+# above the slippers, preferring the painted band colour. Frames where the band is hidden were read by eye.
+WB_COLS = {(214, 218, 226), (173, 181, 192), (173, 180, 192)}
+WRIST_BY_EYE = {'reach0': [54, 31], 'pull1': [50, 42], 'jump_fall0': [52, 6], 'jump_fall1': [54, 9]}
+wrist = {}
+for i, n in enumerate(names):
+    if n in WRIST_BY_EYE:
+        wrist[n] = WRIST_BY_EYE[n]; continue
+    cx, cy = (i % cols_n) * CW, (i // cols_n) * CH
+    f = sheet[cy:cy + CH, cx:cx + CW]
+    m = np.zeros((CH, CW), bool)
+    for y in range(4, 77):
+        for x in range(CW):
+            if f[y, x, 3] and tuple(int(v) for v in f[y, x, :3]) in WB_COLS:
+                m[y, x] = True
+    seen = np.zeros_like(m); best = None
+    for y, x in zip(*np.where(m)):
+        if seen[y, x]:
+            continue
+        st = [(y, x)]; seen[y, x] = True; pts = []
+        while st:
+            p = st.pop(); pts.append(p)
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    q = (p[0] + dy, p[1] + dx)
+                    if 0 <= q[0] < CH and 0 <= q[1] < CW and m[q] and not seen[q]:
+                        seen[q] = True; st.append(q)
+        sc = len(pts) + (10 if any(tuple(int(v) for v in f[p][:3]) == (214, 218, 226) for p in pts) else 0)
+        if len(pts) >= 3 and (best is None or sc > best[0]):
+            best = (sc, pts)
+    assert best, ('no wristband found', n)
+    wrist[n] = [round(float(np.mean([p[1] for p in best[1]])), 1), round(float(np.mean([p[0] for p in best[1]])), 1)]
+META = {'frameWidth': CW, 'hand': hand, 'wrist': wrist, 'frameHeight': CH, 'foot': FOOTY, 'anchorX': AX, 'frames': names,
+        'key': [n for n in names if n in KEYFRAMES]}
+exec(open(os.path.join(ROOT, 'scripts/milo-frames-sleep.py')).read())
+json.dump(META, open(os.path.join(OUT, 'frames.json'), 'w'), indent=1)
 print(len(names), 'frames, sheet', sheet.shape[1], 'x', sheet.shape[0])

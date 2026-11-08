@@ -1,6 +1,7 @@
 // Screenshots of THE WRONG SIDE OF THE BED (opening v2). node scripts/opening-shots.mjs [outDir]
 // 1 both Milos after the awakening, 2 Milo reaching for his own hand, 3 the Ghostline going into the floor,
 // 4 the thread stays on his wrist when he walks away, 5 the door at the far end, 6 the sprite sheet (art review).
+// Nov 8: the new Milo (raster sprites): separation, awakening acting, walk, jump, hands, reach, through, recoil.
 import { chromium } from '@playwright/test';
 import http from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
@@ -32,28 +33,32 @@ const at = async (fn, name) => {
   if (name) await page.screenshot({ path: join(OUT, name + '.png') });
 };
 const N = (S, sec, x = 0) => { S.debugInput = { x }; for (let i = 0; i < sec * 60; i++) S.step(1 / 60); S.debugInput = { x: 0 }; };
-await at((S) => { for (let i = 0; i < 60 * 8.4; i++) S.step(1 / 60); }, '0-separating');
+await at((S) => { for (let i = 0; i < 60 * 3.6; i++) S.step(1 / 60); }, '00-before-333');
+await at((S) => { while (S.rise < 0) S.step(1 / 60); for (let i = 0; i < 60 * 1.2; i++) S.step(1 / 60); }, '0-separating');
+await at((S) => { while (S.rise < 2.1) S.step(1 / 60); for (let i = 0; i < 30; i++) S.step(1 / 60); }, '0b-sitting-up');
 await at((S) => { while (S.rise >= 0) S.step(1 / 60); for (let i = 0; i < 60; i++) S.step(1 / 60); }, '1-both-milos');
-await at((S) => { while (S.phase !== 'explore') S.step(1 / 60); S.debugInput = { x: -1 }; while (S.phase !== 'discover') S.step(1 / 60); S.debugInput = { x: 0 }; while (S.pose !== 'reach2') S.step(1 / 60); for (let i = 0; i < 20; i++) S.step(1 / 60); }, '2-reaching');
-await at((S) => { while (S.pose !== 'reach3') S.step(1 / 60); for (let i = 0; i < 8; i++) S.step(1 / 60); }, '2b-through');
-await at((S) => { while (!S.bubble) S.step(1 / 60); for (let i = 0; i < 70; i++) S.step(1 / 60); }, '2c-thats-me');
+await at((S) => { while (S.milo.frame !== 'look_l2') S.step(1 / 60); }, '1b-looks-around');
+await at((S) => { while (S.phase !== 'explore') S.step(1 / 60); S.debugInput = { x: 1 }; for (let i = 0; i < 60 * 1.5; i++) S.step(1 / 60); S.debugInput = { x: 0 }; }, '1c-walk');
+await at((S) => { S.debugInput = { x: 1, jump: true }; S.step(1 / 60); S.debugInput = { x: 1 }; for (let i = 0; i < 20; i++) S.step(1 / 60); S.debugInput = { x: 0 }; }, '1d-jump');
+await at((S) => { for (let i = 0; i < 60; i++) S.step(1 / 60); S.debugInput = { x: -1 }; while (S.phase !== 'discover') S.step(1 / 60); S.debugInput = { x: 0 }; while (S.milo.frame !== 'hands2') S.step(1 / 60); }, '2a-hands');
+await at((S) => { while (S.milo.frame !== 'shock1') S.step(1 / 60); }, '2a2-shock');
+await at((S) => { while (S.milo.frame !== 'reach3') S.step(1 / 60); for (let i = 0; i < 20; i++) S.step(1 / 60); }, '2-reaching');
+await at((S) => { while (!S.through) S.step(1 / 60); for (let i = 0; i < 8; i++) S.step(1 / 60); }, '2b-through');
+await at((S) => { while (!S.bubble) S.step(1 / 60); for (let i = 0; i < 50; i++) S.step(1 / 60); }, '2c-thats-me');
 await at((S) => { while (S.gl.stage < 1) S.step(1 / 60); for (let i = 0; i < 40; i++) S.step(1 / 60); }, '3a-pulse');
 await at((S) => { while (!(S.gl.stage === 3 && S.gl.k > 0.85)) S.step(1 / 60); }, '3-ghostline-floor');
-await at((S) => { while (S.phase !== 'explore2') S.step(1 / 60); S.debugInput = { x: 1 }; for (let i = 0; i < 132; i++) S.step(1 / 60); S.debugInput = { x: 0 }; for (let i = 0; i < 20; i++) S.step(1 / 60); }, '4-thread-follows');
-await at((S) => { S.m.x = 600; S.m.vx = 0; for (let i = 0; i < 300; i++) S.step(1 / 60); }, '5-room-window');
+await at((S) => { while (S.phase !== 'explore2') S.step(1 / 60); S.debugInput = { x: 1 }; for (let i = 0; i < 150; i++) S.step(1 / 60); S.debugInput = { x: 0 }; for (let i = 0; i < 20; i++) S.step(1 / 60); }, '4-thread-follows');
+await at((S) => { S.debugInput = { x: 1, jump: true }; S.step(1 / 60); S.debugInput = { x: 1 }; for (let i = 0; i < 22; i++) S.step(1 / 60); S.debugInput = { x: 0 }; }, '4b-thread-jump');
+await at((S) => { for (let i = 0; i < 60; i++) S.step(1 / 60); S.m.x = 600; S.m.vx = 0; for (let i = 0; i < 300; i++) S.step(1 / 60); }, '5-room-window');
 await at((S) => { S.debugInput = { x: 1 }; while (S.phase !== 'boo') S.step(1 / 60); S.debugInput = { x: 0 }; for (let i = 0; i < 60 * 2.5; i++) S.step(1 / 60); }, '7-boo-unchanged');
-// sprite sheet: every Milo frame, living body, at 4x on black
+await at((S) => { for (let i = 0; i < 60 * 4.6; i++) S.step(1 / 60); }, '7b-run');
+// the Milo sheets used here (living, ghost, bed 7) at 2x on grey
 await page.evaluate(() => {
   const S = window.__opening;
-  const keys = ['op_milo_idle', 'op_milo_look', 'op_milo_unsure', 'op_milo_reach1', 'op_milo_reach2', 'op_milo_reach3', 'op_milo_recoil', 'op_milo_run0', 'op_milo_run1', 'op_milo_run2', 'op_milo_run3', 'op_milo_jump', 'op_milo_fall', 'op_milo_sit', 'op_milo_lie', 'op_body', 'op_hand0', 'op_hand1', 'op_chair', 'op_door_shut'];
   const c = document.createElement('canvas'); c.width = 1280; c.height = 720; const x = c.getContext('2d'); x.imageSmoothingEnabled = false;
   x.fillStyle = '#20222c'; x.fillRect(0, 0, 1280, 720);
-  let px = 10, py = 10, rowH = 0;
-  for (const k of keys) {
-    const img = S.textures.get(k).getSourceImage(); const w = img.width * 4, h = img.height * 4;
-    if (px + w > 1270) { px = 10; py += rowH + 10; rowH = 0; }
-    x.drawImage(img, px, py, w, h); px += w + 10; rowH = Math.max(rowH, h);
-  }
+  const a = S.textures.get('milo2_ghost').getSourceImage(); x.drawImage(a, 0, 0, 768, 400, 0, 0, 768, 400);
+  const b = S.textures.get('milo2_sleep').getSourceImage(); x.drawImage(b, 0, 0, b.width, b.height, 0, 420, b.width * 1.5, b.height * 1.5);
   document.body.innerHTML = ''; document.body.style.margin = '0'; document.body.appendChild(c);
 });
 await page.screenshot({ path: join(OUT, '6-sprites.png') });

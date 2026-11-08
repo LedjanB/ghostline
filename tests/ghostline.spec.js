@@ -59,7 +59,7 @@ test('first launch plays the opening: body + ghost, Ghostline once, shadow, Boo,
   expect(idle.flags.discover).toBe(0);
   // walk to the bed: the discovery fires once
   expect((await opUntil(page, -1, 'discover', 10)).phase).toBe('discover');
-  expect((await opUntil(page, 0, 'explore2', 15)).phase).toBe('explore2');
+  expect((await opUntil(page, 0, 'explore2', 25)).phase).toBe('explore2'); // the approved acting takes ~19 s
   expect(await op(page, (s) => s.line)).toBeGreaterThan(0.9);
   await opUntil(page, -1, 'none', 3); // back past the bed again: no second discovery
   expect(await op(page, (s) => s.flags.discover)).toBe(1);
@@ -95,7 +95,7 @@ test('opening v2: both Milos in one shot, the impossible touch, the Ghostline wr
     }
     return { both, zs: [...zs], clock: s.clockState, battery: s.battery };
   });
-  expect(shot.zs).toEqual([1333]); // 4/3 only: one art pixel = 4 screen px, no close-ups
+  expect(shot.zs).toEqual([1000]); // no zoom: the Milo sprites draw 1:1, no close-ups
   expect(shot.both).toBeGreaterThan(1.4); // held ~2 s with both of him in shot before control
   expect(shot.clock).toBe('off');
   expect(shot.battery).toBe(true);
@@ -113,7 +113,7 @@ test('opening v2: both Milos in one shot, the impossible touch, the Ghostline wr
       if (s.twitch > 0) twitched = true;
       if (s.control && s.phase === 'discover') ctlDuring = true;
       if (s.bubble) said.add(s.bubble.str);
-      if (s.pose === 'reach2') { const w = s.wrist(); overlap = Math.min(overlap, Math.abs(w.x - 6 - s.hand.x - 6)); }
+      if (s.milo.tag === 'through') { const h = s.milo.hand(); overlap = Math.min(overlap, Math.hypot(h.x - s.bodyHand.x, h.y - s.bodyHand.y)); }
       if (stageOrder[stageOrder.length - 1] !== s.gl.stage) stageOrder.push(s.gl.stage);
     }
     return { phase: s.phase, control: s.control, poses, twitched, ctlDuring, said: [...said], overlap, stageOrder, line: s.line };
@@ -121,10 +121,10 @@ test('opening v2: both Milos in one shot, the impossible touch, the Ghostline wr
   expect(beat.phase).toBe('explore2');
   expect(beat.control).toBe(true);
   expect(beat.ctlDuring).toBe(false);
-  expect(beat.poses).toEqual(['look', 'unsure', 'reach1', 'reach2', 'reach3', 'recoil']);
+  expect(beat.poses).toEqual(['realize', 'touch', 'fear']); // the approved acting: hands, body, reach, recoil
   expect(beat.twitched).toBe(true);
   expect(beat.said).toContain("NO. THAT'S ME.");
-  expect(beat.overlap).toBeLessThan(12); // his hand is right over his own
+  expect(beat.overlap).toBeLessThan(8); // his hand goes right into his own
   expect(beat.stageOrder).toEqual([0, 1, 2, 3, 4]); // pulse wrist -> wrist, flash, into the floor, settled
   expect(beat.line).toBe(1);
   // the thread hangs from his moving wrist, ends at the living wrist and goes into the seam under the bed
@@ -140,6 +140,54 @@ test('opening v2: both Milos in one shot, the impossible touch, the Ghostline wr
   expect(moves.out[2].x - moves.out[0].x).toBeGreaterThan(60);
   expect(moves.out[0].mid.y).toBeLessThan(moves.out[0].end.y); // living wrist above the floor seam
   expect(moves.a).toBeLessThan(0.5); // it settles to a faint thread
+  expect(errors).toEqual([]);
+});
+
+test('opening: the new Milo in bed 7, the Ghostline on the wristband in every frame (no old blocky Milo)', async ({ page }) => {
+  const errors = await boot(page);
+  await op(page, (s) => { s.begin(); });
+  const r = await op(page, (s) => {
+    const meta = s.cache.json.get('milo2_meta');
+    // every frame's wrist anchor sits on an opaque pixel of that frame, near a pale wristband pixel
+    const img = s.textures.get('milo2_living').getSourceImage();
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+    const data = x.getImageData(0, 0, img.width, img.height).data;
+    const bad = [];
+    meta.frames.forEach((n, i) => {
+      const [wx, wy] = meta.wrist[n], ox = (i % 8) * 96, oy = Math.floor(i / 8) * 100;
+      let band = false;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+        const k = ((oy + Math.round(wy) + dy) * img.width + ox + Math.round(wx) + dx) * 4;
+        if (data[k + 3] > 0 && data[k] > 160 && data[k + 2] > 175) band = true;
+      }
+      if (!band && !['reach0', 'pull1', 'jump_fall0', 'jump_fall1'].includes(n)) bad.push(n);
+    });
+    // the scene only uses the new sprites for Milo
+    const keys = new Set(s.worldL.list.map((o) => o.texture && o.texture.key));
+    while (s.phase !== 'explore') s.step(1 / 60);
+    // walking and jumping: the wrist anchor moves with the frame and mirrors with facing
+    s.debugInput = { x: 1 };
+    const seen = new Set(); let mirrored = false;
+    for (let i = 0; i < 120; i++) {
+      if (i === 40) s.debugInput = { x: 1, jump: true }; else if (i === 41) s.debugInput = { x: 1 };
+      s.step(1 / 60); seen.add(s.milo.anim);
+      const w = s.wrist(), f = s.milo.frame, [wx] = meta.wrist[f];
+      const exp = s.milo.sprite.x + (wx + 0.5 - 40) * s.milo.facing;
+      if (Math.abs(exp - w.x) > 0.01) mirrored = 'off';
+    }
+    s.debugInput = { x: -1 };
+    for (let i = 0; i < 30; i++) s.step(1 / 60);
+    { const [wx] = meta.wrist[s.milo.frame]; if (s.milo.facing === -1 && mirrored !== 'off' && Math.abs(s.wrist().x - (s.milo.sprite.x - (wx + 0.5 - 40))) < 0.01) mirrored = true; }
+    s.debugInput = { x: 0 };
+    return { bad, keys: [...keys], seen: [...seen], mirrored, sleep: s.blanket.texture.key, ghost: s.milo.sprite.texture.key };
+  });
+  expect(r.bad).toEqual([]);
+  expect(r.keys.some((k) => /^op_milo_|^op_body|^op_hand/.test(k || ''))).toBe(false);
+  expect(r.sleep).toBe('milo2_sleep');
+  expect(r.ghost).toBe('milo2_ghost');
+  expect(r.seen).toEqual(expect.arrayContaining(['walk', 'jump_start', 'rise', 'land']));
+  expect(r.mirrored).toBe(true);
   expect(errors).toEqual([]);
 });
 

@@ -89,3 +89,16 @@ Already in (commit "Arenas teach"): first time an attack comes it's slower with 
 - Limits in docs/milo-approved-art-brief.md (rotated parts, reconstructed shirt behind raised arms, far limbs = shaded copies, mirrored wristband). An artist pass would fix them.
 - Shots: `node scripts/milolab-move-shots.mjs` -> shots/milolab-move/ (PNGs, frames.png, move.webm).
 - Next: his review. Opening, runner, bosses, saves unchanged. Do NOT integrate until he approves.
+
+## Nov 8: THE NEW MILO in the opening (Bed 7 integration pass), waiting for his review
+- He approved the Milo acting + movement prototypes as the visual foundation. Both Milos in `?opening=1` are now the approved raster sprites; no old blocky Milo is drawn there (the old textures stay only for the labs' compare views).
+- Camera: no zoom any more (1 world px = 1 screen px), so Milo draws 1:1 at 92 px, the concept's in-game size. Not scaled. Wider shot, the whole room height shows.
+- The spirit is a `MiloActor` on the opening's own physics (no new physics): walk 72 px/s (matches the walk cycle), Boo's "RUN." uses the run cycle, jump has the crouch/takeoff frames, landing frames, pivot. Same controls on PC, iPhone and gamepad.
+- Awakening: his spirit shows inside the body, lifts, sits up, stands in the air still asleep, drifts down, lands, then plays the approved awakening acting (wakes, looks around, confused). Control after it (~17 s from the key press, was ~14).
+- Discovery: walks to the bed, then the approved acting in order: looks at his hands, turns to the body (shock), hesitates, reaches, the hand goes into his own (ripple, the body's fingers move), recoils in fear, "NO. THAT'S ME.", then the Ghostline as before. About 19 s.
+- Living Milo in bed: new `assets/milo/milo-sleep.png` made by `scripts/milo-frames-sleep.py` (run by `py scripts/milo-frames.py`): the same side-view drawing laid down at concept resolution, eyes closed, arm over a new 1 px blanket; breath and finger frames. Ghost row = his spirit lying and sitting up (same pixels, spectral colours).
+- Ghostline: `frames.json` now has `wrist` per frame (measured on the wristband pixels, 4 frames where the band is hidden were set by eye) and the sleep frames' wrist. `MiloActor.wrist()` follows frame, offset and mirroring. Never the hand.
+- Room: rendered at full resolution; Bed 7 (tube frame, mattress, sheet, pillow, casters, chart) and the wall tiles redrawn at 1 px, 1 px grain on plaster and floor.
+- Shots: `node scripts/opening-shots.mjs` -> shots/opening/ (awakening, sitting up, hands, shock, reach, through, recoil, Ghostline, walk, jump, Boo). Full recording: `node scripts/opening-video.mjs` -> shots/opening/opening-full.webm.
+- Limits (honest): facing the bed is a mirror, so the wristband switches wrist when he turns (same as the lab). The sleeping face is the side profile turned 90 degrees: the hair falls "sideways" instead of onto the pillow. The sit-up is a rig pose (rotated parts, no cloth change). The curtains, door, window, clock, monitor numbers, Boo and THE STRETCH's shadow are still on the old 3 px grid, so some chunkier pixels remain away from Milo. Boo is now small and chunky next to the new Milo: that is for the Boo/shadow cinematic revision.
+- Next: his review. THE STRETCH and Boo are NOT redesigned yet (their own pass).

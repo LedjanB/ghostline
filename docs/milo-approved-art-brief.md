@@ -56,3 +56,11 @@ Known limits (need an artist pass before shipping):
 - The turn uses the 3/4 turnaround drawing, which is crisper than the idle pose (different source scale): a
   small jump in detail during idle -> walk.
 - Deep crouches (jump takeoff, landing) have no thigh foreshortening, so they read a little like sitting.
+
+## Opening integration (Nov 8): bed 7
+`scripts/milo-frames-sleep.py` lays the side view down (rotated 88 degrees at concept resolution, eyes closed at
+concept resolution), posing the near arm over the blanket. Frames: bed, bed_breath, bed_twitch (living, with a 1 px
+blanket drawn over his own silhouette), lie and sit (spirit, no blanket). `frames.json` gains `wrist` for every frame
+and a `sleep` block (hip anchor, mattress row, wrist, hand). The 61 standing frames are unchanged byte for byte.
+Limits: the head is the standing profile turned (hair doesn't fall onto the pillow), no blanket folds react to the
+arm, the sit-up is rotated parts. An artist pass would redraw the sleeper and the sit-up.
