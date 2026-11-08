@@ -74,3 +74,11 @@ Already in (commit "Arenas teach"): first time an attack comes it's slower with 
 - Views: awakening, six poses (living and spirit), the Ghostline (anchored on the wristband in every pose), THE STRETCH's shadow vs Boo's lantern, V2 vs new at the same height.
 - Finding: clearly better than V2, but faces still only 2 to 3 px per feature and limbs are code-drawn. Pro pixel art would be the next step if he likes the direction.
 - Next: he and ChatGPT review the screenshots (`node scripts/artlab-shots.mjs` -> shots/artlab/) before adopting anything.
+
+## Nov 8: THE NEW MILO, animation prototype V1 (milo lab), waiting for his review
+- He approved Milo's new look: `assets/reference/milo-approved-concept.png` (+ faces, turnaround, acting, game-size crops), brief `docs/milo-approved-art-brief.md`. Not in the game yet; opening, art lab, runner, bosses and saves unchanged.
+- Isolated lab at `?milolab=1` (`src/scenes/milolab.js`, reusable `src/milo-sprite.js`: `loadMilo`, `MiloActor`, `MILO_ANIMS`). Idle, 1 AWAKENING, 2 REALIZATION, 3 TOUCH, 4 FEAR, PLAY ALL, living/ghost, slow 1/4, x2 inspect, compare with opening V2 and art lab V1. Keyboard, touch, gamepad.
+- Frames are raster sprites made by `py scripts/milo-frames.py` (acting in `scripts/milo-frames-acting.py`): the six key poses cut out of the concept (mask, no rectangles), downscaled to game size (92 px body), one 40 colour palette, then 30 in-between frames made at game resolution by moving parts (head, hands, arm, shoulders) and hand-painted faces (eyes, brows, mouth). Ghost = same pixels, spectral palette. Sheets `assets/milo/milo-living.png`, `milo-ghost.png`, 36 frames of 96x100.
+- Limits: the body never changes between two concept poses through a drawn in-between (no artist frames), so pose changes still pop a bit; the wristband was missing on 5 concept poses and is painted in; the head turn reuses the idle head (the concept has no turning frames). Real fix if he likes it: a pixel artist draws the in-betweens on top of these.
+- Shots: `node scripts/milolab-shots.mjs` -> shots/milolab/ (PNGs + play-all.webm at game size).
+- Next: his review. Do NOT put the new Milo in the opening until he approves the animation.

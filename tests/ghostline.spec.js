@@ -1084,3 +1084,44 @@ test('art lab: ?artlab=1 opens alone; 5 views; six different poses; same boy; Bo
   expect(await page.evaluate(() => localStorage.getItem('ghostline-save'))).toBe(saveBefore);
   expect(errors).toEqual([]);
 });
+
+// MILO LAB (new Milo, animation prototype V1): isolated preview at ?milolab=1, not part of the game
+test('milo lab: ?milolab=1 opens alone; raster frames; four sequences play to the end; ghost toggle; save untouched', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem('ghostline-save', JSON.stringify({ version: 8, storySeen: true, best: 123 })); });
+  await page.goto('/?milolab=1');
+  await page.waitForFunction(() => window.__milolab && window.__milolab.milo);
+  const before = await page.evaluate(() => localStorage.getItem('ghostline-save'));
+  expect(await scenes(page)).toEqual(['milolab']);
+  const r = await page.evaluate(async () => {
+    const L = window.__milolab, M = await import('/src/milo-sprite.js');
+    const meta = L.milo.meta, tex = L.textures.get(M.MILO_KEYS.living);
+    // every frame used by a sequence exists in the sheet, and every sequence ends
+    const missing = Object.values(M.MILO_ANIMS).flatMap((a) => a.frames.map((f) => f[0])).filter((n) => !(n in L.milo.index));
+    const ends = {};
+    for (const s of M.MILO_SEQUENCES) {
+      L.milo.play(s); let t = 0, frames = new Set();
+      while (!L.milo.done && t < 60000) { L.milo.update(50); frames.add(L.milo.frame); t += 50; }
+      ends[s] = { done: L.milo.done, frames: frames.size };
+    }
+    L.setGhost(true);
+    const ghostKey = L.milo.sprite.texture.key;
+    return { n: meta.frames.length, texFrames: tex.frameTotal, w: tex.source[0].width, missing, ends, ghostKey, size: [meta.frameWidth, meta.frameHeight] };
+  });
+  expect(r.n).toBeGreaterThanOrEqual(30);
+  expect(r.texFrames - 1).toBeGreaterThanOrEqual(r.n); // + Phaser's __BASE frame
+  expect(r.missing).toEqual([]);
+  for (const s of ['awakening', 'realization', 'touch', 'fear']) { expect(r.ends[s].done).toBe(true); expect(r.ends[s].frames).toBeGreaterThanOrEqual(6); }
+  expect(r.ghostKey).toBe('milo2_ghost');
+  expect(r.size).toEqual([96, 100]);
+  // keyboard: 3 plays the touch; gamepad-style focus moves with arrows
+  await page.keyboard.press('3');
+  expect(await page.evaluate(() => window.__milolab.milo.anim)).toBe('touch');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+  expect(await page.evaluate(() => window.__milolab.milo.anim)).toBe('awakening');
+  expect(await page.evaluate(() => localStorage.getItem('ghostline-save'))).toBe(before);
+  expect(errors).toEqual([]);
+});

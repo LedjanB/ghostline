@@ -1,0 +1,198 @@
+{
+ "frameWidth": 96,
+ "hand": {
+  "idle0": [
+   51,
+   39
+  ],
+  "idle1": [
+   51,
+   40
+  ],
+  "blink": [
+   51,
+   39
+  ],
+  "wake0": [
+   51,
+   40
+  ],
+  "wake1": [
+   51,
+   40
+  ],
+  "wake2": [
+   51,
+   39
+  ],
+  "wake3": [
+   51,
+   39
+  ],
+  "look_l": [
+   51,
+   39
+  ],
+  "look_l2": [
+   51,
+   39
+  ],
+  "confused": [
+   51,
+   39
+  ],
+  "hands0": [
+   58,
+   37
+  ],
+  "hands1": [
+   58,
+   37
+  ],
+  "hands2": [
+   58,
+   37
+  ],
+  "raise": [
+   51,
+   39
+  ],
+  "turn1": [
+   51,
+   39
+  ],
+  "shock0": [
+   51,
+   39
+  ],
+  "shock1": [
+   51,
+   38
+  ],
+  "hes0": [
+   51,
+   39
+  ],
+  "hes1": [
+   51,
+   38
+  ],
+  "reach0": [
+   59,
+   30
+  ],
+  "reach1": [
+   66,
+   30
+  ],
+  "reach2": [
+   73,
+   30
+  ],
+  "reach3": [
+   79,
+   30
+  ],
+  "reach4": [
+   79,
+   30
+  ],
+  "touch0": [
+   66,
+   41
+  ],
+  "touch1": [
+   69,
+   41
+  ],
+  "touch2": [
+   69,
+   41
+  ],
+  "pull0": [
+   61,
+   41
+  ],
+  "pull1": [
+   54,
+   41
+  ],
+  "recoil0": [
+   58,
+   37
+  ],
+  "recoil1": [
+   58,
+   36
+  ],
+  "fear0": [
+   54,
+   30
+  ],
+  "fear1": [
+   54,
+   33
+  ],
+  "fear2": [
+   55,
+   33
+  ],
+  "fear3": [
+   54,
+   32
+  ],
+  "fear4": [
+   53,
+   33
+  ]
+ },
+ "frameHeight": 100,
+ "foot": 97,
+ "anchorX": 40,
+ "frames": [
+  "idle0",
+  "idle1",
+  "blink",
+  "wake0",
+  "wake1",
+  "wake2",
+  "wake3",
+  "look_l",
+  "look_l2",
+  "confused",
+  "hands0",
+  "hands1",
+  "hands2",
+  "raise",
+  "turn1",
+  "shock0",
+  "shock1",
+  "hes0",
+  "hes1",
+  "reach0",
+  "reach1",
+  "reach2",
+  "reach3",
+  "reach4",
+  "touch0",
+  "touch1",
+  "touch2",
+  "pull0",
+  "pull1",
+  "recoil0",
+  "recoil1",
+  "fear0",
+  "fear1",
+  "fear2",
+  "fear3",
+  "fear4"
+ ],
+ "key": [
+  "idle0",
+  "hands0",
+  "reach3",
+  "touch1",
+  "recoil0",
+  "fear0"
+ ]
+}
