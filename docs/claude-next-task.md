@@ -17,3 +17,6 @@ This is an intentionally tiny, bounded task. This is NOT permission to develop t
 
 ## Retest note
 One-time retry after the owner updated the OAuth token in GitHub Actions secrets. Do not disclose credentials. This task remains report-only.
+
+## Authentication retest — 2026-11-09
+Owner requested one controlled retest after checking/updating the credential. No new gameplay work, and do not retry after this run fails.
