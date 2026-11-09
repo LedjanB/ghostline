@@ -115,3 +115,8 @@ Already in (commit "Arenas teach"): first time an attack comes it's slower with 
 - Shots: `node scripts/encounter-shots.mjs` -> shots/encounter/ (also checks bed, mid, exit, retreat, idle, jumpy all reach the end). Recording: `node scripts/opening-video.mjs` -> shots/opening/opening-full.webm.
 - Limits (honest): Boo is code-painted, not artist-drawn: the face is ~6 px of features, the coat has no real cloth folds between poses, the walk is a rig. Good enough to judge the scene; an artist pass would lift him to Milo's level. The shadow is vector silhouettes (deliberate, but clean-edged, not hand-pixelled). Boo's lines use the old blip voice.
 - Next: his review. Corridor level NOT started.
+
+## Nov 9: Ward 4 movement lab V1 (?wardlab=1), waiting for his review
+- New workflow: ChatGPT = creative direction + review, Claude Code = code + tests, Ledjan = approval. Shared notes: docs/ghostline-production-coordination.md and GitHub issue #1. Reports: docs/claude-task-report.md.
+- The Ward 4 art lab (approved screenshot as the target, room plate, real Milo sprites) is committed. Milo now moves with the milo lab's tuning scaled to his 1.5x size: walk/run cycles match the speed, start/stop/turn/jump/land frames, jump onto Bed 7. Keyboard, touch, gamepad.
+- Next: his playtest on PC + iPhone, then a clean modular Bed 7 set + room shell to replace the plate.

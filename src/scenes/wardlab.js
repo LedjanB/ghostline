@@ -1,15 +1,26 @@
 // Ward 4 / Bed 7: approved-art gameplay vertical slice (isolated at ?wardlab=1).
 // This does NOT replace opening.js, the runner, any boss, or saves.
 // The approved concept is a temporary environment plate; see docs/ward4-art-target.md.
+// Movement V1: the milo lab's tuning (milolab-move.js MOVE: coyote time, jump buffer, cut jump, Celeste)
+// scaled to Milo's size in this room, fixed 120 Hz steps, idle/walk_start/walk/run/stop/pivot/jump/land frames,
+// and the walk/run cycle timed to the real ground speed so the feet don't slide.
 import { W, H } from '../data.js';
-import { createInput } from '../input.js';
-import { loadMilo, MiloActor } from '../milo-sprite.js';
+import { createInput, Device } from '../input.js';
+import { loadMilo, MiloActor, MILO_ANIMS } from '../milo-sprite.js';
+import { MOVE } from './milolab-move.js';
 
 const WORLD_W = 1065;
 const FLOOR = 335;
-const BED = { left: 195, right: 446, top: 265 };
+const BED = { left: 195, right: 446, top: 265 }; // solid sides, walkable top
 const WINDOW = { left: 452, right: 700, top: 34, bottom: 215 };
-const WALK = 84, RUN = 166, JUMP = 470, GRAVITY = 1270;
+// Milo draws at 1.5x here (his size against the approved reference). Every distance in the lab's tuning
+// scales with him, so one walk/run cycle covers the same ground per step as at 1x (tempo matches speed).
+export const WARD_SCALE = 1.5;
+export const WARD_MOVE = { ...MOVE };
+for (const k of ['walk', 'run', 'accel', 'runAccel', 'decel', 'air', 'grav', 'fallGrav', 'maxFall', 'jumpV', 'halfW']) WARD_MOVE[k] = MOVE[k] * WARD_SCALE;
+export const WARD_GEOM = { FLOOR, BED, WORLD_W };
+const MV = WARD_MOVE;
+const PX_PER_M = 27 * WARD_SCALE;
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
 export class WardLabScene extends Phaser.Scene {
@@ -27,7 +38,7 @@ export class WardLabScene extends Phaser.Scene {
     this.add.image(0, 0, 'wardlab_plate').setOrigin(0).setDepth(0);
     this.rainG = this.add.graphics().setDepth(1);
     this.floorShadow = this.add.ellipse(0, FLOOR + 1, 24, 5, 0x050a12, 0.44).setDepth(3);
-    this.milo = new MiloActor(this, 513, FLOOR, { scale: 1.5 });
+    this.milo = new MiloActor(this, 513, FLOOR, { scale: WARD_SCALE });
     this.milo.sprite.setDepth(4);
     this.milo.setFacing(1);
     this.add.image(0, 0, 'wardlab_front').setOrigin(0).setScrollFactor(1.1).setDepth(9);
@@ -40,9 +51,10 @@ export class WardLabScene extends Phaser.Scene {
     this.shotKey = this.input.keyboard.addKey('C');
     this.closeKey = this.input.keyboard.addKey('ESC');
     this.ghost = false; this.extraLight = false; this.wideShot = false; this.lastPadGhost = false;
-    this.m = { x: 513, y: FLOOR, vx: 0, vy: 0, grounded: true, onBed: false, jumping: false };
-    this.time = 0; this.lastJump = false;
-    this.thumb = null; this.jumpPointer = null;
+    // body: feet x/y in world px; takeoff = the short crouch before he leaves the floor
+    this.m = { x: 513, y: FLOOR, vx: 0, vy: 0, ground: true, coyote: 0, buffer: 0, takeoff: 0, cutDone: true, acc: 0 };
+    this.clockT = 0; // (never this.time: that is Phaser's clock plugin)
+    this.thumb = null; this.jumpPointer = null; this.jumpTap = false;
     this.rain = Array.from({ length: 82 }, (_, i) => ({
       x: WINDOW.left + (i * 29.71) % (WINDOW.right - WINDOW.left),
       y: WINDOW.top + (i * 41.37) % (WINDOW.bottom - WINDOW.top),
@@ -52,8 +64,8 @@ export class WardLabScene extends Phaser.Scene {
 
     this.input.on('pointerdown', (p, over) => {
       if (over.length) return; // HUD touch buttons must not trigger jump
-      if (p.x < W / 2 && !this.thumb) this.thumb = { id: p.id, x: p.x, cur: p.x };
-      else if (p.x >= W / 2) this.jumpPointer = p.id;
+      if (p.x < W / 2 && !this.thumb) this.thumb = { id: p.id, x: p.x, y: p.y, cur: p.x };
+      else if (p.x >= W / 2) { this.jumpPointer = p.id; this.jumpTap = true; }
     });
     this.input.on('pointermove', (p) => { if (this.thumb?.id === p.id) this.thumb.cur = p.x; });
     const released = (p) => {
@@ -62,15 +74,17 @@ export class WardLabScene extends Phaser.Scene {
     };
     this.input.on('pointerup', released);
     this.input.on('pointerupoutside', released);
+    this.thumbG = this.add.graphics().setScrollFactor(0).setDepth(29);
 
     // Screen-space labels never drift with the world/camera.
     const hud = (x, y, t, c = '#d2dce9') => this.add.text(x, y, t, {
       fontFamily: 'monospace', fontSize: '10px', color: c, resolution: 2,
       shadow: { offsetX: 1, offsetY: 2, color: '#000000', blur: 3, fill: true },
     }).setScrollFactor(0).setDepth(30);
-    this.label = hud(12, 10, 'WARD 4 / BED 7  |  ART TARGET V1');
+    this.label = hud(12, 10, 'WARD 4 / BED 7  |  ART TARGET V1  |  MOVEMENT V1');
     this.clock = hud(W - 92, 10, '3:33 AM');
-    this.hint = hud(12, H - 20, 'A/D MOVE   SHIFT RUN   SPACE JUMP   G GHOST   C CAMERA   L LIGHT');
+    this.hint = hud(12, H - 20, '');
+    this.info = hud(12, H - 34, '', '#8a98b8');
     this.note = hud(185, 43, '', '#fedfb7');
     this.note.setAlpha(0);
     this.noteTime = 0;
@@ -88,81 +102,111 @@ export class WardLabScene extends Phaser.Scene {
     this.showNote(this.ghost ? 'GHOST FORM' : 'LIVING FORM');
   }
 
+  // what the player asks for this frame, from every device: dir -1/0/1, run, jump pressed / held
   controls() {
     this.ctl.update();
     let dir = Number(this.ctl.held('right')) - Number(this.ctl.held('left'));
-    let fast = this.runKey.isDown;
-    if (this.thumb) {
-      const distance = this.thumb.cur - this.thumb.x;
-      dir = Math.abs(distance) > 12 ? Math.sign(distance) : 0;
-      fast ||= Math.abs(distance) > 54;
-    }
-    const pads = this.input.gamepad?.getAll?.() || [];
+    let run = this.runKey.isDown;
+    const pads = this.input.gamepad?.total ? this.input.gamepad.getAll() : [];
     for (const pad of pads) {
-      const stick = pad.leftStick?.x || 0;
-      fast ||= Math.abs(stick) > 0.85 || !!pad.buttons?.[2]?.pressed;
+      const sx = pad.leftStick?.x || 0;
+      if (Math.abs(sx) > 0.25) { dir = Math.sign(sx); if (Math.abs(sx) > 0.85) run = true; }
+      if (pad.buttons?.[2]?.pressed) run = true; // X
     }
-    return {
-      dir, fast,
-      jump: this.ctl.held('float') || this.jumpPointer !== null,
-    };
+    if (this.thumb) {
+      const d = this.thumb.cur - this.thumb.x;
+      if (Math.abs(d) > 10) { dir = Math.sign(d); run ||= Math.abs(d) > 48; }
+    }
+    const jump = this.ctl.pressed('float') || this.jumpTap;
+    const hold = this.ctl.held('float') || this.jumpPointer !== null;
+    this.jumpTap = false;
+    if (this.wideShot) return { dir: 0, run: false, jump: false, hold: false };
+    return { dir, run, jump, hold };
+  }
+
+  // one fixed 1/120 s physics step (same model as the milo lab, scaled)
+  tick(dt, inp) {
+    const m = this.m, a = this.milo, hw = MV.halfW;
+    const target = inp.dir * (inp.run ? MV.run : MV.walk);
+    if (inp.dir && inp.dir !== a.facing) {
+      if (m.ground && Math.abs(m.vx) > 20 * WARD_SCALE) a.play('pivot'); // a quick profile frame while he turns
+      a.setFacing(inp.dir);
+    }
+    const rate = !m.ground ? MV.air : inp.dir === 0 || Math.sign(target) !== Math.sign(m.vx) ? MV.decel : inp.run ? MV.runAccel : MV.accel;
+    m.vx = m.vx < target ? Math.min(target, m.vx + rate * dt) : Math.max(target, m.vx - rate * dt);
+    // jump: buffer + coyote time, a short crouch (anticipation) before he leaves the floor, cut jump on release
+    m.buffer = Math.max(0, m.buffer - dt);
+    m.coyote = m.ground ? MV.coyote : Math.max(0, m.coyote - dt);
+    if (m.buffer > 0 && m.coyote > 0 && m.takeoff <= 0) { m.takeoff = MV.takeoff; m.buffer = 0; a.play('jump_start'); }
+    if (m.takeoff > 0 && (m.takeoff -= dt) <= 0) { m.vy = -MV.jumpV; m.ground = false; m.coyote = 0; m.cutDone = false; }
+    if (!m.ground) {
+      if (m.vy < 0 && !inp.hold && !m.cutDone) { m.vy *= MV.cut; m.cutDone = true; }
+      m.vy = Math.min(MV.maxFall, m.vy + (m.vy > 0 ? MV.fallGrav : MV.grav) * dt);
+    }
+    const prevX = m.x, prevY = m.y;
+    let nx = clamp(m.x + m.vx * dt, 30, WORLD_W - 30);
+    // the bed is a real solid obstacle below its top, not just background decoration
+    m.blocked = false;
+    if (m.y > BED.top + 0.5) {
+      if (prevX + hw <= BED.left && nx + hw >= BED.left && inp.dir > 0) { nx = BED.left - hw; m.vx = 0; m.blocked = true; }
+      if (prevX - hw >= BED.right && nx - hw <= BED.right && inp.dir < 0) { nx = BED.right + hw; m.vx = 0; m.blocked = true; }
+    }
+    m.x = nx;
+    m.y += m.vy * dt;
+    const overBed = m.x + hw > BED.left && m.x - hw < BED.right;
+    const floor = overBed && prevY <= BED.top + 0.01 ? BED.top : FLOOR;
+    if (m.ground) {
+      const support = m.y >= FLOOR - 0.01 || (overBed && Math.abs(m.y - BED.top) < 0.5);
+      if (!support) { m.ground = false; m.vy = 0; } // walked off the bed (coyote time still allows a jump)
+    } else if (m.vy >= 0 && m.y >= floor) {
+      m.y = floor; m.vy = 0; m.ground = true; m.cutDone = true;
+      a.play('land');
+    }
+  }
+
+  // the animation follows the body (same rules as the milo lab)
+  animate(inp) {
+    const m = this.m, a = this.milo;
+    // pushing against the bed is not walking: he stands instead of treading in place
+    const sp = Math.abs(m.vx), moving = (inp.dir !== 0 && !m.blocked) || sp > 6;
+    if (m.takeoff > 0) a.want('jump_start');
+    else if (!m.ground) {
+      if (a.anim !== 'jump_start') a.want(m.vy < -110 * WARD_SCALE ? 'rise' : m.vy < 110 * WARD_SCALE ? 'apex' : 'fall');
+    } else if (a.anim === 'land' && (!moving || a.step === 0) && !a.done) {
+      // let the squash read; movement takes over after the first landing frame
+    } else if (!moving) {
+      if (['walk', 'run', 'walk_start', 'pivot'].includes(a.anim)) a.want('stop');
+      else if (a.done || !['stop', 'idle', 'land'].includes(a.anim)) a.want('idle');
+    } else if (a.anim === 'pivot' && !a.done) {
+      // profile frame while turning
+    } else if (sp > MV.walk + 18 * WARD_SCALE) a.want('run');
+    else if (['idle', 'stop', 'land'].includes(a.anim)) a.want('walk_start');
+    else if (a.anim !== 'walk_start' || a.done) a.want('walk');
+    // cycle tempo = ground speed / the speed the cycle was drawn for
+    a.speed = a.anim === 'walk' ? clamp(sp / MV.walk, 0.5, 1.4) : a.anim === 'run' ? clamp(sp / MV.run, 0.6, 1.2) : 1;
   }
 
   update(_t, dtMs) {
-    const dt = Math.min(dtMs / 1000, 0.035);
-    this.time += dt;
-    const padGhost = (this.input.gamepad?.getAll?.() || []).some(p => !!p.buttons?.[1]?.pressed);
+    const dt = Math.min(dtMs / 1000, 0.05);
+    this.clockT += dt;
+    const padGhost = (this.input.gamepad?.total ? this.input.gamepad.getAll() : []).some(p => !!p.buttons?.[1]?.pressed);
     if (Phaser.Input.Keyboard.JustDown(this.ghostKey) || (padGhost && !this.lastPadGhost)) this.toggleGhost();
     this.lastPadGhost = padGhost;
     if (Phaser.Input.Keyboard.JustDown(this.lightKey)) this.extraLight = !this.extraLight;
     if (Phaser.Input.Keyboard.JustDown(this.shotKey)) this.wideShot = !this.wideShot;
-    if (Phaser.Input.Keyboard.JustDown(this.closeKey)) this.scene.start('menu');
-    const c = this.controls();
+    if (Phaser.Input.Keyboard.JustDown(this.closeKey)) { this.scene.start('menu'); return; }
+    const inp = this.controls();
     const m = this.m;
-
-    const target = this.wideShot ? 0 : c.dir * (c.fast ? RUN : WALK);
-    const acceleration = c.dir && !this.wideShot ? 800 : 1180;
-    const change = clamp(target - m.vx, -acceleration * dt, acceleration * dt);
-    m.vx += change;
-    if (c.dir && !this.wideShot) this.milo.setFacing(c.dir);
-    const pressedJump = c.jump && !this.lastJump;
-    this.lastJump = c.jump;
-    if (pressedJump && m.grounded && !this.wideShot) {
-      m.vy = -JUMP; m.grounded = false; m.onBed = false;
-      this.milo.play('jump_start');
-    }
-    if (!m.grounded) {
-      if (!c.jump && m.vy < 0) m.vy += 1150 * dt; // variable jump height
-      m.vy = Math.min(580, m.vy + GRAVITY * dt);
-    }
-    const lastY = m.y;
-    let nextX = clamp(m.x + m.vx * dt, 30, WORLD_W - 30);
-    // The bed is a real solid obstacle, not just background decoration.
-    const blockedAtGround = m.y > BED.top + 5 && m.y - lastY >= -10;
-    if (blockedAtGround && lastY > BED.top + 5 && !m.onBed) {
-      if (m.x <= BED.left - 8 && nextX > BED.left - 8) { nextX = BED.left - 8; m.vx = 0; }
-      if (m.x >= BED.right + 8 && nextX < BED.right + 8) { nextX = BED.right + 8; m.vx = 0; }
-    }
-    m.x = nextX;
-    m.y += m.vy * dt;
-    let surface = FLOOR;
-    const overBed = m.x >= BED.left - 4 && m.x <= BED.right + 4;
-    if (overBed && lastY <= BED.top + 2 && m.vy >= 0) surface = BED.top;
-    if (m.vy >= 0 && m.y >= surface) {
-      const wasAirborne = !m.grounded;
-      m.y = surface; m.vy = 0; m.grounded = true; m.onBed = surface === BED.top;
-      if (wasAirborne) this.milo.play('land');
-    }
-    if (m.grounded && m.onBed && !overBed) { m.grounded = false; m.onBed = false; }
-
-    const moving = Math.abs(m.vx) > 12;
-    if (m.grounded && (this.milo.anim !== 'land' || this.milo.done)) this.milo.want(moving ? (Math.abs(m.vx) > 110 ? 'run' : 'walk') : 'idle');
-    else if (!m.grounded && this.milo.anim !== 'jump_start') this.milo.want(m.vy < -100 ? 'rise' : m.vy < 90 ? 'apex' : 'fall');
+    if (inp.jump) m.buffer = MV.buffer;
+    m.acc += dt;
+    while (m.acc >= 1 / 120) { m.acc -= 1 / 120; this.tick(1 / 120, inp); }
+    this.animate(inp);
     this.milo.x = m.x; this.milo.footY = m.y;
-    this.milo.update(dtMs);
+    this.milo.update(dt * 1000);
     this.milo.show();
+    const overBed = m.x + MV.halfW > BED.left && m.x - MV.halfW < BED.right && m.y <= BED.top + 0.5;
     this.floorShadow.x = m.x;
-    this.floorShadow.y = m.onBed ? BED.top + 2 : FLOOR + 2;
+    this.floorShadow.y = (overBed ? BED.top : FLOOR) + 2;
     this.floorShadow.alpha = clamp((125 - Math.abs(this.floorShadow.y - m.y)) / 125, 0, 0.4);
 
     const cam = this.cameras.main;
@@ -179,9 +223,21 @@ export class WardLabScene extends Phaser.Scene {
     }
     this.fxGlow.clear().setVisible(this.extraLight);
     if (this.extraLight) {
-      this.fxGlow.fillStyle(0xe7a35c, 0.06 + Math.sin(this.time * 3) * .009);
+      this.fxGlow.fillStyle(0xe7a35c, 0.06 + Math.sin(this.clockT * 3) * .009);
       this.fxGlow.fillCircle(180, 221, 84);
     }
+    // the touch thumb, so a phone player sees where the drag started
+    this.thumbG.clear();
+    if (this.thumb) {
+      this.thumbG.lineStyle(1, 0x6f8fc8, 0.5).strokeCircle(this.thumb.x, this.thumb.y, 48);
+      this.thumbG.fillStyle(0x9fd8ff, 0.35).fillCircle(clamp(this.thumb.cur, this.thumb.x - 48, this.thumb.x + 48), this.thumb.y, 8);
+    }
+    const dev = Device.get();
+    this.hint.setText(dev === 'touch' ? 'LEFT HALF: DRAG TO WALK, FAR = RUN   RIGHT HALF: JUMP (HOLD = HIGHER)'
+      : dev === 'gamepad' ? 'STICK / D-PAD WALK   FULL TILT OR X RUN   A JUMP   B GHOST'
+        : 'A/D MOVE   SHIFT RUN   SPACE JUMP   G GHOST   C CAMERA   L LIGHT');
+    const a = this.milo;
+    this.info.setText(`${a.anim.toUpperCase()} ${a.step + 1}/${MILO_ANIMS[a.anim].frames.length}  ${(Math.abs(m.vx) / PX_PER_M).toFixed(1)} M/S${m.ground ? '' : '  AIR'}`);
     if (this.noteTime > 0) { this.noteTime -= dt; this.note.setAlpha(Math.min(1, this.noteTime)); }
     // Optional interaction test: the door is a walkable endpoint; don't fake a finished corridor.
     if (m.x > 960 && !this.reachedDoor) { this.reachedDoor = true; this.showNote('END OF ART LAB  /  NEXT: CORRIDOR KIT'); }

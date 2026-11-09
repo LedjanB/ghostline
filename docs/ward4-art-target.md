@@ -22,3 +22,10 @@ Approved:
 This is a **matching exercise**, not the final modular art pipeline. The room PNG has a bed, window, curtain and door baked in. The removal under where the reference Milo stood is temporarily hand-retouched and some floor texture is imperfect. World scrolling and Milo are genuinely dynamic; bed/curtain sprites are **not yet** separately animated. The next task is to repaint one clean reusable Bed 7 bed/cabinet set and one empty room shell to replace the plate, then recheck visual fidelity. Do not call this production-ready or copy it across eight worlds.
 
 Do not redesign the approved concept or alter the opening while this lab is being evaluated. No full-engine migration.
+
+## Movement V1 (9 Nov 2026, Claude Code)
+- `?wardlab=1` now uses the milo lab's proven movement model (`milolab-move.js` `MOVE`: coyote time, jump buffer, takeoff crouch, cut jump, fixed 120 Hz steps), **scaled by Milo's 1.5x size here** (`WARD_SCALE`, `WARD_MOVE`): walk 105 px/s, run 262 px/s, jump about 108 px. One walk or run cycle covers the same ground per step as in the milo lab, and the cycle speed follows the real ground speed, so the feet don't slide.
+- Frames: idle, walk_start, walk 8, run 6, stop, pivot (turning mid-walk), jump crouch/push, rise, apex, fall, land. All existing approved Milo frames; no new art, no deformation of a still.
+- Bed 7: solid sides, walkable top (jump onto the mattress, walk off the end). Pushing against the bed = standing, not walking in place.
+- Controls: keyboard (A/D or arrows, Shift run, Space/W jump, hold = higher, G ghost, C camera, L light); gamepad (stick or d-pad, full tilt or X run, A jump, B ghost); touch (left half drag, far = run, with a visible thumb ring; right half jump, hold = higher). The hint line follows the last used device. A debug line shows the anim, frame and m/s.
+- Limits: Milo is drawn at a non-integer 1.5x scale (uneven pixel sizes; a native-size sheet would fix it). The room is still one plate (see above). Gamepad is not covered by an automated test.
