@@ -69,6 +69,7 @@ jobs:
             Log what was DONE, actually CHECKED, BLOCKED and NEXT in
             docs/claude-task-report.md; distinguish test failures from successes.
             Do not git commit or push; the GitHub job handles that if checks pass.
+          model: "claude-sonnet-4-6"
           max_turns: "8"
           allowed_tools: "Read,Edit,Write,Glob,Grep,Bash(npm:*)"
 
