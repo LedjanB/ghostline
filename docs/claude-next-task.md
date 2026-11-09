@@ -14,3 +14,6 @@ This is an intentionally tiny, bounded task. This is NOT permission to develop t
 - Do NOT edit, regenerate, reset, or commit game code, images, source files, or workflow.
 - Do NOT access any tokens or environment secrets, do not print or log credentials.
 - Stop after the report. If authentication/quota fails, fail without retries. 
+
+## Retest note
+One-time retry after the owner updated the OAuth token in GitHub Actions secrets. Do not disclose credentials. This task remains report-only.
