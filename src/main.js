@@ -15,6 +15,7 @@ import { StoryScene } from './scenes/story.js';
 import { OpeningScene } from './scenes/opening.js';
 import { ArtLabScene } from './scenes/artlab.js';
 import { MiloLabScene } from './scenes/milolab.js';
+import { WardLabScene } from './scenes/wardlab.js';
 import { StatsScene } from './scenes/stats.js';
 import { UnlocksScene } from './scenes/unlocks.js';
 import { Save } from './save.js';
@@ -37,6 +38,7 @@ class BootScene extends Phaser.Scene {
     if (new URLSearchParams(location.search).get('artlab') === '1') { this.scene.start('artlab'); return; }
     // ?milolab=1: THE NEW MILO, animation prototype V1 (isolated preview, docs/milo-approved-art-brief.md)
     if (new URLSearchParams(location.search).get('milolab') === '1') { this.scene.start('milolab'); return; }
+    if (new URLSearchParams(location.search).get('wardlab') === '1') { this.scene.start('wardlab'); return; }
     const replay = new URLSearchParams(location.search).get('opening') === '1';
     this.scene.start(replay || !Save.get().storySeen ? 'opening' : 'menu');
   }
@@ -79,7 +81,7 @@ async function start() {
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     input: { activePointers: 3, gamepad: true },
     // draw order = list order: run, then HUD, then overlays on top
-    scene: [BootScene, StoryScene, OpeningScene, ArtLabScene, MiloLabScene, MenuScene, PlayScene, HudScene, BossScene, SpinScene, OverScene, PauseScene, MissionsScene, CharmsScene, SettingsScene, StatsScene, UnlocksScene],
+    scene: [BootScene, StoryScene, OpeningScene, ArtLabScene, MiloLabScene, WardLabScene, MenuScene, PlayScene, HudScene, BossScene, SpinScene, OverScene, PauseScene, MissionsScene, CharmsScene, SettingsScene, StatsScene, UnlocksScene],
   });
   window.__game = game;
   // playtest link: ?boss=matron (&act=2 or 3) opens that fight right away, then goes back to the menu
