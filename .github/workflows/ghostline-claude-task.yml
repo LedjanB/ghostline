@@ -69,9 +69,8 @@ jobs:
             Log what was DONE, actually CHECKED, BLOCKED and NEXT in
             docs/claude-task-report.md; distinguish test failures from successes.
             Do not git commit or push; the GitHub job handles that if checks pass.
-          claude_args: |
-            --max-turns 8
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm:*)"
+          max_turns: "8"
+          allowed_tools: "Read,Edit,Write,Glob,Grep,Bash(npm:*)"
 
       - name: Reject workflow modification and check diff
         shell: bash
