@@ -20,3 +20,6 @@ One-time retry after the owner updated the OAuth token in GitHub Actions secrets
 
 ## Authentication retest — 2026-11-09
 Owner requested one controlled retest after checking/updating the credential. No new gameplay work, and do not retry after this run fails.
+
+## Supported-model verification — 2026-11-09
+The previous run authenticated successfully but was configured with a retired model, returning 404. Verify the explicitly configured supported model using the same tiny report-only task. Do not touch gameplay, secrets or main. Stop if it fails.
