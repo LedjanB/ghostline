@@ -1,0 +1,103 @@
+name: Ghostline Claude bounded task
+
+# Intentionally NOT triggered by ordinary commits or by editing this workflow.
+# To request one run, push docs/claude-next-task.md with STATUS: RUN.
+on:
+  push:
+    branches:
+      - v6-runner
+    paths:
+      - docs/claude-next-task.md
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ghostline-claude-v6-runner
+  cancel-in-progress: false
+
+jobs:
+  claude-task:
+    if: github.repository == 'LedjanB/ghostline' && github.ref == 'refs/heads/v6-runner'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v6-runner
+          fetch-depth: 0
+
+      - name: Refuse missing task or other branches
+        shell: bash
+        run: |
+          test "$(git branch --show-current)" = "v6-runner"
+          test -f docs/claude-next-task.md
+          grep -qx 'STATUS: RUN' docs/claude-next-task.md
+
+      - name: Check Claude secret without printing its value
+        shell: bash
+        env:
+          CLAUDE_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -z "$CLAUDE_TOKEN" ]; then
+            echo "::error::Missing CLAUDE_CODE_OAUTH_TOKEN repository Actions secret"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install existing dependencies
+        run: npm ci
+
+      - name: Run one Claude Code task
+        uses: anthropics/claude-code-base-action@beta
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            You are working only in LedjanB/ghostline on branch v6-runner.
+            Read docs/ghostline-production-coordination.md, CLAUDE.md,
+            docs/owner-notes.md and docs/claude-next-task.md.
+            Complete ONE scoped task from docs/claude-next-task.md, then stop.
+            Never modify main, GitHub workflows, auth/config secrets, existing
+            save shape, gameplay/bosses or opening unless the task explicitly
+            names a safe change. Do not replace approved art with guesses.
+            Do not create subagents, buy credits, or retry after quota limits.
+            Prefer small diffs and conventional asset/sprite workflows.
+            Log what was DONE, actually CHECKED, BLOCKED and NEXT in
+            docs/claude-task-report.md; distinguish test failures from successes.
+            Do not git commit or push; the GitHub job handles that if checks pass.
+          claude_args: |
+            --max-turns 8
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm:*)"
+
+      - name: Reject workflow modification and check diff
+        shell: bash
+        run: |
+          if [ -n "$(git status --porcelain -- .github)" ]; then
+            echo "::error::Claude touched .github; refuse automated commit"
+            exit 1
+          fi
+          git diff --check
+
+      - name: Install browser for existing Playwright tests
+        run: npx playwright install --with-deps chromium
+
+      - name: Run existing test suite
+        run: npm test
+
+      - name: Commit only on successful checks, only to v6-runner
+        shell: bash
+        run: |
+          test "$(git branch --show-current)" = "v6-runner"
+          git add -A -- ':!.github'
+          if git diff --cached --quiet; then
+            echo "No file changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Claude bounded Ghostline task"
+          git push origin HEAD:refs/heads/v6-runner
