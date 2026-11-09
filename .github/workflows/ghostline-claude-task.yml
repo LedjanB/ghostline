@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: ghostline-claude-v6-runner
@@ -88,16 +89,33 @@ jobs:
       - name: Run existing test suite
         run: npm test
 
-      - name: Commit only on successful checks, only to v6-runner
+      # Publish successful changes to a review PR instead of directly changing v6-runner.
+      # A connected ChatGPT Work GitHub PR-event task can review the PR and, if
+      # approved, merge ONLY into v6-runner and dispatch the next scoped task.
+      - name: Open v6-runner review PR only after all tests pass
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           test "$(git branch --show-current)" = "v6-runner"
-          git add -A -- ':!.github'
+          git add -A -- ':!.github' ':!output.txt' ':!test-results' ':!playwright-report'
           if git diff --cached --quiet; then
-            echo "No file changes to commit."
+            echo "No file changes to review."
             exit 0
           fi
+          git diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Claude bounded Ghostline task"
-          git push origin HEAD:refs/heads/v6-runner
+          review_branch="review/ghostline-${GITHUB_RUN_ID}"
+          git checkout -b "$review_branch"
+          git commit -m "Claude bounded Ghostline task for review"
+          git push origin "HEAD:refs/heads/$review_branch"
+          gh pr create --repo "$GITHUB_REPOSITORY" --base v6-runner --head "$review_branch" \
+            --title "Ghostline Claude review: run ${GITHUB_RUN_ID}" \
+            --body "Automated bounded Claude task; ALL existing npm tests passed before this PR was opened.
+
+          Review changes against docs/ghostline-production-coordination.md and issue #1. Never merge to main.
+
+          CI source: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+          Independent ChatGPT review and v6-runner-only merge required. No automatic approval."
