@@ -78,8 +78,7 @@ jobs:
         run: |
           # The Claude action can return success despite error_max_turns.
           # Do not treat a green baseline test suite as task completion.
-          if [ -f output.txt ] && python3 -c 'import pathlib,re,sys; sys.exit(0 if re.search(r"\\\"subtype\\\"\\s*:\\s*\\\"error_(?:max_turns|during_execution)\\\"", pathlib.Path("output.txt").read_text(errors="replace")) else 1)'; then
-            echo "::error::Claude did not complete its task"
+          if [ -f output.txt ] && python3 -c 'import pathlib,re,sys; sys.exit(not re.search(r"""\"subtype\"\s*:\s*\"error_(?:max_turns|during_execution)\"""", pathlib.Path("output.txt").read_text(errors="replace")))'; then            echo "::error::Claude did not complete its task"
             exit 1
           fi
           if ! git diff --quiet -- docs/claude-task-report.md; then
