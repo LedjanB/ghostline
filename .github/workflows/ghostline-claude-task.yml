@@ -70,8 +70,28 @@ jobs:
             docs/claude-task-report.md; distinguish test failures from successes.
             Do not git commit or push; the GitHub job handles that if checks pass.
           model: "claude-sonnet-4-6"
-          max_turns: "8"
+          max_turns: "20"
           allowed_tools: "Read,Edit,Write,Glob,Grep,Bash(npm:*)"
+
+      - name: Reject incomplete Claude output and unrelated changes
+        shell: bash
+        run: |
+          # The Claude action can return success despite error_max_turns.
+          # Do not treat a green baseline test suite as task completion.
+          if [ -f output.txt ] && grep -Eq '"subtype"[[:space:]]*:[[:space:]]*"error_(max_turns|during_execution)"' output.txt; then
+            echo "::error::Claude did not complete its task"
+            exit 1
+          fi
+          if ! git diff --quiet -- docs/claude-task-report.md; then
+            echo "Claude updated the task report."
+          else
+            echo "::error::Claude did not update its task report"
+            exit 1
+          fi
+          if ! git diff --name-only -- . ':!docs/claude-task-report.md' ':!output.txt' | grep -q .; then
+            echo "::error::No substantive task files changed"
+            exit 1
+          fi
 
       - name: Reject workflow modification and check diff
         shell: bash
@@ -92,7 +112,7 @@ jobs:
         shell: bash
         run: |
           test "$(git branch --show-current)" = "v6-runner"
-          git add -A -- ':!.github'
+          git add -A -- ':!.github' ':!output.txt'
           if git diff --cached --quiet; then
             echo "No file changes to commit."
             exit 0
