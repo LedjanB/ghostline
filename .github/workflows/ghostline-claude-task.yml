@@ -52,6 +52,9 @@ jobs:
       - name: Install existing dependencies
         run: npm ci
 
+      - name: Install Playwright Chromium before Claude testing
+        run: npx playwright install --with-deps chromium
+
       - name: Run one Claude Code task
         uses: anthropics/claude-code-base-action@beta
         with:
@@ -70,8 +73,8 @@ jobs:
             docs/claude-task-report.md; distinguish test failures from successes.
             Do not git commit or push; the GitHub job handles that if checks pass.
           model: "claude-sonnet-4-6"
-          max_turns: "20"
-          allowed_tools: "Read,Edit,Write,Glob,Grep,Bash(npm:*)"
+          max_turns: "30"
+          allowed_tools: "Read,Edit,Write,Glob,Grep,Bash(npm:*),Bash(npx:*)"
 
       - name: Reject incomplete Claude output and unrelated changes
         shell: bash
@@ -101,9 +104,6 @@ jobs:
             exit 1
           fi
           git diff --check
-
-      - name: Install browser for existing Playwright tests
-        run: npx playwright install --with-deps chromium
 
       - name: Run existing test suite
         run: npm test
