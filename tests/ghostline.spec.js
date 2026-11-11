@@ -1237,7 +1237,7 @@ test('milo lab move: frames exist; keyboard walk, run, turn, jump, land; touch t
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => { const L = window.__milolab; return !L.move && L.milo.sprite.visible && L.roomObjs.every((o) => o.visible); });
   await page.keyboard.press('3');
-  expect(await page.evaluate(() => window.__milolab.milo.anim)).toBe('touch');
+  await page.waitForFunction(() => window.__milolab.milo.anim === 'touch');
   expect(await page.evaluate(() => localStorage.getItem('ghostline-save'))).toBe(before);
   expect(errors).toEqual([]);
 });
