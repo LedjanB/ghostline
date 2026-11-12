@@ -23,55 +23,9 @@ const MV = WARD_MOVE;
 const PX_PER_M = 27 * WARD_SCALE;
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
-const BED_FRONT_KEY = 'wardlab_bed_front_v1';
-// First real depth layer in the Phaser ward: cut the existing paint, not new art.
-// This preserves the approved colors/room exactly and leaves the baked plate in place.
-function makeBedForeground(scene) {
-  if (!scene.textures.exists(BED_FRONT_KEY)) {
-    const left = 191, top = 211, width = 258, height = 125;
-    const tex = scene.textures.createCanvas(BED_FRONT_KEY, width, height);
-    const ctx = tex.context;
-    ctx.drawImage(scene.textures.get('wardlab_plate').getSourceImage(), -left, -top);
-    ctx.globalCompositeOperation = 'destination-in';
-    ctx.fillStyle = '#fff';
-    ctx.strokeStyle = '#fff';
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.save();
-    ctx.translate(-left, -top);
-    // The sheet draped across the near side of Bed 7.
-    ctx.beginPath();
-    ctx.moveTo(270, 261);
-    ctx.quadraticCurveTo(310, 263, 331, 258);
-    ctx.lineTo(367, 259);
-    ctx.quadraticCurveTo(375, 289, 372, 312);
-    ctx.quadraticCurveTo(327, 323, 283, 316);
-    ctx.closePath();
-    ctx.fill();
-    // Metal footboard: alpha selection follows its posts and crossbars.
-    // The visible paint comes exclusively from the original room plate.
-    ctx.lineWidth = 8;
-    ctx.beginPath();
-    ctx.moveTo(376, 327);
-    ctx.lineTo(376, 238);
-    ctx.quadraticCurveTo(376, 230, 383, 230);
-    ctx.lineTo(431, 230);
-    ctx.quadraticCurveTo(439, 230, 439, 240);
-    ctx.lineTo(439, 327);
-    ctx.stroke();
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(379, 313);
-    ctx.lineTo(437, 313);
-    ctx.moveTo(406, 234);
-    ctx.lineTo(406, 312);
-    ctx.stroke();
-    ctx.restore();
-    ctx.globalCompositeOperation = 'source-over';
-    tex.refresh();
-  }
-  return scene.add.image(191, 211, BED_FRONT_KEY).setOrigin(0).setDepth(6);
-}
+// Bed 7 and cabinet are real transparent PNG assets extracted from the same room painting.
+// Until the empty-shell pass is approved, the untouched plate remains the visual baseline.
+// The depth order is explicit: cabinet/bed body (2) < Milo (4) < sheet/footboard (6).
 
 
 export class WardLabScene extends Phaser.Scene {
@@ -80,6 +34,9 @@ export class WardLabScene extends Phaser.Scene {
   preload() {
     this.load.image('wardlab_plate', 'assets/ward4-bed7/room-plate.png');
     this.load.image('wardlab_front', 'assets/ward4-bed7/near-pipes.png');
+    this.load.image('wardlab_bed_body', 'assets/ward4-bed7/bed-body.png');
+    this.load.image('wardlab_bed_front', 'assets/ward4-bed7/bed-front.png');
+    this.load.image('wardlab_cabinet', 'assets/ward4-bed7/cabinet.png');
     loadMilo(this); // the real approved character, not an image-generation substitute
   }
 
@@ -88,11 +45,13 @@ export class WardLabScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#0a1020');
     this.add.image(0, 0, 'wardlab_plate').setOrigin(0).setDepth(0);
     this.rainG = this.add.graphics().setDepth(1);
+    this.cabinet = this.add.image(121, 227, 'wardlab_cabinet').setOrigin(0).setDepth(2);
+    this.bedBody = this.add.image(192, 212, 'wardlab_bed_body').setOrigin(0).setDepth(2);
     this.floorShadow = this.add.ellipse(0, FLOOR + 1, 24, 5, 0x050a12, 0.44).setDepth(3);
     this.milo = new MiloActor(this, 513, FLOOR, { scale: WARD_SCALE });
     this.milo.sprite.setDepth(4);
     this.milo.setFacing(1);
-    this.bedFront = makeBedForeground(this);
+    this.bedFront = this.add.image(265, 226, 'wardlab_bed_front').setOrigin(0).setDepth(6);
     this.add.image(0, 0, 'wardlab_front').setOrigin(0).setScrollFactor(1.1).setDepth(9);
 
     // The native game action map handles keyboard/gamepad. Touch is a separate 2-thumb control.

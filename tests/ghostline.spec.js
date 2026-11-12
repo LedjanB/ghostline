@@ -1283,27 +1283,50 @@ test('milo lab: ?milolab=1 opens alone; raster frames; four sequences play to th
   expect(errors).toEqual([]);
 });
 
-test('ward lab: existing Bed 7 art has a transparent foreground sprite above Milo', async ({ page }) => {
+
+test('ward lab: authentic Bed 7 and cabinet PNG layers render in the expected depth order', async ({ page }) => {
   const errors = [];
-  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('pageerror', e => errors.push(e.message));
   await page.goto('/?wardlab=1');
-  await page.waitForFunction(() => window.__game?.scene?.getScene('wardlab')?.bedFront?.texture);
+  await page.waitForFunction(() => {
+    const s = window.__game?.scene?.getScene('wardlab');
+    return s?.bedFront?.texture && s?.bedBody?.texture && s?.cabinet?.texture;
+  });
   const r = await page.evaluate(() => {
-    const s = window.__game.scene.getScene('wardlab'), front = s.bedFront;
-    const img = front.texture.getSourceImage(), ctx = img.getContext('2d');
+    const s = window.__game.scene.getScene('wardlab');
+    const alpha = (sprite, x, y) => {
+      const img = sprite.texture.getSourceImage();
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width; canvas.height = img.height;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0);
+      return ctx.getImageData(x, y, 1, 1).data[3];
+    };
     return {
       active: s.scene.isActive(),
-      depth: front.depth, miloDepth: s.milo.sprite.depth,
-      position: [front.x, front.y], size: [img.width, img.height],
-      clear: ctx.getImageData(5, 5, 1, 1).data[3] === 0,
-      rail: ctx.getImageData(439 - 191, 249 - 211, 1, 1).data[3] > 0,
+      layers: [s.cabinet.depth, s.bedBody.depth, s.milo.sprite.depth, s.bedFront.depth],
+      front: { at: [s.bedFront.x, s.bedFront.y],
+        size: [s.bedFront.width, s.bedFront.height],
+        corner: alpha(s.bedFront, 0, 0), rail: alpha(s.bedFront, 439 - 265, 249 - 226) },
+      body: { at: [s.bedBody.x, s.bedBody.y], size: [s.bedBody.width, s.bedBody.height],
+        corner: alpha(s.bedBody, 0, 0), paint: alpha(s.bedBody, 230 - 192, 245 - 212) },
+      cabinet: { at: [s.cabinet.x, s.cabinet.y], size: [s.cabinet.width, s.cabinet.height],
+        corner: alpha(s.cabinet, 0, 0), paint: alpha(s.cabinet, 168 - 121, 270 - 227) },
     };
   });
   expect(r.active).toBe(true);
-  expect(r.depth).toBeGreaterThan(r.miloDepth);
-  expect(r.position).toEqual([191, 211]);
-  expect(r.size).toEqual([258, 125]);
-  expect(r.clear).toBe(true);
-  expect(r.rail).toBe(true);
+  expect(r.layers).toEqual([2, 2, 4, 6]);
+  expect(r.front.at).toEqual([265, 226]);
+  expect(r.front.size).toEqual([182, 108]);
+  expect(r.front.corner).toBe(0);
+  expect(r.front.rail).toBeGreaterThan(0);
+  expect(r.body.at).toEqual([192, 212]);
+  expect(r.body.size).toEqual([183, 120]);
+  expect(r.body.corner).toBe(0);
+  expect(r.body.paint).toBeGreaterThan(0);
+  expect(r.cabinet.at).toEqual([121, 227]);
+  expect(r.cabinet.size).toEqual([89, 105]);
+  expect(r.cabinet.corner).toBe(0);
+  expect(r.cabinet.paint).toBeGreaterThan(0);
   expect(errors).toEqual([]);
 });

@@ -34,3 +34,10 @@ Do not redesign the approved concept or alter the opening while this lab is bein
 - The real Phaser `?wardlab=1` now extracts painted front-sheet/footboard pixels directly from `room-plate.png` into a transparent texture at scene creation, at world position (191,211), and draws it above the actual Milo sprite.
 - No new generated art, no network dependency, no alteration of Milo, the approved colors, lighting, main opening, bosses, runner or saves.
 - This is **not** a fully clean modular room. The bed/cabinet are still baked in the backplate. The extracted selection needs an actual visual/device review for occlusion quality before a clean-room/bed asset pass.
+
+## Actual extracted PNG layers (12 Nov 2026, provisional)
+- `assets/ward4-bed7/bed-body.png` (183×120 at world 192,212): background depth 2, taken directly from the existing Ward 4 room image.
+- `assets/ward4-bed7/bed-front.png` (182×108 at world 265,226): front sheet and metal footboard at depth 6, above Milo at depth 4; the bed's painted rail can occlude his sprite.
+- `assets/ward4-bed7/cabinet.png` (89×105 at world 121,227): bedside cabinet at background depth 2.
+- All three are real transparent raster PNGs with colors sampled from the existing `room-plate.png`; no resynthesis or new Milo design. The Phaser Ward Lab loads the files normally, with no in-browser masking algorithm.
+- **Not complete:** the underlying plate still contains the original painted bed/cabinet. The new layers are individually addressable, but moving them will expose duplicates. Do not present as a clean modular room. Next: carefully retouch the empty shell, then validate native-resolution fidelity and playtesting before activating repositioning or reuse.
