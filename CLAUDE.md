@@ -10,7 +10,9 @@ Game dev skills in `.claude/skills/` (start with `router`); engine skills `phase
 ## Saving tokens
 - Read only the files the task names; use Grep to find a method before reading a file.
 - Screenshots and AI testers only when asked. No subagents unless asked.
-- Run the tests for what changed (`npx playwright test -g "<name>"`); the full suite and bots once at the end.
+- **Testing budget (12 Nov 2026):** for isolated asset, Ward Lab or visual-only tasks, run the single relevant focused Playwright check **once** after the change and capture the **minimum real Phaser screenshots** needed to judge it. A second focused run is allowed only if a relevant failure is fixed. Do not repeatedly rerun passing tests, loop flaky tests for statistics, or launch the full suite/bots for an art-only change. For shared gameplay/core logic, run relevant checks then one full suite at the end. Bots only if runner/boss logic changes.
+- Avoid spilling long test logs into Claude context: redirect output to a log file, inspect the final summary and specific failure excerpts only. A known unrelated failure must be reported as **existing/unrelated**, not repeatedly debugged or silently declared green.
+- Keep Claude tasks bounded to one tangible visual/gameplay improvement, not hours of test infrastructure. Preserve a succinct DONE / CHECKED / BLOCKED / NEXT report and stop.
 
 ## Files
 - `src/main.js` boot. `src/data.js` sizes (W, H, FLOOR, CEIL, PLAYER_X). `src/input.js` action map. `src/save.js` versioned save. `src/audio.js` synth + SFX.
