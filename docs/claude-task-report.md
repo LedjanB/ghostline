@@ -1,35 +1,51 @@
-# Claude Code task report: Opening prelude on the approved concepts (12 Nov 2026)
+# Claude Code task report: Opening V4, a directed cinematic (12 Nov 2026)
 
-Branch `v6-runner` only, `main` untouched. Review route: **`?opening=1&prelude=1`**. Production `?opening=1` and first launch are unchanged.
+Task: `docs/claude-opening-v4-directed-cinematic.md`. Branch `v6-runner` only, `main` untouched.
+Review route: **`?opening=1&prelude=1`**. Production `?opening=1` and first launch are unchanged.
 
 ## DONE
-- **Saved the two approved concepts** to `assets/reference/`: `Ghostline_St_Mercy_Exterior_Concept_01.png` and `Ghostline_Ward4_Corridor_Concept_01.png`. Byte-identical to the owner's files, own commit `b588f31`.
-- **The prelude is now built on them.** Both are 640x360, the game's size, so they are shown 1:1 with a fixed camera: compositions untouched. Copies serve as `assets/opening-prelude/st-mercy-exterior.png` and `ward4-corridor.png`.
-- **The Python-painted exterior/corridor/mist/tube layers are gone.** `scripts/prelude-art.py` now only makes the small V2 room props (wall clock, soft glow).
-- **Animation, restrained, all in light and weather (never the camera):**
-  - **Exterior, 5.4 s:**
-    - fades up from black;
-    - live rain in two depths over the painted rain;
-    - the warm reflections of the porch and the ambulance in the wet ground ripple (the concept's own pixels, nudged whole pixels);
-    - the lantern by the sign breathes, the porch light hums, two ward windows glow faintly.
-  - **A dip to black,** then the **corridor, 3.8 s:**
-    - the overhead tube is dying; when it drops out, its stripe on the wet floor fades with it, with soft edges;
-    - the far exit light pulses; dust drifts in the tube's light.
-  - **Fade to black** into the **Bed 7 V2 room**, unchanged: approved room plate, approved Milo at 1.5x, 3:32 to 3:33, the power cut, the separation, the landing by the window.
-- Same sound as before: storm outside, muffled rain and vent inside. Not playable: gate, then a tap/key skips after 1 s. No save writes.
+One continuous 41 s cut. The art is the approved images and approved Milo only; nothing new was painted. The action comes from small strips cut from that art (`scripts/opening-v4-layers.py`, `assets/opening-v4/`). Cameras are fixed on whole pixels (zoom 1, or exactly 2 for inserts).
+
+| time | shot | what happens | sound |
+|---|---|---|---|
+| 0.0 | St. Mercy, wide | fades up in the storm | heavy rain |
+| 1.2 | | **someone crosses behind the lit entrance glass** (a soft shadow made from the concept's own lit pixels) | |
+| 3.3 | | **a shadow passes in the warmest ward window** | |
+| 5.4 | hard cut: corridor | | rain drops to muffled, the vent takes over |
+| 5.9 | | **someone crosses behind the amber door glass** | |
+| 8.0 | | **their light goes out**; its warm reflection leaves the wet floor; the overhead tube struggles once | a latch |
+| 9.6 | | | **a heart monitor beep, before we see it** |
+| 10.2 | hard cut: Bed 7, wide (approved plate) | 3:32; rain on the window; the ECG sweeps | the beat carries over the cut |
+| 12.6 | close (2x) on Milo | **asleep, breathing** (chest and arm rise: the approved "lie" frame, pixels moved 1 px, no redraw); **his fingers twitch** | a whisper of sheet |
+| 16.8 | close (2x) on the wall clock + monitor | 3:32 ... **3:33, and on that frame the power drops.** The clock stays lit at 3:33, frozen. | flip + power fail; **the vent dies, the beat stops: silence** |
+| 19.1 | wide, dark | only lamp, window, rain; the monitor finds its battery | chirp, **then his heartbeat returns** |
+| 21.6 | | **his spirit separates**: the approved poses and timing, out of the body, sits up, stands, drifts over the footboard. Feet on the floor at the foot of Bed 7, so he and his body share the frame. | |
+| 26.8 | | he surfaces and looks around (approved `op_wake`) | |
+| 30.7 | close (2x) insert | **he looks at his hands; they shake** (approved `op_realize`) | his breath |
+| 33.6 | match cut wide, on his turn | **he turns to the bed: his own body, still breathing. Shock. Hold.** | the monitor beat |
+| 37.4 to 39.6 | | slow fade (isolated demo end; no card, no invented dialogue) | |
+
+Code: `src/scenes/prelude.js` (exterior + corridor) and `src/scenes/opening-v2.js` (Bed 7 V4, same scene key). The sound bed is handed across the room cut, and Bed 7's assets preload in the prelude so that cut is a straight cut. `sw.js` cache 38.
 
 ## CHECKED
-- **Video:** `shots/opening-v3/opening-v3.mp4` is 32.9 s at an exact 30 fps. The real game is stepped frame by frame (`game.step`, 1/30 s) and screenshotted, so there are no capture hitches. It runs from the gate press to the end of the review cut. No page errors.
-- **Stills** from the same run, inspected: `1-exterior`, `2-corridor`, `3-corridor-tube-out`, `4-bed7-332`, `5-separation`, `6-landed`.
-- **One focused test, run once: 1 passed** (`npx playwright test -g "opening V2 review"`). It checks:
-  - exterior and corridor are the concept textures at 640x360, camera zoom 1 at scroll 0,0;
-  - the hand-off to Bed 7 on the approved plate with the approved sleeping Milo at 1.5x, clock 3:32;
-  - 3:33, the separation, the landing at (548, 335);
-  - save untouched; `?opening=1` still the old opening; no page errors.
-- Not run, per the rules: full suite, bots.
+- **Video:** `shots/opening-v4/opening-v4.mp4`, 41.1 s, 1,234 frames at an exact 30 fps. The real game is stepped 1/30 s per frame and screenshotted; no page errors.
+- **Pace check:** I reviewed the whole run as a 1.5 s contact sheet and tightened one soft spot, about 5 s of small acting in a wide after the landing (the hand-look now starts 1.4 s sooner).
+- **Action stills** in `shots/opening-v4/`:
+  - `1-someone-at-the-entrance`, `2-corridor-door-shadow`, `3-asleep-breathing-twitch`, `4-333-power-drops`
+  - `5-separation`, `6-his-hands`, `7-his-living-body`
+- **One focused test, run once: 1 passed** (`npx playwright test -g "opening V4 review"`). It checks:
+  - exterior concept 1:1 with a fixed camera, and the entrance figure plays;
+  - the corridor door's light-out frame;
+  - the cut to Bed 7 with the approved plate and the sleeping Milo at 1.5x, 3:32;
+  - breathing; 3:33 stops the heartbeat, then the battery brings it back;
+  - landing at (488, 335), the realization, the end;
+  - save untouched; `?opening=1` is still the old opening; no errors.
+- Not run, per the brief: full suite, bots.
 
-## BLOCKED
-Nothing.
+## BLOCKED / honest limits
+- The figures behind the glass are soft shadows, not characters. That is how back-lit frosted glass reads, and it avoided drawing new people.
+- The shock frames are the approved realization acting, which faces more toward the camera than the bed. The relationship reads through staging (him at the foot of the bed, the body breathing in the same frame), not his eyeline.
+- Sound uses only the existing `opening-audio.js` synth. There is no traffic bed; it reuses rain, vent, latch, beep, breath and rise.
 
 ## NEXT
-Owner / ChatGPT review of `opening-v3.mp4`. Then approved keyframes for the closer Bed 7 beats (Milo's wristband / breath, his fear at the separation), to integrate the same way.
+Owner review with sound on. If it passes the gate ("a living boy, something impossible at 3:33, he is afraid"), extend the same scene: he touches his body, THE STRETCH's shadow, Boo's rescue, RUN.

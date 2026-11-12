@@ -1,10 +1,10 @@
-// Opening review cut (prelude V3 on the approved concepts + Bed 7 V2), captured from the real Phaser game at a fixed 30 fps.
-// node scripts/prelude-shots.mjs [outDir]  ->  shots/opening-v3/
+// Opening V4 review cut (directed: St. Mercy, the corridor, Bed 7, 3:33, the separation), captured from the real Phaser game at a fixed 30 fps.
+// node scripts/prelude-shots.mjs [outDir]  ->  shots/opening-v4/
 // Phaser's own requestAnimationFrame loop is paused and the game is stepped by exactly 1/30 s per frame
 // (game.step, the same call the loop makes), then each frame is screenshotted. So the video's cadence is exact:
 // no dropped or repeated frames from screen recording, and what it shows is what the game draws.
-//   opening-v3.mp4    gate press -> exterior -> corridor -> Bed 7 -> separation -> landing (30 fps, H.264)
-//   1-exterior.png 2-corridor.png 3-corridor-tube-out.png 4-bed7-332.png 5-separation.png 6-landed.png
+//   opening-v4.mp4    gate press -> exterior -> corridor -> Bed 7 -> 3:33 -> separation -> his body (30 fps, H.264)
+//   seven stills, one per action: someone at the entrance ... his living body
 import { chromium } from '@playwright/test';
 import http from 'node:http';
 import { readFile, mkdir, rm, copyFile } from 'node:fs/promises';
@@ -13,7 +13,7 @@ import { extname, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const OUT = process.argv[2] || join(ROOT, 'shots', 'opening-v3');
+const OUT = process.argv[2] || join(ROOT, 'shots', 'opening-v4');
 const FR = join(OUT, 'frames-tmp');
 await rm(FR, { recursive: true, force: true });
 await mkdir(FR, { recursive: true });
@@ -37,23 +37,24 @@ await page.evaluate(() => {
   window.__step = () => { t += 1000 / 30; g.step(t, 1000 / 30); };
   window.__state = () => {
     const p = window.__prelude, v = window.__openingv2;
-    if (p && g.scene.isActive('prelude')) return { s: p.shot, k: p.shotT, tube: p.tube };
-    if (v && g.scene.isActive('openingv2')) return { s: 'room', k: v.t, phase: v.phase, rise: v.rise, landed: v.landed, clock: v.clockState };
+    if (p && g.scene.isActive('prelude')) return { s: p.shot, k: p.t };
+    if (v && g.scene.isActive('openingv2')) return { s: 'room', k: v.t, phase: v.phase, rise: v.rise, landed: v.landed, clock: v.clockState, shot: v.shot };
     return { s: 'between', k: 0, active: g.scene.getScenes(true).map((x) => x.scene.key) };
   };
 });
 await page.keyboard.press('Enter');
-const want = [ // still name, when
-  ['1-exterior', (s) => s.s === 'exterior' && s.k >= 3.0],
-  ['2-corridor', (s) => s.s === 'corridor' && s.k >= 0.8 && s.tube > 0.97],
-  ['3-corridor-tube-out', (s) => s.s === 'corridor' && s.tube < 0.4],
-  ['4-bed7-332', (s) => s.s === 'room' && s.k >= 2.8],
+const want = [ // still name, when: each one an action, not a location
+  ['1-someone-at-the-entrance', (s) => s.s === 'exterior' && s.k >= 2.15],
+  ['2-corridor-door-shadow', (s) => s.s === 'corridor' && s.k >= 6.85],
+  ['3-asleep-breathing-twitch', (s) => s.s === 'room' && s.k >= 4.5],
+  ['4-333-power-drops', (s) => s.s === 'room' && s.k >= 8.35],
   ['5-separation', (s) => s.s === 'room' && s.rise >= 3.15],
-  ['6-landed', (s) => s.s === 'room' && s.landed && s.k >= 16.0],
+  ['6-his-hands', (s) => s.s === 'room' && s.k >= 21.8],
+  ['7-his-living-body', (s) => s.s === 'room' && s.k >= 26.2],
 ];
 let n = 0, endAt = -1;
 const log = [];
-for (; n < 30 * 40; n++) {
+for (; n < 30 * 50; n++) {
   await page.evaluate(() => window.__step());
   const st = await page.evaluate(() => window.__state());
   const file = join(FR, `f${String(n).padStart(5, '0')}.png`);
@@ -63,7 +64,7 @@ for (; n < 30 * 40; n++) {
   if (endAt > 0 && n >= endAt) break;
 }
 execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '30', '-i', join(FR, 'f%05d.png'), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18',
-  '-pix_fmt', 'yuv420p', '-movflags', '+faststart', join(OUT, 'opening-v3.mp4')]);
+  '-pix_fmt', 'yuv420p', '-movflags', '+faststart', join(OUT, 'opening-v4.mp4')]);
 await rm(FR, { recursive: true, force: true });
 console.log(JSON.stringify({ last: await page.evaluate(() => window.__state()), out: OUT, frames: n + 1, seconds: +((n + 1) / 30).toFixed(1), stills: log, missing: want.map((w) => w[0]), errors }));
 await browser.close();

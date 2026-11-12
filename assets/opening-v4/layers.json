@@ -1,0 +1,32 @@
+{
+ "ext-entrance": {
+  "x": 428,
+  "y": 246,
+  "w": 38,
+  "h": 50,
+  "frames": 20
+ },
+ "ext-ward": {
+  "x": 588,
+  "y": 113,
+  "w": 26,
+  "h": 33,
+  "frames": 14
+ },
+ "corr-door": {
+  "x": 578,
+  "y": 80,
+  "w": 50,
+  "h": 128,
+  "frames": 21
+ },
+ "milo-lie-v4": {
+  "frameWidth": 128,
+  "frameHeight": 84,
+  "frames": [
+   "rest",
+   "inhale",
+   "twitch"
+  ]
+ }
+}
