@@ -15,6 +15,7 @@ import { StoryScene } from './scenes/story.js';
 import { OpeningScene } from './scenes/opening.js';
 import { PreludeScene } from './scenes/prelude.js';
 import { OpeningV2Scene } from './scenes/opening-v2.js';
+import { EscapeScene } from './scenes/escape.js';
 import { ArtLabScene } from './scenes/artlab.js';
 import { MiloLabScene } from './scenes/milolab.js';
 import { WardLabScene } from './scenes/wardlab.js';
@@ -38,6 +39,8 @@ class BootScene extends Phaser.Scene {
     // first launch: the playable opening (THE WRONG SIDE OF THE BED); ?opening=1 replays it
     // ?artlab=1: the Visual Art Benchmark (isolated preview, docs/visual-target-v1.md)
     if (new URLSearchParams(location.search).get('artlab') === '1') { this.scene.start('artlab'); return; }
+    // ?escape=1: the RUN -> control escape proof (isolated preview, src/scenes/escape.js)
+    if (new URLSearchParams(location.search).get('escape') === '1') { this.scene.start('escape'); return; }
     // ?milolab=1: THE NEW MILO, animation prototype V1 (isolated preview, docs/milo-approved-art-brief.md)
     if (new URLSearchParams(location.search).get('milolab') === '1') { this.scene.start('milolab'); return; }
     if (new URLSearchParams(location.search).get('wardlab') === '1') { this.scene.start('wardlab'); return; }
@@ -85,7 +88,7 @@ async function start() {
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     input: { activePointers: 3, gamepad: true },
     // draw order = list order: run, then HUD, then overlays on top
-    scene: [BootScene, StoryScene, PreludeScene, OpeningV2Scene, OpeningScene, ArtLabScene, MiloLabScene, WardLabScene, MenuScene, PlayScene, HudScene, BossScene, SpinScene, OverScene, PauseScene, MissionsScene, CharmsScene, SettingsScene, StatsScene, UnlocksScene],
+    scene: [BootScene, StoryScene, PreludeScene, OpeningV2Scene, EscapeScene, OpeningScene, ArtLabScene, MiloLabScene, WardLabScene, MenuScene, PlayScene, HudScene, BossScene, SpinScene, OverScene, PauseScene, MissionsScene, CharmsScene, SettingsScene, StatsScene, UnlocksScene],
   });
   window.__game = game;
   // playtest link: ?boss=matron (&act=2 or 3) opens that fight right away, then goes back to the menu

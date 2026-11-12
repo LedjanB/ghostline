@@ -1444,3 +1444,42 @@ test('opening V2 review: prelude on the approved concepts (fixed camera) then Be
   expect(await page.evaluate(() => [window.__game.scene.isActive('prelude'), window.__game.scene.isActive('openingv2')])).toEqual([false, false]);
   expect(errors).toEqual([]);
 });
+
+test('escape proof (?escape=1): no control before RUN, control on RUN, caught -> instant reset, Bed 8 then the door', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto('/?escape=1');
+  await page.waitForFunction(() => window.__escape && window.__escape.milo?.sprite?.texture?.key === 'milo2_ghost');
+  const before = await page.evaluate(() => localStorage.getItem('ghostline-save'));
+  const st = () => page.evaluate(() => { const e = window.__escape; return { phase: e.phase, x: e.m.x, y: e.m.y, tries: e.tries, caught: e.caught, done: e.sweepDone, leaf: e.leaf.scaleX, ghost: e.ghost, scale: e.milo.scale }; });
+  // before RUN: the threat plays, input does nothing (non-playable until Boo's RUN)
+  expect((await st()).phase).toBe('threat');
+  await page.keyboard.down('d'); await page.waitForTimeout(300); await page.keyboard.up('d');
+  const pre = await st();
+  expect(pre.phase).toBe('threat');
+  expect(pre.x).toBe(488);
+  expect([pre.ghost, pre.scale]).toEqual([true, 1.5]);
+  // RUN: the door opens and he is ours on that frame
+  await page.waitForFunction(() => window.__escape.phase === 'run', null, { timeout: 5000 });
+  // stall: the shadow takes him, and play resumes at RUN with no menu
+  await page.waitForFunction(() => window.__escape.caught > 0, null, { timeout: 8000 });
+  await page.waitForFunction(() => window.__escape.tries === 1 && window.__escape.caught === 0, null, { timeout: 5000 });
+  const reset = await st();
+  expect([reset.phase, reset.x, reset.leaf < 0.5]).toEqual(['run', 488, true]);
+  // run, get up on Bed 8, let the arm pass, then through the door
+  await page.keyboard.down('d');
+  await page.waitForFunction(() => window.__escape.m.x > 800, null, { timeout: 8000 });
+  await page.keyboard.down('Space');
+  await page.waitForFunction(() => window.__escape.m.x > 850 && window.__escape.m.y < 270, null, { timeout: 4000 });
+  await page.keyboard.up('d'); await page.keyboard.up('Space');
+  await page.waitForFunction(() => window.__escape.sweepDone === true, null, { timeout: 6000 });
+  expect((await st()).tries).toBe(1);
+  await page.keyboard.down('d');
+  await page.waitForFunction(() => window.__escape.phase === 'escaped', null, { timeout: 8000 });
+  await page.keyboard.up('d');
+  const end = await st();
+  expect(end.tries).toBe(1);
+  expect(end.x).toBeGreaterThan(958);
+  expect(await page.evaluate(() => localStorage.getItem('ghostline-save'))).toBe(before);
+  expect(errors).toEqual([]);
+});

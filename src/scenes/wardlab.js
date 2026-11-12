@@ -37,7 +37,7 @@ const BED_BODY_CAB = 15;
 
 
 export class WardLabScene extends Phaser.Scene {
-  constructor() { super('wardlab'); }
+  constructor(key = 'wardlab') { super(key); } // EscapeScene (?escape=1) reuses this scene's room, input and movement
 
   preload() {
     this.load.image('wardlab_shell', 'assets/ward4-bed7/room-shell-v1.png');
@@ -190,18 +190,20 @@ export class WardLabScene extends Phaser.Scene {
     }
     const prevX = m.x, prevY = m.y;
     let nx = clamp(m.x + m.vx * dt, 30, WORLD_W - 30);
-    // the bed is a real solid obstacle below its top, not just background decoration
+    // beds are real solid obstacles below their tops, not just background decoration (Bed 7 here; more in ?escape=1)
+    const solids = this.solids || [BED];
     m.blocked = false;
-    if (m.y > BED.top + 0.5) {
-      if (prevX + hw <= BED.left && nx + hw >= BED.left && inp.dir > 0) { nx = BED.left - hw; m.vx = 0; m.blocked = true; }
-      if (prevX - hw >= BED.right && nx - hw <= BED.right && inp.dir < 0) { nx = BED.right + hw; m.vx = 0; m.blocked = true; }
+    for (const b of solids) {
+      if (m.y <= b.top + 0.5) continue;
+      if (prevX + hw <= b.left && nx + hw >= b.left && inp.dir > 0) { nx = b.left - hw; m.vx = 0; m.blocked = true; }
+      if (prevX - hw >= b.right && nx - hw <= b.right && inp.dir < 0) { nx = b.right + hw; m.vx = 0; m.blocked = true; }
     }
     m.x = nx;
     m.y += m.vy * dt;
-    const overBed = m.x + hw > BED.left && m.x - hw < BED.right;
-    const floor = overBed && prevY <= BED.top + 0.01 ? BED.top : FLOOR;
+    const on = solids.find((b) => m.x + hw > b.left && m.x - hw < b.right);
+    const floor = on && prevY <= on.top + 0.01 ? on.top : FLOOR;
     if (m.ground) {
-      const support = m.y >= FLOOR - 0.01 || (overBed && Math.abs(m.y - BED.top) < 0.5);
+      const support = m.y >= FLOOR - 0.01 || (on && Math.abs(m.y - on.top) < 0.5);
       if (!support) { m.ground = false; m.vy = 0; } // walked off the bed (coyote time still allows a jump)
     } else if (m.vy >= 0 && m.y >= floor) {
       m.y = floor; m.vy = 0; m.ground = true; m.cutDone = true;
