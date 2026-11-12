@@ -1406,41 +1406,39 @@ test('ward lab: Bed 7 cabinet is a separate prop over room-shell-v1 (K hides it,
   expect(errors).toEqual([]);
 });
 
-test('opening V4 review: directed cut: someone at St. Mercy, a light out in the corridor, Bed 7 alive, 3:33, the separation, his body', async ({ page }) => {
+test('opening V2 review: prelude on the approved concepts (fixed camera) then Bed 7 on the approved Ward 4 art to the separation; ?opening=1 unchanged', async ({ page }) => {
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto('/?opening=1&prelude=1');
   await page.waitForFunction(() => window.__prelude && window.__game.scene.isActive('prelude'));
   const before = await page.evaluate(() => localStorage.getItem('ghostline-save'));
   await page.keyboard.press('Enter');
-  // exterior: the approved concept 1:1, fixed camera; someone crosses behind the lit entrance
-  await page.waitForFunction(() => window.__prelude?.entrance.visible === true, null, { timeout: 20000 });
-  expect(await page.evaluate(() => { const s = window.__prelude, c = s.cameras.main; return [s.shot, s.ext.texture.key, s.ext.width, s.ext.height, c.zoom, c.scrollX, c.scrollY]; }))
-    .toEqual(['exterior', 'pre_ext', 640, 360, 1, 0, 0]);
-  // corridor: the approved concept; the amber door's light goes out (its last strip frame)
-  await page.waitForFunction(() => window.__prelude?.shot === 'corridor' && window.__prelude.door.frame.name === 20, null, { timeout: 20000 });
-  expect(await page.evaluate(() => [window.__prelude.corr.texture.key, window.__prelude.ext.visible])).toEqual(['pre_corr', false]);
-  // straight cut into Bed 7: approved plate + blanket layer, the approved sleeping Milo (breathing sheet) at 1.5x, 3:32
+  // the approved concepts, 1:1 at 640x360, fixed camera (zoom 1, scroll 0,0): their compositions untouched
+  const shotOf = async (shot) => {
+    await page.waitForFunction((s) => window.__prelude?.shot === s, shot, { timeout: 20000 });
+    return page.evaluate(() => {
+      const s = window.__prelude, c = s.cameras.main;
+      return [s.ext.visible && s.ext.texture.key, s.corr.visible && s.corr.texture.key, s.ext.width, s.ext.height, s.corr.width, s.corr.height, c.zoom, c.scrollX, c.scrollY];
+    });
+  };
+  expect(await shotOf('exterior')).toEqual(['pre_ext', false, 640, 360, 640, 360, 1, 0, 0]);
+  expect(await shotOf('corridor')).toEqual([false, 'pre_corr', 640, 360, 640, 360, 1, 0, 0]);
+  // hand-off: Bed 7 on the approved room plate, the approved sleeping Milo at Ward 4 size, 3:32
   await page.waitForFunction(() => window.__openingv2 && window.__game.scene.isActive('openingv2'), null, { timeout: 20000 });
   const room = await page.evaluate(() => {
-    const v = window.__openingv2, keys = v.children.list.filter((o) => o.texture).map((o) => o.texture.key);
+    const v = window.__openingv2;
+    const keys = v.children.list.filter((o) => o.texture).map((o) => o.texture.key);
     return { prelude: window.__game.scene.isActive('prelude'), old: window.__game.scene.isActive('opening'), plate: keys.includes('v2_room'), front: keys.includes('v2_bed_front'),
-      body: [v.body.texture.key, v.body.scaleX, v.body.x, v.body.y], clock: v.clockState, carried: !!v.sndIn || !window.AudioContext };
+      body: [v.body.texture.key, v.body.scaleX, v.body.x, v.body.y], clock: v.clockState, cam: v.cameras.main.scrollX };
   });
-  expect(room).toEqual({ prelude: false, old: false, plate: true, front: true, body: ['v4_lie', 1.5, 216, 176], clock: '32', carried: room.carried });
-  // he breathes (rest <-> inhale frames) before anything happens
-  await page.waitForFunction(() => window.__openingv2?.body.frame.name === 1, null, { timeout: 10000 });
-  // 3:33: the clock turns over and the heartbeat stops with the power ... then comes back on battery
+  expect(room).toEqual({ prelude: false, old: false, plate: true, front: true, body: ['milo2_sleep', 1.5, 216, 176], clock: '32', cam: 80 });
+  // the beats: 3:33, the power cut, the separation starts, he lands beside the bed
   await page.waitForFunction(() => window.__openingv2?.clockState === '33', null, { timeout: 20000 });
-  expect(await page.evaluate(() => window.__openingv2.beating)).toBe(false);
-  await page.waitForFunction(() => window.__openingv2?.beating === true && window.__openingv2.battery === true, null, { timeout: 10000 });
-  // the separation, the landing at the foot of the bed, then he looks at his hands and turns to his body
+  await page.waitForFunction(() => window.__openingv2?.rise >= 0, null, { timeout: 20000 });
   await page.waitForFunction(() => window.__openingv2?.landed === true, null, { timeout: 20000 });
-  expect(await page.evaluate(() => [window.__openingv2.milo.scale, window.__openingv2.milo.x, window.__openingv2.milo.footY])).toEqual([1.5, 488, 335]);
-  await page.waitForFunction(() => window.__openingv2?.acting === 'realize', null, { timeout: 20000 });
-  await page.waitForFunction(() => window.__openingv2?.phase === 'end', null, { timeout: 20000 });
+  expect(await page.evaluate(() => [window.__openingv2.milo.scale, window.__openingv2.milo.x, window.__openingv2.milo.footY])).toEqual([1.5, 548, 335]);
   expect(await page.evaluate(() => localStorage.getItem('ghostline-save'))).toBe(before);
-  // production route untouched: ?opening=1 is the old opening, no prelude, no V4
+  // production route untouched: ?opening=1 is the old opening, no prelude, no V2
   await page.goto('/?opening=1');
   await page.waitForFunction(() => window.__opening && window.__game.scene.isActive('opening'));
   expect(await page.evaluate(() => [window.__game.scene.isActive('prelude'), window.__game.scene.isActive('openingv2')])).toEqual([false, false]);
