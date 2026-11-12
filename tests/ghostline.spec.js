@@ -1406,22 +1406,23 @@ test('ward lab: Bed 7 cabinet is a separate prop over room-shell-v1 (K hides it,
   expect(errors).toEqual([]);
 });
 
-test('opening V2 review: prelude cuts (static framings) then Bed 7 on the approved Ward 4 art to the separation; ?opening=1 unchanged', async ({ page }) => {
+test('opening V2 review: prelude on the approved concepts (fixed camera) then Bed 7 on the approved Ward 4 art to the separation; ?opening=1 unchanged', async ({ page }) => {
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto('/?opening=1&prelude=1');
   await page.waitForFunction(() => window.__prelude && window.__game.scene.isActive('prelude'));
   const before = await page.evaluate(() => localStorage.getItem('ghostline-save'));
   await page.keyboard.press('Enter');
-  // every exterior framing is a fixed, whole-pixel camera (no fractional pan / zoom)
-  const cams = [];
-  for (const sub of ['clock', 'wide', 'window']) {
-    await page.waitForFunction((s) => window.__prelude?.sub === s && window.__prelude.shot === 'exterior', sub, { timeout: 20000 });
-    cams.push(await page.evaluate(() => { const c = window.__prelude.cameras.main; return [c.zoom, Math.abs(c.scrollX % 1), Math.abs(c.scrollY % 1), window.__prelude.ext.visible]; }));
-  }
-  expect(cams).toEqual([[2, 0, 0, true], [1, 0, 0, true], [2, 0, 0, true]]);
-  await page.waitForFunction(() => window.__prelude?.shot === 'corridor', null, { timeout: 20000 });
-  expect(await page.evaluate(() => { const s = window.__prelude, c = s.cameras.main; return [s.corr.visible, s.ext.visible, c.zoom, Math.abs(c.scrollX % 1), Math.abs(c.scrollY % 1)]; })).toEqual([true, false, 1, 0, 0]);
+  // the approved concepts, 1:1 at 640x360, fixed camera (zoom 1, scroll 0,0): their compositions untouched
+  const shotOf = async (shot) => {
+    await page.waitForFunction((s) => window.__prelude?.shot === s, shot, { timeout: 20000 });
+    return page.evaluate(() => {
+      const s = window.__prelude, c = s.cameras.main;
+      return [s.ext.visible && s.ext.texture.key, s.corr.visible && s.corr.texture.key, s.ext.width, s.ext.height, s.corr.width, s.corr.height, c.zoom, c.scrollX, c.scrollY];
+    });
+  };
+  expect(await shotOf('exterior')).toEqual(['pre_ext', false, 640, 360, 640, 360, 1, 0, 0]);
+  expect(await shotOf('corridor')).toEqual([false, 'pre_corr', 640, 360, 640, 360, 1, 0, 0]);
   // hand-off: Bed 7 on the approved room plate, the approved sleeping Milo at Ward 4 size, 3:32
   await page.waitForFunction(() => window.__openingv2 && window.__game.scene.isActive('openingv2'), null, { timeout: 20000 });
   const room = await page.evaluate(() => {
