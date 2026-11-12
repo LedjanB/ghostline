@@ -24,15 +24,24 @@ const PX_PER_M = 27 * WARD_SCALE;
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
 // Bed 7 and cabinet are real transparent PNG assets extracted from the same room painting.
-// Until the empty-shell pass is approved, the untouched plate remains the visual baseline.
+// The background is room-shell-v1.png: the plate with only the cabinet (and its mug) painted out
+// (scripts/ward4-room-shell.py). room-plate.png stays the untouched baseline; here it only supplies
+// CABINET_EXTRA, the thin bits of cabinet paint cabinet.png missed, which show and hide with the cabinet.
 // The depth order is explicit: cabinet/bed body (2) < Milo (4) < sheet/footboard (6).
+// Cabinet visible = the original painting exactly; K (or the CABINET button) hides it, a debug view only.
+// same rects as MUG_CORNER and FEET in scripts/ward4-room-shell.py: the mug's top-left corner, the feet's last rows
+export const CABINET_EXTRA = [{ x: 164, y: 229, w: 9, h: 11 }, { x: 124, y: 327, w: 83, h: 2 }];
+// bed-body.png's first 15 columns (world x 192-206) have the cabinet's right edge baked in. The shell has that
+// strip without it (head post + bed end continued), so those columns are cropped off the bed body.
+const BED_BODY_CAB = 15;
 
 
 export class WardLabScene extends Phaser.Scene {
   constructor() { super('wardlab'); }
 
   preload() {
-    this.load.image('wardlab_plate', 'assets/ward4-bed7/room-plate.png');
+    this.load.image('wardlab_shell', 'assets/ward4-bed7/room-shell-v1.png');
+    this.load.image('wardlab_plate', 'assets/ward4-bed7/room-plate.png'); // baseline; only CABINET_EXTRA is drawn
     this.load.image('wardlab_front', 'assets/ward4-bed7/near-pipes.png');
     this.load.image('wardlab_bed_body', 'assets/ward4-bed7/bed-body.png');
     this.load.image('wardlab_bed_front', 'assets/ward4-bed7/bed-front.png');
@@ -43,10 +52,17 @@ export class WardLabScene extends Phaser.Scene {
   create() {
     this.cameras.main.setBounds(0, 0, WORLD_W, H);
     this.cameras.main.setBackgroundColor('#0a1020');
-    this.add.image(0, 0, 'wardlab_plate').setOrigin(0).setDepth(0);
+    this.shell = this.add.image(0, 0, 'wardlab_shell').setOrigin(0).setDepth(0);
     this.rainG = this.add.graphics().setDepth(1);
     this.cabinet = this.add.image(121, 227, 'wardlab_cabinet').setOrigin(0).setDepth(2);
+    const plate = this.textures.get('wardlab_plate');
+    this.cabinetExtra = CABINET_EXTRA.map((r, i) => {
+      if (!plate.has('cabinet_extra' + i)) plate.add('cabinet_extra' + i, 0, r.x, r.y, r.w, r.h);
+      return this.add.image(r.x, r.y, 'wardlab_plate', 'cabinet_extra' + i).setOrigin(0).setDepth(2);
+    });
     this.bedBody = this.add.image(192, 212, 'wardlab_bed_body').setOrigin(0).setDepth(2);
+    this.bedBody.setCrop(BED_BODY_CAB, 0, this.bedBody.width - BED_BODY_CAB, this.bedBody.height);
+    this.cabinetShown = true;
     this.floorShadow = this.add.ellipse(0, FLOOR + 1, 24, 5, 0x050a12, 0.44).setDepth(3);
     this.milo = new MiloActor(this, 513, FLOOR, { scale: WARD_SCALE });
     this.milo.sprite.setDepth(4);
@@ -61,6 +77,10 @@ export class WardLabScene extends Phaser.Scene {
     this.lightKey = this.input.keyboard.addKey('L');
     this.shotKey = this.input.keyboard.addKey('C');
     this.closeKey = this.input.keyboard.addKey('ESC');
+    this.cabinetKey = this.input.keyboard.addKey('K'); // Ward Lab debug only, not in input.js
+    // toggles on the key's down event: polling JustDown misses a tap whose up lands in the same frame
+    this.ghostKey.on('down', () => this.toggleGhost());
+    this.cabinetKey.on('down', () => this.toggleCabinet());
     this.ghost = false; this.extraLight = false; this.wideShot = false; this.lastPadGhost = false;
     // body: feet x/y in world px; takeoff = the short crouch before he leaves the floor
     this.m = { x: 513, y: FLOOR, vx: 0, vy: 0, ground: true, coyote: 0, buffer: 0, takeoff: 0, cutDone: true, acc: 0 };
@@ -103,6 +123,8 @@ export class WardLabScene extends Phaser.Scene {
     this.camButton = hud(W - 102, 58, '[ CAMERA ]', '#d6b994').setInteractive({ useHandCursor: true });
     this.ghostButton.on('pointerdown', () => this.toggleGhost());
     this.camButton.on('pointerdown', () => { this.wideShot = !this.wideShot; });
+    this.cabinetButton = hud(W - 102, 76, '[ CABINET ]', '#9fb4c9').setInteractive({ useHandCursor: true });
+    this.cabinetButton.on('pointerdown', () => this.toggleCabinet());
     this.fxGlow = this.add.graphics().setDepth(8).setVisible(false);
   }
 
@@ -111,6 +133,18 @@ export class WardLabScene extends Phaser.Scene {
     this.ghost = !this.ghost;
     this.milo.setGhost(this.ghost);
     this.showNote(this.ghost ? 'GHOST FORM' : 'LIVING FORM');
+  }
+
+  // debug view: the cabinet prop (sprite + the bits it missed) on/off over the empty shell.
+  // Art only: Bed 7's collision, Milo and the controls don't change.
+  setCabinetVisible(on) {
+    this.cabinetShown = on;
+    this.cabinet.setVisible(on);
+    for (const img of this.cabinetExtra) img.setVisible(on);
+  }
+  toggleCabinet() {
+    this.setCabinetVisible(!this.cabinetShown);
+    this.showNote(this.cabinetShown ? 'CABINET SHOWN' : 'CABINET HIDDEN (DEBUG)');
   }
 
   // what the player asks for this frame, from every device: dir -1/0/1, run, jump pressed / held
@@ -201,7 +235,7 @@ export class WardLabScene extends Phaser.Scene {
     const dt = Math.min(dtMs / 1000, 0.05);
     this.clockT += dt;
     const padGhost = (this.input.gamepad?.total ? this.input.gamepad.getAll() : []).some(p => !!p.buttons?.[1]?.pressed);
-    if (Phaser.Input.Keyboard.JustDown(this.ghostKey) || (padGhost && !this.lastPadGhost)) this.toggleGhost();
+    if (padGhost && !this.lastPadGhost) this.toggleGhost();
     this.lastPadGhost = padGhost;
     if (Phaser.Input.Keyboard.JustDown(this.lightKey)) this.extraLight = !this.extraLight;
     if (Phaser.Input.Keyboard.JustDown(this.shotKey)) this.wideShot = !this.wideShot;
@@ -246,7 +280,7 @@ export class WardLabScene extends Phaser.Scene {
     const dev = Device.get();
     this.hint.setText(dev === 'touch' ? 'LEFT HALF: DRAG TO WALK, FAR = RUN   RIGHT HALF: JUMP (HOLD = HIGHER)'
       : dev === 'gamepad' ? 'STICK / D-PAD WALK   FULL TILT OR X RUN   A JUMP   B GHOST'
-        : 'A/D MOVE   SHIFT RUN   SPACE JUMP   G GHOST   C CAMERA   L LIGHT');
+        : 'A/D MOVE   SHIFT RUN   SPACE JUMP   G GHOST   C CAMERA   L LIGHT   K CABINET');
     const a = this.milo;
     this.info.setText(`${a.anim.toUpperCase()} ${a.step + 1}/${MILO_ANIMS[a.anim].frames.length}  ${(Math.abs(m.vx) / PX_PER_M).toFixed(1)} M/S${m.ground ? '' : '  AIR'}`);
     if (this.noteTime > 0) { this.noteTime -= dt; this.note.setAlpha(Math.min(1, this.noteTime)); }

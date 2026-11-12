@@ -1330,3 +1330,78 @@ test('ward lab: authentic Bed 7 and cabinet PNG layers render in the expected de
   expect(r.cabinet.paint).toBeGreaterThan(0);
   expect(errors).toEqual([]);
 });
+
+test('ward lab: Bed 7 cabinet is a separate prop over room-shell-v1 (K hides it, debug only)', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto('/?wardlab=1');
+  await page.waitForFunction(() => window.__game?.scene?.getScene('wardlab')?.cabinetExtra?.length === 2
+    && window.__game.scene.getScene('wardlab').milo?.sprite?.texture?.key === 'milo2_living');
+  const before = await page.evaluate(() => localStorage.getItem('ghostline-save'));
+  const r = await page.evaluate(async () => {
+    const s = window.__game.scene.getScene('wardlab');
+    const { WARD_GEOM, CABINET_EXTRA } = await import('/src/scenes/wardlab.js');
+    // pixel check on the real loaded textures: shell + cabinet + the plate's extra rects = the original plate
+    const img = (key) => s.textures.get(key).getSourceImage();
+    const W = 1065, H = 360;
+    const draw = (fn) => {
+      const c = document.createElement('canvas'); c.width = W; c.height = H;
+      const ctx = c.getContext('2d', { willReadFrequently: true }); fn(ctx); return ctx.getImageData(0, 0, W, H).data;
+    };
+    const plate = draw((ctx) => ctx.drawImage(img('wardlab_plate'), 0, 0));
+    const shell = draw((ctx) => ctx.drawImage(img('wardlab_shell'), 0, 0));
+    const shown = draw((ctx) => {
+      ctx.drawImage(img('wardlab_shell'), 0, 0);
+      ctx.drawImage(img('wardlab_cabinet'), 121, 227);
+      for (const e of CABINET_EXTRA) ctx.drawImage(img('wardlab_plate'), e.x, e.y, e.w, e.h, e.x, e.y, e.w, e.h);
+    });
+    const cab = img('wardlab_cabinet');
+    const inProp = (x, y) => (x >= 121 && x < 121 + cab.width && y >= 227 && y < 227 + cab.height)
+      || CABINET_EXTRA.some(e => x >= e.x && x < e.x + e.w && y >= e.y && y < e.y + e.h);
+    let shownDiff = 0, shellDiff = 0, shellDiffOutside = 0;
+    for (let i = 0; i < W * H; i++) {
+      const d = (a, b) => a[i * 4] !== b[i * 4] || a[i * 4 + 1] !== b[i * 4 + 1] || a[i * 4 + 2] !== b[i * 4 + 2];
+      if (d(shown, plate)) shownDiff++;
+      if (d(shell, plate)) { shellDiff++; if (!inProp(i % W, Math.floor(i / W))) shellDiffOutside++; }
+    }
+    return {
+      bg: [s.shell.texture.key, s.shell.width, s.shell.height, s.shell.depth],
+      plateSize: [img('wardlab_plate').width, img('wardlab_plate').height],
+      cabinet: [s.cabinet.x, s.cabinet.y, s.cabinet.width, s.cabinet.height, s.cabinet.depth, s.cabinet.visible],
+      extra: s.cabinetExtra.map(e => [e.x, e.y, e.width, e.height, e.depth, e.visible]),
+      bedCrop: [s.bedBody.isCropped, s.bedBody._crop?.x, s.bedBody.x, s.bedBody.width],
+      bed: WARD_GEOM.BED, floor: WARD_GEOM.FLOOR,
+      shownDiff, shellDiff, shellDiffOutside,
+    };
+  });
+  expect(r.bg).toEqual(['wardlab_shell', 1065, 360, 0]);
+  expect(r.plateSize).toEqual([1065, 360]);
+  expect(r.cabinet).toEqual([121, 227, 89, 105, 2, true]);
+  expect(r.extra).toEqual([[164, 229, 9, 11, 2, true], [124, 327, 83, 2, 2, true]]);
+  expect(r.bedCrop[0]).toBe(true);
+  expect(r.bedCrop.slice(2)).toEqual([192, 183]);
+  expect(r.bed).toEqual({ left: 195, right: 446, top: 265 }); // collision unchanged
+  expect(r.floor).toBe(335);
+  expect(r.shownDiff).toBe(0);              // cabinet shown = the approved painting, pixel for pixel
+  expect(r.shellDiff).toBeGreaterThan(5000); // the cabinet really is painted out of the shell
+  expect(r.shellDiffOutside).toBe(0);       // and nothing else in the room changed
+  // K hides the whole prop and shows it again; nothing else moves
+  await page.keyboard.press('k');
+  await expect.poll(() => page.evaluate(() => {
+    const s = window.__game.scene.getScene('wardlab');
+    return [s.cabinet.visible, ...s.cabinetExtra.map(e => e.visible), s.bedBody.visible, s.milo.sprite.visible];
+  })).toEqual([false, false, false, true, true]);
+  // the bed still blocks a walk with the cabinet hidden
+  await page.evaluate(() => { const s = window.__game.scene.getScene('wardlab'); s.m.x = 120; s.milo.setFacing(1); });
+  await page.keyboard.down('d');
+  await expect.poll(() => page.evaluate(() => window.__game.scene.getScene('wardlab').m.blocked === true), { timeout: 10000 }).toBe(true);
+  await page.keyboard.up('d');
+  expect(await page.evaluate(() => window.__game.scene.getScene('wardlab').m.x)).toBeLessThan(196);
+  await page.keyboard.press('k');
+  await expect.poll(() => page.evaluate(() => {
+    const s = window.__game.scene.getScene('wardlab');
+    return [s.cabinet.visible, ...s.cabinetExtra.map(e => e.visible)];
+  })).toEqual([true, true, true]);
+  expect(await page.evaluate(() => localStorage.getItem('ghostline-save'))).toBe(before);
+  expect(errors).toEqual([]);
+});
