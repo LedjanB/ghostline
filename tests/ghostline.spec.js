@@ -1405,3 +1405,38 @@ test('ward lab: Bed 7 cabinet is a separate prop over room-shell-v1 (K hides it,
   expect(await page.evaluate(() => localStorage.getItem('ghostline-save'))).toBe(before);
   expect(errors).toEqual([]);
 });
+
+test('opening prelude: ?opening=1&prelude=1 plays exterior, corridor, then the unchanged opening; ?opening=1 alone has no prelude', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto('/?opening=1&prelude=1');
+  await page.waitForFunction(() => window.__prelude && window.__game.scene.isActive('prelude'));
+  const before = await page.evaluate(() => localStorage.getItem('ghostline-save'));
+  expect(await page.evaluate(() => window.__prelude.shot)).toBe('gate');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => window.__prelude?.shot === 'exterior');
+  const ext = await page.evaluate(() => {
+    const s = window.__prelude;
+    return [s.ext.texture.key, s.ext.width, s.ext.height, s.ext.visible, s.rainG.visible, s.mist.visible, s.corr.visible];
+  });
+  expect(ext).toEqual(['pre_ext', 720, 400, true, true, true, false]);
+  await page.waitForFunction(() => window.__prelude?.shot === 'corridor', null, { timeout: 20000 });
+  const corr = await page.evaluate(() => {
+    const s = window.__prelude;
+    return [s.corr.texture.key, s.corr.width, s.corr.height, s.corr.visible, s.tube.visible, s.ext.visible, s.rainG.visible];
+  });
+  expect(corr).toEqual(['pre_corr', 680, 380, true, true, false, false]);
+  // hand-off: the existing opening starts at its first beat (Bed 7, clock 3:32), without its own gate
+  await page.waitForFunction(() => window.__opening && window.__game.scene.isActive('opening'), null, { timeout: 20000 });
+  expect(await page.evaluate(() => window.__game.scene.isActive('prelude'))).toBe(false);
+  const op = await page.evaluate(() => ({ phase: window.__opening.phase, clock: window.__opening.clockState, control: window.__opening.control }));
+  expect(op.phase).toBe('intro');
+  expect(op.clock).toBe('32');
+  expect(op.control).toBe(false);
+  expect(await page.evaluate(() => localStorage.getItem('ghostline-save'))).toBe(before);
+  // production route untouched: ?opening=1 goes straight to the opening
+  await page.goto('/?opening=1');
+  await page.waitForFunction(() => window.__opening && window.__game.scene.isActive('opening'));
+  expect(await page.evaluate(() => window.__game.scene.isActive('prelude'))).toBe(false);
+  expect(errors).toEqual([]);
+});

@@ -13,6 +13,7 @@ import { MissionsScene } from './scenes/missions.js';
 import { CharmsScene } from './scenes/charms.js';
 import { StoryScene } from './scenes/story.js';
 import { OpeningScene } from './scenes/opening.js';
+import { PreludeScene } from './scenes/prelude.js';
 import { ArtLabScene } from './scenes/artlab.js';
 import { MiloLabScene } from './scenes/milolab.js';
 import { WardLabScene } from './scenes/wardlab.js';
@@ -40,6 +41,8 @@ class BootScene extends Phaser.Scene {
     if (new URLSearchParams(location.search).get('milolab') === '1') { this.scene.start('milolab'); return; }
     if (new URLSearchParams(location.search).get('wardlab') === '1') { this.scene.start('wardlab'); return; }
     const replay = new URLSearchParams(location.search).get('opening') === '1';
+    // ?opening=1&prelude=1: preview of the St. Mercy prelude (exterior, corridor) before the unchanged opening
+    if (replay && new URLSearchParams(location.search).get('prelude') === '1') { this.scene.start('prelude'); return; }
     this.scene.start(replay || !Save.get().storySeen ? 'opening' : 'menu');
   }
 }
@@ -81,7 +84,7 @@ async function start() {
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     input: { activePointers: 3, gamepad: true },
     // draw order = list order: run, then HUD, then overlays on top
-    scene: [BootScene, StoryScene, OpeningScene, ArtLabScene, MiloLabScene, WardLabScene, MenuScene, PlayScene, HudScene, BossScene, SpinScene, OverScene, PauseScene, MissionsScene, CharmsScene, SettingsScene, StatsScene, UnlocksScene],
+    scene: [BootScene, StoryScene, PreludeScene, OpeningScene, ArtLabScene, MiloLabScene, WardLabScene, MenuScene, PlayScene, HudScene, BossScene, SpinScene, OverScene, PauseScene, MissionsScene, CharmsScene, SettingsScene, StatsScene, UnlocksScene],
   });
   window.__game = game;
   // playtest link: ?boss=matron (&act=2 or 3) opens that fight right away, then goes back to the menu
