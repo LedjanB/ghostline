@@ -371,6 +371,34 @@ def exterior():
 # A real one-point perspective: every pixel is a ray into a box corridor (walls, floor, ceiling, far wall),
 # textured in its own surface coordinates and lit by point lights; the wet floor reflects the corridor (a ray
 # into the mirrored box). Looking down to Ward 4's doors, warm light through the portholes (Bed 7's lamp).
+def wheelchair(ph):
+    """side-on silhouette, ph px tall, warm rim light on its far (upper right) edges"""
+    k = 4; H_ = ph * k; W_ = int(ph * 1.05) * k
+    sil = Image.new('L', (W_, H_), 0); d = ImageDraw.Draw(sil)
+    U = lambda x, y: (x * H_, y * H_)
+    lw = lambda v: max(1, int(v * H_))
+    cx, cy, r = 0.56, 0.66, 0.31
+    d.ellipse([U(cx - r, cy - r), U(cx + r, cy + r)], outline=255, width=lw(0.045))
+    d.ellipse([U(cx - r * 0.82, cy - r * 0.82), U(cx + r * 0.82, cy + r * 0.82)], outline=255, width=lw(0.018))
+    for a in range(0, 180, 30):
+        t = math.radians(a)
+        d.line([U(cx - math.cos(t) * r, cy - math.sin(t) * r), U(cx + math.cos(t) * r, cy + math.sin(t) * r)], fill=255, width=lw(0.01))
+    d.ellipse([U(0.1, 0.88), U(0.22, 1.0)], outline=255, width=lw(0.035))            # caster
+    d.line([U(0.18, 0.56), U(0.74, 0.56)], fill=255, width=lw(0.06))                  # seat
+    d.line([U(0.74, 0.08), U(0.74, 0.6)], fill=255, width=lw(0.05))                   # back post
+    d.polygon([U(0.68, 0.14), U(0.76, 0.14), U(0.76, 0.5), U(0.66, 0.52)], fill=255)  # back sling
+    d.line([U(0.74, 0.08), U(0.9, 0.1)], fill=255, width=lw(0.04))                    # push handle
+    d.line([U(0.3, 0.38), U(0.72, 0.38)], fill=255, width=lw(0.035))                  # arm rest
+    d.line([U(0.32, 0.38), U(0.3, 0.56)], fill=255, width=lw(0.03))
+    d.line([U(0.2, 0.56), U(0.14, 0.86)], fill=255, width=lw(0.035))                  # leg rest
+    d.line([U(0.04, 0.87), U(0.2, 0.87)], fill=255, width=lw(0.03))                   # foot plate
+    a = np.asarray(sil, np.float32) / 255
+    rim = np.clip(a - np.roll(np.roll(a, k, 0), -k, 1), 0, 1)                           # edges lit from up-right
+    rgba = np.zeros((H_, W_, 4), np.float32)
+    rgba[..., :3] = hexc('#0a0e16') * (1 - rim[..., None] * 0.7) + hexc('#5a4636') * rim[..., None] * 0.7
+    rgba[..., 3] = a * 255
+    return Image.fromarray(rgba.astype(np.uint8), 'RGBA').resize((W_ // k, H_ // k), Image.LANCZOS)
+
 def corridor():
     import cv2
     W, H = 680, 380
@@ -458,7 +486,7 @@ def corridor():
         row = ((2.33 - hgt) / (0.11 / 5)).astype(int)
         inside = (col >= 0) & (col < bits.shape[1]) & (row >= 0) & (row < 5)
         letters = np.zeros_like(inside); letters[inside] = bits[row[inside], col[inside]]
-        put(ex, np.zeros(3)); put(ex, hexc('#c2392e') * 0.85, emi); put(ex & letters, hexc('#ffb0a0'), emi)
+        put(ex, np.zeros(3)); put(ex, hexc('#c2392e') * 0.4, emi); put(ex & letters, hexc('#ffb0a0') * 0.55, emi)  # dim: Ward 4 leads, not EXIT
         # ---- floor
         fl = sid == 2
         nrm[fl] = (0, -1, 0)
@@ -494,14 +522,17 @@ def corridor():
             ring = dm & (r < 0.19); glassm = dm & (r < 0.15)
             put(ring, hexc('#1a202c'))
             put(glassm, np.zeros(3)); put(glassm, (hexc('#f0a24a') * (1.0 - 1.2 * r[..., None]) + hexc('#ffd59a') * np.exp(-(r / 0.06) ** 2)[..., None] * 0.6) * 0.9, emi)
-        put(fw & (np.abs(X) < 0.7) & (hgt < 0.03), hexc('#d98a3c') * 0.8, emi)   # light under the doors
+        put(fw & (np.abs(X) < 0.7) & (hgt < 0.03), hexc('#d98a3c') * 0.9, emi)   # light under the doors
+        slit = dm & (X > 0.0) & (X < 0.045) & (hgt < 2.08)                         # the right leaf left ajar
+        put(slit, np.zeros(3)); put(slit, hexc('#f2a050') * (0.75 + 0.25 * (1 - hgt / 2.1))[..., None], emi)
         return alb, emi, nrm
 
     LIGHTS = [  # x, y (down +), z, colour, intensity, range
         ((0, -HC + 0.08, 3.6), hexc('#a9c4ea'), 1.15, 1.7, 'tube'),
         ((0, -HC + 0.08, 7.0), hexc('#a9c4ea'), 0.55, 1.6, None),
-        ((HW - 0.12, HF - 2.27, 2.42), hexc('#ff4a3a'), 0.55, 0.55, None),
-        ((0, HF - 1.4, ZF - 0.35), hexc('#f0a24a'), 0.85, 1.25, None),
+        ((HW - 0.12, HF - 2.27, 2.42), hexc('#ff4a3a'), 0.22, 0.45, None),
+        ((0, HF - 1.4, ZF - 0.35), hexc('#f0a24a'), 1.5, 2.0, None),
+        ((0.05, HF - 0.15, ZF - 0.6), hexc('#e8903e'), 0.7, 1.5, None),   # spill through the door left ajar
         ((-HW + 0.25, HF - 1.6, 2.9), hexc('#4a6a9a'), 0.45, 1.1, None),
         ((-HW + 0.25, HF - 1.6, 5.4), hexc('#4a6a9a'), 0.4, 1.1, None),
     ]
@@ -537,6 +568,7 @@ def corridor():
         img = img + cv2.GaussianBlur(bright, (0, 0), 6 * S) * 0.7 + cv2.GaussianBlur(bright, (0, 0), 2 * S) * 0.5
         yy2, xx2 = ys / S, xs / S
         vig = 1 - 0.5 * np.clip(((xx2 - 340) / 380) ** 2 + ((yy2 - 180) / 240) ** 2, 0, 1)
+        vig *= 1 - 0.45 * np.clip((yy2 - 280) / 100, 0, 1)   # the near floor falls into shadow
         return img * vig[..., None]
     pb, pf = post(base), post(full)
     out = np.asarray(finish(pb, grain=1.8), np.float32).copy()
@@ -552,13 +584,69 @@ def corridor():
     out[int(sy1) - 1, int(sx0):int(sx1)] = hexc('#10141c')
     label = 'WARD 4'
     draw_text(out, label, int((sx0 + sx1) / 2 - text_w(label) / 2), int((sy0 + sy1) / 2 - 2), hexc('#b8c6dc') * 0.85)
+    # one abandoned thing: an empty wheelchair by the left wall, back-lit by Ward 4's doors
+    zw, Xw, hw_ = 3.9, -1.18, 0.95
+    ph = int(round(f1 * hw_ / zw)); bx = 340 + f1 * Xw / zw; by = 166 + f1 * HF / zw
+    chair = wheelchair(ph)
+    cw_, ch_ = chair.size
+    ox, oy = int(round(bx - cw_ * 0.45)), int(round(by - ch_))
+    base_img = Image.fromarray(np.clip(out, 0, 255).astype(np.uint8)).convert('RGBA')
+    refl = chair.transpose(Image.FLIP_TOP_BOTTOM).filter(ImageFilter.GaussianBlur(1.2))
+    ra = np.asarray(refl, np.float32); ra[..., 3] *= np.linspace(0.32, 0, ra.shape[0])[:, None]
+    base_img.alpha_composite(Image.fromarray(ra.astype(np.uint8), 'RGBA'), (ox, oy + ch_))
+    base_img.alpha_composite(chair, (ox, oy))
+    out = np.asarray(base_img.convert('RGB'), np.float32)
     Image.fromarray(np.clip(out, 0, 255).astype(np.uint8)).save(OUT / 'ward4-corridor.png', optimize=True)
     # the middle tube's own light, for an additive flicker layer in Phaser
     diff = np.clip(pf - pb, 0, 255)
     Image.fromarray(diff.astype(np.uint8)).reduce(S).save(OUT / 'ward4-corridor-tube.png', optimize=True)
     print('corridor', W, H)
 
+# ================================================================ ROOM PROPS (opening V2, over the Ward 4 plate)
+# room-clock.png: a small wall clock, 3 frames of 40x17: 3:32, 3:33, dead (power cut). soft-glow.png: a white
+# radial light, tinted in Phaser for the lamp, window, monitor and Milo's spirit.
+SEG = {'3': 'abcdg', '2': 'abged'}
+def clock_props():
+    FW, FH = 40, 17
+    sheet = np.zeros((FH, FW * 3, 4), np.float32)
+    def seg_px(ch, ox, oy):
+        on = SEG[ch]; px = []
+        if 'a' in on: px += [(ox + i, oy) for i in range(1, 5)]
+        if 'g' in on: px += [(ox + i, oy + 5) for i in range(1, 5)]
+        if 'd' in on: px += [(ox + i, oy + 10) for i in range(1, 5)]
+        if 'b' in on: px += [(ox + 5, oy + j) for j in range(1, 5)]
+        if 'c' in on: px += [(ox + 5, oy + j) for j in range(6, 10)]
+        if 'f' in on: px += [(ox, oy + j) for j in range(1, 5)]
+        if 'e' in on: px += [(ox, oy + j) for j in range(6, 10)]
+        return px
+    for fi, digits in enumerate(('332', '333', None)):
+        o = fi * FW
+        sheet[:, o:o + FW, :3] = hexc('#1b1e26'); sheet[:, o:o + FW, 3] = 255
+        sheet[0, o:o + FW, :3] = hexc('#4c5466'); sheet[-1, o:o + FW, :3] = hexc('#0b0d12')
+        sheet[:, o, :3] = hexc('#2e3442'); sheet[:, o + FW - 1, :3] = hexc('#0b0d12')
+        sheet[2:15, o + 2:o + FW - 2, :3] = hexc('#0d0708')
+        ghost_on = hexc('#2a1012')
+        cells = (o + 6, o + 17, o + 25)
+        for cx in cells:   # unlit segments, barely there
+            for (x, y) in seg_px_all(cx, 3): sheet[y, x, :3] = ghost_on
+        if digits:
+            col = hexc('#ff3b2e')
+            for ch, cx in zip(digits, cells):
+                for (x, y) in seg_px(ch, cx, 3): sheet[y, x, :3] = col
+            for y in (6, 10): sheet[y, o + 14, :3] = col
+    Image.fromarray(sheet.astype(np.uint8), 'RGBA').save(OUT / 'room-clock.png', optimize=True)
+    g = np.linspace(-1, 1, 128); d2 = g[None, :] ** 2 + g[:, None] ** 2
+    a = np.exp(-d2 * 4.5) * (d2 < 1)
+    glow_ = np.zeros((128, 128, 4), np.float32); glow_[..., :3] = 255; glow_[..., 3] = a * 255
+    Image.fromarray(glow_.astype(np.uint8), 'RGBA').save(OUT / 'soft-glow.png', optimize=True)
+    print('clock + glow')
+def seg_px_all(ox, oy):
+    px = [(ox + i, oy + j) for j in (0, 5, 10) for i in range(1, 5)]
+    px += [(ox + x, oy + j) for x in (0, 5) for j in list(range(1, 5)) + list(range(6, 10))]
+    return px
+
 if __name__ == '__main__':
     which = sys.argv[1:] or ['exterior', 'corridor']
     if 'exterior' in which: exterior()
     if 'corridor' in which and 'corridor' in globals(): corridor()
+    if 'props' in which or which == ['exterior', 'corridor']: clock_props()

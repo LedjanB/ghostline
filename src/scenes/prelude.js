@@ -1,9 +1,10 @@
-// OPENING PRELUDE (preview only: ?opening=1&prelude=1). Three connected shots before the existing opening:
-//   1 ST. MERCY in the rain, outside, at night (~4.6 s): slow tilt down from the tower clock (stopped at 3:33,
-//     as it always has been) to the wet street, rain, ground mist drifting; Bed 7's window is the one warm light.
-//   2 hard cut inside: the empty corridor to Ward 4 (~2.8 s), a tiny push in, one tube buzzing, warm light
-//     through Ward 4's portholes.
-//   3 fade to black, then the unchanged OpeningScene at its first beat (Bed 7, 3:32 -> 3:33, the separation).
+// OPENING PRELUDE V2 (review only: ?opening=1&prelude=1). Static shots joined by hard cuts, before Bed 7:
+//   1a the tower clock, stopped at 3:33 (as it always has been), close (2x)      1.7 s
+//   1b ST. MERCY in the rain, wide: the dark hospital, one warm window            2.6 s
+//   1c that window, close (2x): Bed 7's lamp behind the curtain                   1.9 s
+//   2  inside: the empty corridor to Ward 4, warm light through its doors, a tube dying overhead   2.8 s
+//   3  fade to black, then OpeningV2Scene: Bed 7 on the approved Ward 4 art, 3:32 -> 3:33 -> the separation.
+// Every camera is fixed on whole pixels at zoom 1 or 2 (no fractional pans or zooms: they shimmered at 640x360).
 // Not playable: the only input is the gate (audio needs a gesture) and a tap/key to skip once a second has passed.
 // Art: assets/opening-prelude/*.png (scripts/prelude-art.py). Rain is a live layer in world space, so it moves
 // with the camera, not with the screen. No save writes, no global input changes.
@@ -12,17 +13,22 @@ import { Audio } from '../audio.js';
 import { text } from '../ui.js';
 import { makeOpeningAudio } from '../opening-audio.js';
 
-export const PRELUDE = { EXT_T: 4.6, CORR_T: 2.8, FADE_MS: 650 };
-const EXT = { w: 720, h: 400, from: { x: 44, y: 0 }, to: { x: 64, y: 40 } };
-const CORR = { w: 680, h: 380, cx: 340, cy: 184, zoom: [1.0, 1.04] };
-const ease = (k) => 0.5 - Math.cos(Math.PI * Math.min(1, Math.max(0, k))) / 2;
+export const PRELUDE = { CLOCK_T: 1.7, WIDE_T: 2.6, WINDOW_T: 1.9, CORR_T: 2.8, FADE_MS: 650, NEXT: 'openingv2' };
+const EXT = { w: 720, h: 400 };
+// camera framings: zoom + the world point at the centre of the screen (whole numbers only)
+const FRAMES = {
+  clock: { zoom: 2, cx: 390, cy: 92 },
+  wide: { zoom: 1, cx: 360, cy: 200 },
+  window: { zoom: 2, cx: 560, cy: 226 },
+  corridor: { zoom: 1, cx: 340, cy: 190 },
+};
 
 export class PreludeScene extends Phaser.Scene {
   constructor() { super('prelude'); }
 
   init() {
     this.shot = 'gate'; this.t = 0; this.shotT = 0; this.leaving = false;
-    this.drops = []; this.splashes = []; this.flick = 1; this.nextFlick = 0.7;
+    this.drops = []; this.splashes = []; this.flick = 0.18; this.nextFlick = 0.8; this.sub = null;
   }
 
   preload() {
@@ -70,10 +76,11 @@ export class PreludeScene extends Phaser.Scene {
     this.cameras.main.fadeIn(900, 0, 0, 0);
   }
 
+  frame(name) { const f = FRAMES[name]; this.cameras.main.setZoom(f.zoom).centerOn(f.cx, f.cy); }
+
   toExterior() {
-    this.shot = 'exterior'; this.shotT = 0;
-    const cam = this.cameras.main;
-    cam.setZoom(1).setScroll(EXT.from.x, EXT.from.y);
+    this.shot = 'exterior'; this.sub = 'clock'; this.shotT = 0;
+    this.frame('clock');
     [this.ext, this.mist, this.rainG].forEach((o) => o.setVisible(true));
   }
 
@@ -81,7 +88,7 @@ export class PreludeScene extends Phaser.Scene {
     this.shot = 'corridor'; this.shotT = 0;
     [this.ext, this.mist, this.rainG].forEach((o) => o.setVisible(false));
     [this.corr, this.tube].forEach((o) => o.setVisible(true));
-    this.cameras.main.setZoom(CORR.zoom[0]).centerOn(CORR.cx, CORR.cy);
+    this.frame('corridor');
     if (this.snd) { this.snd.rain(0.22, true, 0.15); this.snd.vent(true); }
   }
 
@@ -92,7 +99,7 @@ export class PreludeScene extends Phaser.Scene {
     cam.fadeOut(ms, 0, 0, 0);
     cam.once('camerafadeoutcomplete', () => {
       if (this.snd) { this.snd.stop(); this.snd = null; }
-      this.scene.start('opening'); // the existing opening, untouched, from its first beat
+      this.scene.start(PRELUDE.NEXT); // Bed 7 on the approved Ward 4 art (review route)
     });
   }
 
@@ -100,20 +107,18 @@ export class PreludeScene extends Phaser.Scene {
     if (this.shot === 'gate') return;
     const dt = Math.min(delta / 1000, 0.05);
     this.t += dt; this.shotT += dt;
-    const cam = this.cameras.main;
     if (this.shot === 'exterior') {
-      const k = ease(this.shotT / PRELUDE.EXT_T);
-      cam.setScroll(EXT.from.x + (EXT.to.x - EXT.from.x) * k, EXT.from.y + (EXT.to.y - EXT.from.y) * k);
-      this.mist.tilePositionX += dt * 7;
+      // hard cuts between fixed framings: clock -> wide -> the warm window
+      if (this.sub === 'clock' && this.shotT >= PRELUDE.CLOCK_T) { this.sub = 'wide'; this.frame('wide'); }
+      if (this.sub === 'wide' && this.shotT >= PRELUDE.CLOCK_T + PRELUDE.WIDE_T) { this.sub = 'window'; this.frame('window'); }
+      this.mist.tilePositionX = Math.floor(this.t * 6); // whole pixels
       this.drawRain(dt);
-      if (this.shotT >= PRELUDE.EXT_T) this.toCorridor();
+      if (this.shotT >= PRELUDE.CLOCK_T + PRELUDE.WIDE_T + PRELUDE.WINDOW_T) this.toCorridor();
     } else if (this.shot === 'corridor') {
-      const k = ease(this.shotT / (PRELUDE.CORR_T + PRELUDE.FADE_MS / 1000));
-      cam.setZoom(CORR.zoom[0] + (CORR.zoom[1] - CORR.zoom[0]) * k).centerOn(CORR.cx, CORR.cy);
-      // the middle tube: steady, with a rare short buzz-dip (no strobing)
+      // the tube over the corridor is dying: dim, with a rare short struggle back to light (no strobing)
       this.nextFlick -= dt;
-      if (this.nextFlick <= 0) { this.flick = 0.35 + this.rand.frac() * 0.25; this.nextFlick = 0.9 + this.rand.frac() * 1.4; }
-      this.flick += (1 - this.flick) * Math.min(1, dt * 9);
+      if (this.nextFlick <= 0) { this.flick = 0.55 + this.rand.frac() * 0.2; this.nextFlick = 1.1 + this.rand.frac() * 1.2; }
+      this.flick += (0.18 - this.flick) * Math.min(1, dt * 6);
       this.tube.setAlpha(this.flick);
       if (this.shotT >= PRELUDE.CORR_T) this.leave();
     }

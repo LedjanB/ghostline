@@ -1406,37 +1406,40 @@ test('ward lab: Bed 7 cabinet is a separate prop over room-shell-v1 (K hides it,
   expect(errors).toEqual([]);
 });
 
-test('opening prelude: ?opening=1&prelude=1 plays exterior, corridor, then the unchanged opening; ?opening=1 alone has no prelude', async ({ page }) => {
+test('opening V2 review: prelude cuts (static framings) then Bed 7 on the approved Ward 4 art to the separation; ?opening=1 unchanged', async ({ page }) => {
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto('/?opening=1&prelude=1');
   await page.waitForFunction(() => window.__prelude && window.__game.scene.isActive('prelude'));
   const before = await page.evaluate(() => localStorage.getItem('ghostline-save'));
-  expect(await page.evaluate(() => window.__prelude.shot)).toBe('gate');
   await page.keyboard.press('Enter');
-  await page.waitForFunction(() => window.__prelude?.shot === 'exterior');
-  const ext = await page.evaluate(() => {
-    const s = window.__prelude;
-    return [s.ext.texture.key, s.ext.width, s.ext.height, s.ext.visible, s.rainG.visible, s.mist.visible, s.corr.visible];
-  });
-  expect(ext).toEqual(['pre_ext', 720, 400, true, true, true, false]);
+  // every exterior framing is a fixed, whole-pixel camera (no fractional pan / zoom)
+  const cams = [];
+  for (const sub of ['clock', 'wide', 'window']) {
+    await page.waitForFunction((s) => window.__prelude?.sub === s && window.__prelude.shot === 'exterior', sub, { timeout: 20000 });
+    cams.push(await page.evaluate(() => { const c = window.__prelude.cameras.main; return [c.zoom, Math.abs(c.scrollX % 1), Math.abs(c.scrollY % 1), window.__prelude.ext.visible]; }));
+  }
+  expect(cams).toEqual([[2, 0, 0, true], [1, 0, 0, true], [2, 0, 0, true]]);
   await page.waitForFunction(() => window.__prelude?.shot === 'corridor', null, { timeout: 20000 });
-  const corr = await page.evaluate(() => {
-    const s = window.__prelude;
-    return [s.corr.texture.key, s.corr.width, s.corr.height, s.corr.visible, s.tube.visible, s.ext.visible, s.rainG.visible];
+  expect(await page.evaluate(() => { const s = window.__prelude, c = s.cameras.main; return [s.corr.visible, s.ext.visible, c.zoom, Math.abs(c.scrollX % 1), Math.abs(c.scrollY % 1)]; })).toEqual([true, false, 1, 0, 0]);
+  // hand-off: Bed 7 on the approved room plate, the approved sleeping Milo at Ward 4 size, 3:32
+  await page.waitForFunction(() => window.__openingv2 && window.__game.scene.isActive('openingv2'), null, { timeout: 20000 });
+  const room = await page.evaluate(() => {
+    const v = window.__openingv2;
+    const keys = v.children.list.filter((o) => o.texture).map((o) => o.texture.key);
+    return { prelude: window.__game.scene.isActive('prelude'), old: window.__game.scene.isActive('opening'), plate: keys.includes('v2_room'), front: keys.includes('v2_bed_front'),
+      body: [v.body.texture.key, v.body.scaleX, v.body.x, v.body.y], clock: v.clockState, cam: v.cameras.main.scrollX };
   });
-  expect(corr).toEqual(['pre_corr', 680, 380, true, true, false, false]);
-  // hand-off: the existing opening starts at its first beat (Bed 7, clock 3:32), without its own gate
-  await page.waitForFunction(() => window.__opening && window.__game.scene.isActive('opening'), null, { timeout: 20000 });
-  expect(await page.evaluate(() => window.__game.scene.isActive('prelude'))).toBe(false);
-  const op = await page.evaluate(() => ({ phase: window.__opening.phase, clock: window.__opening.clockState, control: window.__opening.control }));
-  expect(op.phase).toBe('intro');
-  expect(op.clock).toBe('32');
-  expect(op.control).toBe(false);
+  expect(room).toEqual({ prelude: false, old: false, plate: true, front: true, body: ['milo2_sleep', 1.5, 216, 176], clock: '32', cam: 80 });
+  // the beats: 3:33, the power cut, the separation starts, he lands beside the bed
+  await page.waitForFunction(() => window.__openingv2?.clockState === '33', null, { timeout: 20000 });
+  await page.waitForFunction(() => window.__openingv2?.rise >= 0, null, { timeout: 20000 });
+  await page.waitForFunction(() => window.__openingv2?.landed === true, null, { timeout: 20000 });
+  expect(await page.evaluate(() => [window.__openingv2.milo.scale, window.__openingv2.milo.x, window.__openingv2.milo.footY])).toEqual([1.5, 548, 335]);
   expect(await page.evaluate(() => localStorage.getItem('ghostline-save'))).toBe(before);
-  // production route untouched: ?opening=1 goes straight to the opening
+  // production route untouched: ?opening=1 is the old opening, no prelude, no V2
   await page.goto('/?opening=1');
   await page.waitForFunction(() => window.__opening && window.__game.scene.isActive('opening'));
-  expect(await page.evaluate(() => window.__game.scene.isActive('prelude'))).toBe(false);
+  expect(await page.evaluate(() => [window.__game.scene.isActive('prelude'), window.__game.scene.isActive('openingv2')])).toEqual([false, false]);
   expect(errors).toEqual([]);
 });
