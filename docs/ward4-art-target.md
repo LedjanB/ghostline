@@ -29,3 +29,8 @@ Do not redesign the approved concept or alter the opening while this lab is bein
 - Bed 7: solid sides, walkable top (jump onto the mattress, walk off the end). Pushing against the bed = standing, not walking in place.
 - Controls: keyboard (A/D or arrows, Shift run, Space/W jump, hold = higher, G ghost, C camera, L light); gamepad (stick or d-pad, full tilt or X run, A jump, B ghost); touch (left half drag, far = run, with a visible thumb ring; right half jump, hold = higher). The hint line follows the last used device. A debug line shows the anim, frame and m/s.
 - Limits: Milo is drawn at a non-integer 1.5x scale (uneven pixel sizes; a native-size sheet would fix it). The room is still one plate (see above). Gamepad is not covered by an automated test.
+
+## Bed 7 depth pass (12 Nov 2026, needs visual review)
+- The real Phaser `?wardlab=1` now extracts painted front-sheet/footboard pixels directly from `room-plate.png` into a transparent texture at scene creation, at world position (191,211), and draws it above the actual Milo sprite.
+- No new generated art, no network dependency, no alteration of Milo, the approved colors, lighting, main opening, bosses, runner or saves.
+- This is **not** a fully clean modular room. The bed/cabinet are still baked in the backplate. The extracted selection needs an actual visual/device review for occlusion quality before a clean-room/bed asset pass.

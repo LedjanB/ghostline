@@ -1282,3 +1282,28 @@ test('milo lab: ?milolab=1 opens alone; raster frames; four sequences play to th
   expect(await page.evaluate(() => localStorage.getItem('ghostline-save'))).toBe(before);
   expect(errors).toEqual([]);
 });
+
+test('ward lab: existing Bed 7 art has a transparent foreground sprite above Milo', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?wardlab=1');
+  await page.waitForFunction(() => window.__game?.scene?.getScene('wardlab')?.bedFront?.texture);
+  const r = await page.evaluate(() => {
+    const s = window.__game.scene.getScene('wardlab'), front = s.bedFront;
+    const img = front.texture.getSourceImage(), ctx = img.getContext('2d');
+    return {
+      active: s.scene.isActive(),
+      depth: front.depth, miloDepth: s.milo.sprite.depth,
+      position: [front.x, front.y], size: [img.width, img.height],
+      clear: ctx.getImageData(5, 5, 1, 1).data[3] === 0,
+      rail: ctx.getImageData(439 - 191, 249 - 211, 1, 1).data[3] > 0,
+    };
+  });
+  expect(r.active).toBe(true);
+  expect(r.depth).toBeGreaterThan(r.miloDepth);
+  expect(r.position).toEqual([191, 211]);
+  expect(r.size).toEqual([258, 125]);
+  expect(r.clear).toBe(true);
+  expect(r.rail).toBe(true);
+  expect(errors).toEqual([]);
+});
