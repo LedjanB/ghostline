@@ -32,3 +32,17 @@ Protect all approved art, story, eight worlds, round Boo, THE STRETCH final boss
 - Milo's body continues breathing; no source images, character design, external scenes, save state, or `main` were changed. The isolated `?opening=1&prelude=1` review now fades to black after the moment instead of showing an immersion-breaking technical end card.
 - The existing focused Playwright test now checks that `realization` is actually reached. `scripts/prelude-shots.mjs` can record the extended cut plus two additional story-beat stills; screenshot/video **not generated or browser-tested in this ChatGPT session**.
 - Remaining art risk: the separate ghost `sit` -> standing transition lacks drawn in-betweens. Don't conceal that with artificial scaling/ghost overlays. The owner should judge the new extended acting after a real Phaser capture before more art work.
+
+## Reproducible layer export now implemented
+
+`scripts/export-bed7-layers.py` generates a **Krita-compatible OpenRaster .ora source with 13 editable layers**, using the approved room plate, front rail, five living sleep poses, five ghost sleep poses and an approved standing-ghost frame. It does not alter or redraw source PNGs.
+
+Run in the repo's supported Python environment:
+
+```bash
+python scripts/export-bed7-layers.py
+```
+
+Output: `assets/production/bed7-acting-source.ora`, containing `stack.xml`, `mergedimage.png`, and 13 named pose/scene PNG layers. Depends on Pillow already used by the repo's art scripts. **The generator was syntax-checked and tested with correctly sized synthetic stand-in images and valid ZIP/OpenRaster entries**; the exact real repo binary assets have **not** been run through it here and Krita import remains untested. Real-asset execution and one focused in-engine scene capture are the next verification tasks, not grounds for a full test-suite run.
+
+`scripts/prelude-shots.mjs` now saves new footage under `shots/bed7-acting-review/` by default instead of overwriting the owner-approved Opening V3 video.
