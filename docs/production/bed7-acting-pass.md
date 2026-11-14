@@ -25,3 +25,10 @@ Added one focused assertion in the existing opening-review Playwright test and b
 **Next QA:** one focused Phaser review capture of current V3 room at original 640×360 (sleep/breath/twitch and separation), one focused test, then owner judges motion and palette. If the bedding of frame 0 feels wrong, restore old frame 3 and ask for a bedding-matched hand-painted sprite, not random visual effects.
 
 Protect all approved art, story, eight worlds, round Boo, THE STRETCH final boss, and non-playable opening before RUN. No new Claude runs triggered by this document.
+
+## 14 Nov: second actual scene correction, the acting was being cut off
+- **Root cause established from code and source frame timings:** ghost lands at ~12.4s into the room, then plays the approved `awakening` animation for 9.48s; the original review used to fade at **19.5s**, interrupting that performance approximately 2.38 seconds before it could finish.
+- The review now lets the entire awakening play, followed by the pre-existing 7.41s `realization` sequence (hands -> turn toward body -> shock), with a short held reaction. The fade timing is derived from the actual `MILO_ANIMS` frame duration data, rather than guessed.
+- Milo's body continues breathing; no source images, character design, external scenes, save state, or `main` were changed. The isolated `?opening=1&prelude=1` review now fades to black after the moment instead of showing an immersion-breaking technical end card.
+- The existing focused Playwright test now checks that `realization` is actually reached. `scripts/prelude-shots.mjs` can record the extended cut plus two additional story-beat stills; screenshot/video **not generated or browser-tested in this ChatGPT session**.
+- Remaining art risk: the separate ghost `sit` -> standing transition lacks drawn in-betweens. Don't conceal that with artificial scaling/ghost overlays. The owner should judge the new extended acting after a real Phaser capture before more art work.

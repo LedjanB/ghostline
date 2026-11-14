@@ -1439,6 +1439,10 @@ test('opening V2 review: prelude on the approved concepts (fixed camera) then Be
   expect(await page.evaluate(() => [window.__openingv2.milo.scale, window.__openingv2.milo.x, window.__openingv2.milo.footY])).toEqual([1.5, 548, 335]);
   // The living body remains on the three actual sleeping sprite frames.
   expect(await page.evaluate(() => Number(window.__openingv2.body.frame.name))).toBeLessThanOrEqual(2);
+  // The review no longer fades out before Milo finishes awakening: after
+  // waking he must use the existing hands/recognition artwork before fading.
+  await page.waitForFunction(() => window.__openingv2?.phase === 'recognition', null, { timeout: 20000 });
+  expect(await page.evaluate(() => window.__openingv2.milo.anim)).toBe('realization');
   expect(await page.evaluate(() => localStorage.getItem('ghostline-save'))).toBe(before);
   // production route untouched: ?opening=1 is the old opening, no prelude, no V2
   await page.goto('/?opening=1');

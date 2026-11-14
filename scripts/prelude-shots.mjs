@@ -50,10 +50,12 @@ const want = [ // still name, when
   ['4-bed7-332', (s) => s.s === 'room' && s.k >= 2.8],
   ['5-separation', (s) => s.s === 'room' && s.rise >= 3.15],
   ['6-landed', (s) => s.s === 'room' && s.landed && s.k >= 16.0],
+  ['7-recognition', (s) => s.s === 'room' && s.phase === 'recognition' && s.k >= 23.0],
+  ['8-shock', (s) => s.s === 'room' && s.phase === 'recognition-held'],
 ];
 let n = 0, endAt = -1;
 const log = [];
-for (; n < 30 * 40; n++) {
+for (; n < 30 * 52; n++) {
   await page.evaluate(() => window.__step());
   const st = await page.evaluate(() => window.__state());
   const file = join(FR, `f${String(n).padStart(5, '0')}.png`);

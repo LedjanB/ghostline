@@ -25,7 +25,11 @@ const TUBES = [{ x: 300, y: 56, w: 100, h: 11 }, { x: 754, y: 56, w: 102, h: 11 
 const RISE = { lie: 2.0, sit: 1.0, stand: 0.9, drift: 1.3 }; // = opening.js
 const RISE_T = RISE.lie + RISE.sit + RISE.stand + RISE.drift;
 const F = { bed: 0, breath: 1, twitch: 2, lie: 3, sit: 4, ghost: 5 }; // approved sleep sheet: five living poses and five ghost poses
-export const V2 = { SHOT_X, BODY, LAND, RISE_T, R0: 7.2, END: 19.5 };
+// Play the complete approved acting, not just the start of the awakening.
+const ACTING_T = ['awakening', 'realization'].reduce((seconds, name) =>
+  seconds + MILO_ANIMS[name].frames.reduce((total, frame) => total + frame[1], 0) / 1000, 0);
+export const V2 = { SHOT_X, BODY, LAND, RISE_T, R0: 7.2,
+  END: 7.2 + RISE_T + ACTING_T + 1.5 };
 const lerp = (a, b, k) => a + (b - a) * k;
 const ease = (k) => (k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k));
 
@@ -35,7 +39,7 @@ export class OpeningV2Scene extends Phaser.Scene {
   init() {
     this.t = 0; this.phase = 'room'; this.clockState = '32'; this.rise = -1; this.tl = [];
     this.dark = 0; this.darkT = 0; this.flicker = 0; this.beatT = 0.4; this.hr = 62; this.battery = false;
-    this.landed = false; this.drops = []; this.sweep = 0;
+    this.landed = false; this.drops = []; this.sweep = 0; this.recognitionSeen = false;
   }
 
   preload() {
@@ -102,7 +106,7 @@ export class OpeningV2Scene extends Phaser.Scene {
       [V2.R0, () => { this.rise = 0; s && s.rise(); s && s.pad(0.55, 2); }],
       [V2.R0 + RISE_T + 0.8, () => { s && s.beep({ loud: true }); }], // the body: still alive
       [V2.END, () => { this.phase = 'leaving'; cam.fadeOut(1400, 0, 0, 0); s && s.fade(0, 1.2); }],
-      [V2.END + 1.6, () => { this.phase = 'end'; this.endT.setText('OPENING V2 REVIEW CUT ENDS HERE\n\nnext: the discovery, THE STRETCH, Boo'); cam.resetFX(); cam.setBackgroundColor('#000000'); this.hideRoom(); }],
+      [V2.END + 1.6, () => { this.phase = 'end'; this.endT.setText(''); cam.resetFX(); cam.setBackgroundColor('#000000'); this.hideRoom(); }],
     ]);
   }
 
@@ -196,7 +200,18 @@ export class OpeningV2Scene extends Phaser.Scene {
       } else {
         this.rise = -1; this.landed = true; x = LAND; y = FLOOR;
         if (this.snd) this.snd.land();
-        a.play(MILO_ANIMS.op_wake ? 'op_wake' : 'awakening');
+        // The existing 9.48s wake-up must complete before Milo begins recognizing
+        // the impossible: his own hands, then his breathing body. Both use approved
+        // sprite-sheet acting frames, not screen-scale close-ups or generated poses.
+        this.phase = 'awakening';
+        a.play('awakening', () => {
+          if (this.phase === 'leaving' || this.phase === 'end') return;
+          this.phase = 'recognition';
+          this.recognitionSeen = true;
+          a.play('realization', () => {
+            if (this.phase !== 'leaving' && this.phase !== 'end') this.phase = 'recognition-held';
+          });
+        });
       }
       a.setFacing(-1); a.x = Math.round(x); a.footY = Math.round(y); a.show();
       gs.setAlpha(alpha * sh);
