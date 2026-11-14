@@ -1,5 +1,5 @@
 // Opening review cut (prelude V3 on the approved concepts + Bed 7 V2), captured from the real Phaser game at a fixed 30 fps.
-// node scripts/prelude-shots.mjs [outDir]  ->  shots/opening-v3/
+// node scripts/prelude-shots.mjs [outDir]  ->  shots/bed7-acting-review/
 // Phaser's own requestAnimationFrame loop is paused and the game is stepped by exactly 1/30 s per frame
 // (game.step, the same call the loop makes), then each frame is screenshotted. So the video's cadence is exact:
 // no dropped or repeated frames from screen recording, and what it shows is what the game draws.
@@ -13,7 +13,7 @@ import { extname, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const OUT = process.argv[2] || join(ROOT, 'shots', 'opening-v3');
+const OUT = process.argv[2] || join(ROOT, 'shots', 'bed7-acting-review');
 const FR = join(OUT, 'frames-tmp');
 await rm(FR, { recursive: true, force: true });
 await mkdir(FR, { recursive: true });
@@ -65,7 +65,7 @@ for (; n < 30 * 52; n++) {
   if (endAt > 0 && n >= endAt) break;
 }
 execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '30', '-i', join(FR, 'f%05d.png'), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18',
-  '-pix_fmt', 'yuv420p', '-movflags', '+faststart', join(OUT, 'opening-v3.mp4')]);
+  '-pix_fmt', 'yuv420p', '-movflags', '+faststart', join(OUT, 'bed7-acting-review.mp4')]);
 await rm(FR, { recursive: true, force: true });
 console.log(JSON.stringify({ last: await page.evaluate(() => window.__state()), out: OUT, frames: n + 1, seconds: +((n + 1) / 30).toFixed(1), stills: log, missing: want.map((w) => w[0]), errors }));
 await browser.close();
