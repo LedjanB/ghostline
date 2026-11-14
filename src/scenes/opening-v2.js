@@ -24,7 +24,7 @@ const SCREEN = { x: 336, y: 160, w: 38, h: 23 };   // the monitor's screen in th
 const TUBES = [{ x: 300, y: 56, w: 100, h: 11 }, { x: 754, y: 56, w: 102, h: 11 }];
 const RISE = { lie: 2.0, sit: 1.0, stand: 0.9, drift: 1.3 }; // = opening.js
 const RISE_T = RISE.lie + RISE.sit + RISE.stand + RISE.drift;
-const F = { lie: 3, sit: 4, ghost: 5 }; // milo-sleep.png frames (+5 = the ghost row)
+const F = { bed: 0, breath: 1, twitch: 2, lie: 3, sit: 4, ghost: 5 }; // approved sleep sheet: five living poses and five ghost poses
 export const V2 = { SHOT_X, BODY, LAND, RISE_T, R0: 7.2, END: 19.5 };
 const lerp = (a, b, k) => a + (b - a) * k;
 const ease = (k) => (k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k));
@@ -60,7 +60,7 @@ export class OpeningV2Scene extends Phaser.Scene {
     this.monG = this.add.graphics().setDepth(1);
     this.monL = glow(SCREEN.x + SCREEN.w / 2, SCREEN.y + 12, 0x3dff9a, 0.5, 0.12, 1.1);
     // the boy in Bed 7 (asleep, the approved sleep drawing), under the plate's own blanket
-    this.body = this.add.sprite(BODY.x, BODY.y, MILO_SLEEP.key, F.lie).setOrigin(0).setScale(S).setDepth(3);
+    this.body = this.add.sprite(BODY.x, BODY.y, MILO_SLEEP.key, F.bed).setOrigin(0).setScale(S).setDepth(3);
     this.add.image(265, 226, 'v2_bed_front').setOrigin(0).setDepth(6);
     // ---- the power cut: the ward goes dark, then the lights that stay are added back ----
     this.darkR = this.add.rectangle(0, 0, 1065, H, 0x02050d).setOrigin(0).setAlpha(0).setDepth(7);
@@ -113,6 +113,13 @@ export class OpeningV2Scene extends Phaser.Scene {
   update(time, delta) {
     const dt = Math.min(delta / 1000, 0.05);
     this.t += dt;
+    // The living Milo continues breathing after his spirit separates.
+    // Use the existing hand-drawn sleep-frame variations; never warp the room or actor.
+    const breathPhase = this.t % 3.8;
+    const bodyTwitch = (this.t >= 2.55 && this.t < 2.80) ||
+      (this.t >= 14.70 && this.t < 14.95);
+    const bodyPose = bodyTwitch ? F.twitch : breathPhase < 1.9 ? F.bed : F.breath;
+    if (Number(this.body.frame.name) !== bodyPose) this.body.setFrame(bodyPose);
     for (const e of this.tl) if (!e.done && this.t >= e.t) { e.done = true; e.fn(); }
     if (this.phase === 'end') return;
     const s = this.snd;

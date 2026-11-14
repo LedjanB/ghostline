@@ -1437,6 +1437,8 @@ test('opening V2 review: prelude on the approved concepts (fixed camera) then Be
   await page.waitForFunction(() => window.__openingv2?.rise >= 0, null, { timeout: 20000 });
   await page.waitForFunction(() => window.__openingv2?.landed === true, null, { timeout: 20000 });
   expect(await page.evaluate(() => [window.__openingv2.milo.scale, window.__openingv2.milo.x, window.__openingv2.milo.footY])).toEqual([1.5, 548, 335]);
+  // The living body remains on the three actual sleeping sprite frames.
+  expect(await page.evaluate(() => Number(window.__openingv2.body.frame.name))).toBeLessThanOrEqual(2);
   expect(await page.evaluate(() => localStorage.getItem('ghostline-save'))).toBe(before);
   // production route untouched: ?opening=1 is the old opening, no prelude, no V2
   await page.goto('/?opening=1');
